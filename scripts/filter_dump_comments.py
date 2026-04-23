@@ -10,6 +10,9 @@ Functionality:
 - Streams compressed dumps without full decompression to disk.
 - Uses byte-level subreddit prefiltering before JSON parsing for throughput.
 - Uses `orjson` parsing when available, with stdlib fallback.
+- Stops each worker early once its file passes the configured relevant time boundary.
+- Validates source file fingerprints before trusting resume checkpoints.
+- Persists low-cost resume anchors for future fast-start reruns.
 - Applies subreddit/date/field filters defined in project config.
 - Writes outputs to `data/raw/political_forums/daily_chunks/<subreddit>/<YYYY-MM-DD>.ndjson`.
 - Maintains resumable per-worker checkpoints and logs throughput/time-at-data telemetry.
@@ -69,6 +72,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--state_file", type=str, default="results/logs/filter_dump_state.json")
     parser.add_argument("--log_file", type=str, default="results/logs/filter_dump.log")
     parser.add_argument("--checkpoint_every", type=int, default=1_000_000)
+    parser.add_argument(
+        "--resume_from_anchor",
+        type=str,
+        default="none",
+        choices=["none", "first_in_window"],
+        help="Optional anchor-based start for reruns. Use with care on existing outputs.",
+    )
     return parser.parse_args()
 
 
@@ -150,6 +160,53 @@ def parse_candidate(line_bytes: bytes) -> Dict[str, Any]:
     return json.loads(line_bytes.decode("utf-8"))
 
 
+def monthly_upper_bound_ts(source_file: Path) -> int | None:
+    """Function summary: infer exclusive month-end unix timestamp from RC_YYYY-MM filename."""
+    stem = source_file.stem
+    parts = stem.split("_")
+    if len(parts) != 2:
+        return None
+    ym = parts[1]
+    if "-" not in ym:
+        return None
+    year_str, month_str = ym.split("-", 1)
+    try:
+        year = int(year_str)
+        month = int(month_str)
+    except ValueError:
+        return None
+    if not (1 <= month <= 12):
+        return None
+    if month == 12:
+        next_year = year + 1
+        next_month = 1
+    else:
+        next_year = year
+        next_month = month + 1
+    return int(datetime(next_year, next_month, 1, tzinfo=timezone.utc).timestamp())
+
+
+def source_fingerprint(path: Path) -> Dict[str, Any]:
+    """Function summary: return low-cost source file fingerprint metadata for resume safety checks."""
+    stat_result = path.stat()
+    return {
+        "path": str(path.resolve()),
+        "size_bytes": int(stat_result.st_size),
+        "mtime_ns": int(stat_result.st_mtime_ns),
+    }
+
+
+def fingerprints_match(a: Dict[str, Any] | None, b: Dict[str, Any] | None) -> bool:
+    """Function summary: compare two source file fingerprints for strict equality."""
+    if not a or not b:
+        return False
+    return (
+        str(a.get("path")) == str(b.get("path"))
+        and int(a.get("size_bytes", -1)) == int(b.get("size_bytes", -2))
+        and int(a.get("mtime_ns", -1)) == int(b.get("mtime_ns", -2))
+    )
+
+
 def checkpoint_log_message(
     *,
     source_file: Path,
@@ -191,13 +248,27 @@ def process_file(
     base_raw_dir: Path,
     checkpoint_every: int,
     serialized_subreddit_tokens: list[str],
+    resume_from_anchor: str,
 ) -> Dict[str, Any]:
     """Function summary: stream one dump file, filter records, write day-chunk outputs, and checkpoint progress."""
     state = read_state(state_path)
     file_state = state.setdefault("file", {"completed": False, "lines_processed": 0, "rows_kept": 0})
     counters = deserialize_counters(state.get("counters", {}))
+    anchors = state.setdefault("anchors", {})
+    current_fingerprint = source_fingerprint(source_file)
+    previous_fingerprint = state.get("source_fingerprint")
+    if previous_fingerprint and not fingerprints_match(previous_fingerprint, current_fingerprint):
+        raise RuntimeError(
+            (
+                f"Resume fingerprint mismatch for {source_file.name}. "
+                "Source file metadata changed; use a new state file or reset existing worker state."
+            )
+        )
+    state["source_fingerprint"] = current_fingerprint
 
-    if file_state.get("completed", False):
+    anchor_line = anchors.get("first_in_window_line")
+    use_anchor = resume_from_anchor == "first_in_window" and isinstance(anchor_line, int) and anchor_line >= 0
+    if file_state.get("completed", False) and not use_anchor:
         append_log(log_path, f"skip completed file={source_file.name}")
         return {
             "source_file": source_file.name,
@@ -208,9 +279,22 @@ def process_file(
             "state_path": str(state_path),
             "log_path": str(log_path),
         }
+    if use_anchor and file_state.get("completed", False):
+        append_log(
+            log_path,
+            (
+                f"anchor_override_completed file={source_file.name} "
+                f"anchor=first_in_window line={int(anchor_line)}"
+            ),
+        )
+        file_state["completed"] = False
 
     skip_lines = int(file_state.get("lines_processed", 0))
+    if use_anchor:
+        skip_lines = int(anchor_line)
     append_log(log_path, f"start file={source_file.name} skip_lines={skip_lines}")
+    month_end_ts = monthly_upper_bound_ts(source_file)
+    hard_end_ts = min(end_ts, month_end_ts) if month_end_ts is not None else end_ts
 
     rows_seen = 0
     rows_kept = int(file_state.get("rows_kept", 0))
@@ -241,6 +325,8 @@ def process_file(
         file_state["rows_kept"] = rows_kept
         file_state["completed"] = False
         state["counters"] = serialize_counters(counters)
+        state["anchors"] = anchors
+        state["source_fingerprint"] = current_fingerprint
         write_state(state_path, state)
         append_log(
             log_path,
@@ -301,10 +387,30 @@ def process_file(
                                 continue
                             last_created_utc_seen = created_utc
                             if created_utc < start_ts or created_utc >= end_ts:
+                                if created_utc >= hard_end_ts:
+                                    checkpoint_state()
+                                    append_log(
+                                        log_path,
+                                        (
+                                            f"early_stop file={source_file.name} lines_processed={rows_seen} "
+                                            f"rows_kept={rows_kept} created_utc={created_utc} "
+                                            f"hard_end_ts={hard_end_ts}"
+                                        ),
+                                    )
+                                    completed = True
+                                    break
                                 continue
 
-                            out = trim_record(rec, fields)
+                            if "first_in_window_line" not in anchors:
+                                anchors["first_in_window_line"] = rows_seen
+                                anchors["first_in_window_created_utc"] = created_utc
                             date_key = datetime.fromtimestamp(created_utc, tz=timezone.utc).date().isoformat()
+                            if datetime.fromtimestamp(created_utc, tz=timezone.utc).hour >= 12:
+                                noon_map = anchors.setdefault("line_at_noon_utc", {})
+                                if isinstance(noon_map, dict) and date_key not in noon_map:
+                                    noon_map[date_key] = rows_seen
+
+                            out = trim_record(rec, fields)
                             cache_key = (subreddit, date_key)
                             out_file = output_cache.get(cache_key)
                             if out_file is None:
@@ -330,6 +436,8 @@ def process_file(
     file_state["completed"] = completed
     state["counters"] = serialize_counters(counters)
     state["rows_kept_total"] = rows_kept
+    state["anchors"] = anchors
+    state["source_fingerprint"] = current_fingerprint
     write_state(state_path, state)
     if completed:
         append_log(log_path, f"done file={source_file.name} lines_processed={rows_seen} rows_kept={rows_kept}")
@@ -339,6 +447,8 @@ def process_file(
         "rows_kept": rows_kept,
         "completed": completed,
         "counters": serialize_counters(counters),
+        "anchors": anchors,
+        "source_fingerprint": current_fingerprint,
         "state_path": str(state_path),
         "log_path": str(log_path),
     }
@@ -355,6 +465,7 @@ def process_file_worker(
     base_raw_dir: str,
     checkpoint_every: int,
     serialized_subreddit_tokens: list[str],
+    resume_from_anchor: str,
 ) -> Dict[str, Any]:
     """Function summary: execute one file worker in a separate process and return merge metadata."""
     return process_file(
@@ -368,6 +479,7 @@ def process_file_worker(
         base_raw_dir=Path(base_raw_dir),
         checkpoint_every=checkpoint_every,
         serialized_subreddit_tokens=serialized_subreddit_tokens,
+        resume_from_anchor=resume_from_anchor,
     )
 
 
@@ -414,6 +526,7 @@ def main() -> None:
                 "base_raw_dir": str(base_raw_dir),
                 "checkpoint_every": int(args.checkpoint_every),
                 "serialized_subreddit_tokens": serialized_subreddit_tokens,
+                "resume_from_anchor": str(args.resume_from_anchor),
             }
         )
 
@@ -437,6 +550,10 @@ def main() -> None:
         },
         "rows_kept_total": int(sum(int(result.get("rows_kept", 0)) for result in worker_results)),
         "counters": serialize_counters(all_counters),
+        "anchors": {result["source_file"]: result.get("anchors", {}) for result in worker_results},
+        "source_fingerprints": {
+            result["source_file"]: result.get("source_fingerprint", {}) for result in worker_results
+        },
         "worker_state_files": [result.get("state_path", "") for result in worker_results],
         "worker_log_files": [result.get("log_path", "") for result in worker_results],
     }

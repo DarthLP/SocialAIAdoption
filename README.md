@@ -14,6 +14,7 @@ This repository supports thesis analysis of AI-writing adoption in political Red
    - `/Volumes/Expansion/Masterthesis/RawData/reddit/comments/RC_2022-12.zst`
 4. Run filtering:
    - `.venv/bin/python scripts/filter_dump_comments.py --config config/political_forums_setup.yaml`
+   - Optional anchor rerun mode: `.venv/bin/python scripts/filter_dump_comments.py --config config/political_forums_setup.yaml --resume_from_anchor first_in_window`
 5. Check outputs:
    - `data/raw/political_forums/daily_chunks/`
    - `results/tables/dump_filter_counts_by_day.csv`
@@ -65,5 +66,9 @@ This repository supports thesis analysis of AI-writing adoption in political Red
 - The filter runs two worker processes by default (one per monthly file) and checkpoints every `1_000_000` scanned lines.
 - Progress logs include throughput (`lines/s`) and latest seen `created_utc` timestamp to monitor where the run is in event time.
 - On graceful stop (`Ctrl+C`/`SIGTERM`), workers checkpoint immediately so restart resumes from the exact saved line and avoids tail-interval duplicate appends.
+- Workers stop early once data has passed the relevant time window boundary (for example, `RC_2022-11` stops after reaching Dec 1 UTC).
+- Worker state includes source file fingerprint checks (`path`, `size`, `mtime`); resume fails fast if file metadata changed.
+- Worker state also stores low-cost anchors (for example `first_in_window_line`) for optional fast-start reruns.
+- Use `--resume_from_anchor first_in_window` only when you intentionally want to rerun from that saved anchor (typically with fresh outputs or followed by dedupe).
 - Use downstream scripts on filtered outputs only; avoid direct analysis on full raw dumps.
 - Track major methodological decisions in `Decisions/` and task flow in `TODO.md`.
