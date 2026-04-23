@@ -22,6 +22,8 @@ Build a reproducible pipeline to study AI-writing adoption in political Reddit c
   - Two-process monthly filtering (`RC_2022-11.zst` and `RC_2022-12.zst` in parallel workers)
   - Byte-level subreddit prefilter before JSON parsing
   - Per-worker resumable state/log files with merged final audit counters
+  - Graceful-stop signal handling that checkpoints immediately for duplicate-safe resume
+  - Post-run dedupe utility (`scripts/dedupe_daily_chunks.py`) for id-based overlap cleanup if needed
 - Operational rules: `.cursor/rules/project.mdc`
 - Durable memory: `Projects/`, `Decisions/`
 

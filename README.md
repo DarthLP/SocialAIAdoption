@@ -20,6 +20,9 @@ This repository supports thesis analysis of AI-writing adoption in political Red
    - `results/tables/dump_filter_counts_by_subreddit.csv`
    - `results/logs/filter_dump.RC_2022-11.log`
    - `results/logs/filter_dump.RC_2022-12.log`
+6. Optional overlap cleanup after stop/restart:
+   - Dry run: `.venv/bin/python scripts/dedupe_daily_chunks.py --config config/political_forums_setup.yaml`
+   - Apply: `.venv/bin/python scripts/dedupe_daily_chunks.py --config config/political_forums_setup.yaml --apply`
 
 ## External Resource
 - Academic Torrents Reddit dataset page:
@@ -58,7 +61,9 @@ This repository supports thesis analysis of AI-writing adoption in political Red
 ## Usage
 - Use external raw dumps as source of truth for ingestion.
 - Use `scripts/filter_dump_comments.py` to generate filtered day-chunk comments in the project data directory.
+- Use `scripts/dedupe_daily_chunks.py` when needed to remove duplicate comment ids introduced by interrupted/restarted filtering.
 - The filter runs two worker processes by default (one per monthly file) and checkpoints every `1_000_000` scanned lines.
 - Progress logs include throughput (`lines/s`) and latest seen `created_utc` timestamp to monitor where the run is in event time.
+- On graceful stop (`Ctrl+C`/`SIGTERM`), workers checkpoint immediately so restart resumes from the exact saved line and avoids tail-interval duplicate appends.
 - Use downstream scripts on filtered outputs only; avoid direct analysis on full raw dumps.
 - Track major methodological decisions in `Decisions/` and task flow in `TODO.md`.

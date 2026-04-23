@@ -1,0 +1,11 @@
+file,rows_total,rows_kept,rows_removed,missing_id_rows,invalid_json_rows
+data/raw/political_forums/daily_chunks/Ask_Politics/2022-12-01.ndjson,5,5,0,0,0
+data/raw/political_forums/daily_chunks/Ask_Politics/2022-12-02.ndjson,1,1,0,0,0
+data/raw/political_forums/daily_chunks/NeutralPolitics/2022-12-01.ndjson,4,4,0,0,0
+data/raw/political_forums/daily_chunks/NeutralPolitics/2022-12-02.ndjson,0,0,0,0,0
+data/raw/political_forums/daily_chunks/PoliticalDiscussion/2022-12-01.ndjson,1101,1101,0,0,0
+data/raw/political_forums/daily_chunks/PoliticalDiscussion/2022-12-02.ndjson,175,175,0,0,0
+data/raw/political_forums/daily_chunks/moderatepolitics/2022-12-01.ndjson,1671,1671,0,0,0
+data/raw/political_forums/daily_chunks/moderatepolitics/2022-12-02.ndjson,256,256,0,0,0
+data/raw/political_forums/daily_chunks/politics/2022-12-01.ndjson,26135,26135,0,0,0
+data/raw/political_forums/daily_chunks/politics/2022-12-02.ndjson,4781,4781,0,0,0

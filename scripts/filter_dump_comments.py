@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import signal
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
@@ -218,93 +219,125 @@ def process_file(
     checkpoint_started_monotonic = run_started_monotonic
     checkpoint_started_rows = 0
     serialized_tokens = [token.encode("utf-8") for token in serialized_subreddit_tokens]
+    stop_requested = False
+
+    def request_stop(signum: int, frame: Any) -> None:
+        """Function summary: mark worker for graceful stop and checkpoint on next loop turn."""
+        del frame
+        nonlocal stop_requested
+        stop_requested = True
+        append_log(log_path, f"signal_received file={source_file.name} signal={signum} graceful_stop=true")
+
+    previous_sigint = signal.getsignal(signal.SIGINT)
+    previous_sigterm = signal.getsignal(signal.SIGTERM)
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
+
+    def checkpoint_state() -> None:
+        """Function summary: flush writers and persist resumable worker state without completing the file."""
+        for handle in writers.values():
+            handle.flush()
+        file_state["lines_processed"] = rows_seen
+        file_state["rows_kept"] = rows_kept
+        file_state["completed"] = False
+        state["counters"] = serialize_counters(counters)
+        write_state(state_path, state)
+        append_log(
+            log_path,
+            checkpoint_log_message(
+                source_file=source_file,
+                rows_seen=rows_seen,
+                rows_kept=rows_kept,
+                run_started_monotonic=run_started_monotonic,
+                checkpoint_started_monotonic=checkpoint_started_monotonic,
+                checkpoint_started_rows=checkpoint_started_rows,
+                last_created_utc_seen=last_created_utc_seen,
+            ),
+        )
 
     writers: Dict[Path, Any] = {}
     output_cache: Dict[Tuple[str, str], Path] = {}
-    with source_file.open("rb") as compressed:
-        dctx = zstd.ZstdDecompressor(max_window_size=2**31)
-        with dctx.stream_reader(compressed) as stream:
-            with io.BufferedReader(stream, buffer_size=4 * 1024 * 1024) as buffered_stream:
-                try:
-                    for raw_line in buffered_stream:
-                        rows_seen += 1
-                        if rows_seen <= skip_lines:
-                            continue
-                        if rows_seen % checkpoint_every == 0:
-                            for handle in writers.values():
-                                handle.flush()
-                            file_state["lines_processed"] = rows_seen
-                            file_state["rows_kept"] = rows_kept
-                            state["counters"] = serialize_counters(counters)
-                            write_state(state_path, state)
-                            append_log(
-                                log_path,
-                                checkpoint_log_message(
-                                    source_file=source_file,
-                                    rows_seen=rows_seen,
-                                    rows_kept=rows_kept,
-                                    run_started_monotonic=run_started_monotonic,
-                                    checkpoint_started_monotonic=checkpoint_started_monotonic,
-                                    checkpoint_started_rows=checkpoint_started_rows,
-                                    last_created_utc_seen=last_created_utc_seen,
-                                ),
-                            )
-                            checkpoint_started_monotonic = time.monotonic()
-                            checkpoint_started_rows = rows_seen
+    completed = False
+    try:
+        with source_file.open("rb") as compressed:
+            dctx = zstd.ZstdDecompressor(max_window_size=2**31)
+            with dctx.stream_reader(compressed) as stream:
+                with io.BufferedReader(stream, buffer_size=4 * 1024 * 1024) as buffered_stream:
+                    try:
+                        for raw_line in buffered_stream:
+                            rows_seen += 1
+                            if rows_seen <= skip_lines:
+                                continue
+                            if rows_seen % checkpoint_every == 0:
+                                checkpoint_state()
+                                checkpoint_started_monotonic = time.monotonic()
+                                checkpoint_started_rows = rows_seen
+                            if stop_requested:
+                                checkpoint_state()
+                                append_log(
+                                    log_path,
+                                    f"graceful_stop file={source_file.name} lines_processed={rows_seen} rows_kept={rows_kept}",
+                                )
+                                break
 
-                        line_bytes = raw_line.rstrip(b"\r\n")
-                        if not line_bytes:
-                            continue
+                            line_bytes = raw_line.rstrip(b"\r\n")
+                            if not line_bytes:
+                                continue
 
-                        if not any(token in line_bytes for token in serialized_tokens):
-                            continue
+                            if not any(token in line_bytes for token in serialized_tokens):
+                                continue
 
-                        try:
-                            rec = parse_candidate(line_bytes)
-                        except Exception:
-                            continue
+                            try:
+                                rec = parse_candidate(line_bytes)
+                            except Exception:
+                                continue
 
-                        subreddit = rec.get("subreddit")
-                        if subreddit not in subreddits:
-                            continue
-                        try:
-                            created_utc = int(rec.get("created_utc", 0))
-                        except (TypeError, ValueError):
-                            continue
-                        last_created_utc_seen = created_utc
-                        if created_utc < start_ts or created_utc >= end_ts:
-                            continue
+                            subreddit = rec.get("subreddit")
+                            if subreddit not in subreddits:
+                                continue
+                            try:
+                                created_utc = int(rec.get("created_utc", 0))
+                            except (TypeError, ValueError):
+                                continue
+                            last_created_utc_seen = created_utc
+                            if created_utc < start_ts or created_utc >= end_ts:
+                                continue
 
-                        out = trim_record(rec, fields)
-                        date_key = datetime.fromtimestamp(created_utc, tz=timezone.utc).date().isoformat()
-                        cache_key = (subreddit, date_key)
-                        out_file = output_cache.get(cache_key)
-                        if out_file is None:
-                            out_file = output_path(base_raw_dir, subreddit, created_utc)
-                            output_cache[cache_key] = out_file
-                        if out_file not in writers:
-                            writers[out_file] = out_file.open("a", encoding="utf-8")
-                        writers[out_file].write(serialize_record(out) + "\n")
-                        rows_kept += 1
+                            out = trim_record(rec, fields)
+                            date_key = datetime.fromtimestamp(created_utc, tz=timezone.utc).date().isoformat()
+                            cache_key = (subreddit, date_key)
+                            out_file = output_cache.get(cache_key)
+                            if out_file is None:
+                                out_file = output_path(base_raw_dir, subreddit, created_utc)
+                                output_cache[cache_key] = out_file
+                            if out_file not in writers:
+                                writers[out_file] = out_file.open("a", encoding="utf-8")
+                            writers[out_file].write(serialize_record(out) + "\n")
+                            rows_kept += 1
 
-                        counters[(subreddit, date_key)] = counters.get((subreddit, date_key), 0) + 1
-
-                finally:
-                    for handle in writers.values():
-                        handle.close()
+                            counters[(subreddit, date_key)] = counters.get((subreddit, date_key), 0) + 1
+                        else:
+                            completed = True
+                    finally:
+                        for handle in writers.values():
+                            handle.close()
+    finally:
+        signal.signal(signal.SIGINT, previous_sigint)
+        signal.signal(signal.SIGTERM, previous_sigterm)
 
     file_state["lines_processed"] = rows_seen
     file_state["rows_kept"] = rows_kept
-    file_state["completed"] = True
+    file_state["completed"] = completed
     state["counters"] = serialize_counters(counters)
     state["rows_kept_total"] = rows_kept
     write_state(state_path, state)
-    append_log(log_path, f"done file={source_file.name} lines_processed={rows_seen} rows_kept={rows_kept}")
+    if completed:
+        append_log(log_path, f"done file={source_file.name} lines_processed={rows_seen} rows_kept={rows_kept}")
     return {
         "source_file": source_file.name,
         "lines_processed": rows_seen,
         "rows_kept": rows_kept,
-        "completed": True,
+        "completed": completed,
         "counters": serialize_counters(counters),
         "state_path": str(state_path),
         "log_path": str(log_path),
