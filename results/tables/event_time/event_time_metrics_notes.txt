@@ -1,0 +1,15 @@
+Event-Time Metrics Notes
+========================
+
+Primary AI word list (strict_10):
+- explore, captivate, tapestry, leverage, embrace, resonate, dynamic, testament, delve, elevate
+
+Toxicity channels:
+- toxicity_score: VADER negativity mean = mean(max(0, -compound)).
+- toxic_lexicon_rate_100w: lexical incidence per 100 words from a lightweight toxic lexicon.
+
+AI-likeness index (z-score composite):
+- z(ai_word_rate_100w) + z(formality_balance_100w) + z(assistant_tone_rate_100w)
+- + z(list_structure_intensity) - z(contraction_rate_100w)
+
+No minimum comment length filter is applied.

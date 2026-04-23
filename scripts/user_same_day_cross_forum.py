@@ -7,7 +7,7 @@ window) by enforcing temporal co-activity: author X is only counted if, on at
 least one specific UTC date, X commented in at least two distinct subreddits.
 
 Functionality:
-- Recursively scans `data/raw/political_forums/daily_chunks/<subreddit>/*.ndjson`.
+- Recursively scans `data/interim/political_forums/cleaned_daily_chunks/<subreddit>/*.ndjson`.
 - For each comment, builds a mapping (author, utc_date) -> set of subreddits.
 - Optionally excludes removed accounts (`[deleted]`) and known bot accounts.
 - Reports:
@@ -276,8 +276,8 @@ def main() -> None:
     args = parse_args()
     config = load_config(args.config)
 
-    raw_dir = PROJECT_ROOT / config["paths"]["raw_dir"]
-    daily_chunks_dir = raw_dir / "daily_chunks"
+    interim_dir = PROJECT_ROOT / config["paths"]["interim_dir"]
+    daily_chunks_dir = interim_dir / "cleaned_daily_chunks"
     tables_dir = PROJECT_ROOT / config["paths"]["tables_dir"]
     overlap_tables_dir = tables_dir / OVERLAP_TABLES_SUBDIR
 

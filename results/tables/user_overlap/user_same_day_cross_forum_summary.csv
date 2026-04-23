@@ -1,5 +1,5 @@
 metric,value,share
-unique_authors_total,150629,1.0000
+unique_authors_total,150623,1.0000
 authors_with_same_day_multi_forum_activity,1088,0.0072
-total_author_day_events,379543,1.0000
+total_author_day_events,379441,1.0000
 author_day_events_spanning_multiple_forums,1882,0.0050

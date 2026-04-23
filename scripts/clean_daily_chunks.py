@@ -22,7 +22,7 @@ Functionality:
   - is_short_text (body length < 20 chars)
 - Writes cleaned daily chunks to
   `data/interim/political_forums/cleaned_daily_chunks/<subreddit>/<YYYY-MM-DD>.ndjson`.
-- Writes audit outputs to `results/tables/` with day/subreddit totals.
+- Writes audit outputs to `results/tables/cleaning/` with day/subreddit totals.
 
 How to apply/run:
 - `.venv/bin/python scripts/clean_daily_chunks.py --config config/political_forums_setup.yaml`
@@ -151,9 +151,11 @@ def list_daily_chunk_files(raw_daily_dir: Path, subreddits: list[str]) -> list[t
 
 def write_audit_outputs(audit_df: pd.DataFrame, tables_dir: Path) -> None:
     """Function summary: write day-level, subreddit-level, and run-note cleaning audit outputs."""
-    by_day_path = tables_dir / "clean_daily_chunks_audit_by_day.csv"
-    by_subreddit_path = tables_dir / "clean_daily_chunks_audit_by_subreddit.csv"
-    note_path = tables_dir / "clean_daily_chunks_notes.txt"
+    cleaning_tables_dir = tables_dir / "cleaning"
+    cleaning_tables_dir.mkdir(parents=True, exist_ok=True)
+    by_day_path = cleaning_tables_dir / "clean_daily_chunks_audit_by_day.csv"
+    by_subreddit_path = cleaning_tables_dir / "clean_daily_chunks_audit_by_subreddit.csv"
+    note_path = cleaning_tables_dir / "clean_daily_chunks_notes.txt"
 
     audit_df = audit_df.sort_values(["subreddit", "date_utc"]).reset_index(drop=True)
     audit_df.to_csv(by_day_path, index=False)

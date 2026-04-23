@@ -6,7 +6,7 @@ Reddit's `author` field is a globally-unique username, cross-forum user
 matching is an exact string match on `author`.
 
 Functionality:
-- Recursively scans `data/raw/political_forums/daily_chunks/<subreddit>/*.ndjson`.
+- Recursively scans `data/interim/political_forums/cleaned_daily_chunks/<subreddit>/*.ndjson`.
 - Builds a mapping of author -> set of subreddits the author commented in.
 - Optionally excludes removed accounts (`[deleted]`) and known bots.
 - Reports:
@@ -61,7 +61,7 @@ OVERLAP_TABLES_SUBDIR = "user_overlap"
 def parse_args() -> argparse.Namespace:
     """Function summary: parse CLI arguments for config path and inclusion toggles."""
     parser = argparse.ArgumentParser(
-        description="Compute cross-forum user overlap from filtered daily chunks."
+        description="Compute cross-forum user overlap from cleaned daily chunks."
     )
     parser.add_argument(
         "--config",
@@ -234,8 +234,8 @@ def main() -> None:
     args = parse_args()
     config = load_config(args.config)
 
-    raw_dir = PROJECT_ROOT / config["paths"]["raw_dir"]
-    daily_chunks_dir = raw_dir / "daily_chunks"
+    interim_dir = PROJECT_ROOT / config["paths"]["interim_dir"]
+    daily_chunks_dir = interim_dir / "cleaned_daily_chunks"
     tables_dir = PROJECT_ROOT / config["paths"]["tables_dir"]
     overlap_tables_dir = tables_dir / OVERLAP_TABLES_SUBDIR
 

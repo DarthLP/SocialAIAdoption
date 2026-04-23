@@ -28,9 +28,11 @@ This repository supports thesis analysis of AI-writing adoption in political Red
    - Apply: `.venv/bin/python scripts/dedupe_daily_chunks.py --config config/political_forums_setup.yaml --apply`
 7. Optional cross-forum user overlap analysis (unique-author matching across subreddits):
    - `.venv/bin/python scripts/user_overlap_across_forums.py --config config/political_forums_setup.yaml`
+   - Uses cleaned input: `data/interim/political_forums/cleaned_daily_chunks/`
    - Writes `results/tables/user_overlap/user_overlap_by_forum.csv`, `user_overlap_forum_count_distribution.csv`, and `user_overlap_pairwise.csv`.
 8. Optional same-day cross-forum activity analysis (users posting in >=2 forums on the same UTC day):
    - `.venv/bin/python scripts/user_same_day_cross_forum.py --config config/political_forums_setup.yaml`
+   - Uses cleaned input: `data/interim/political_forums/cleaned_daily_chunks/`
    - Writes `results/tables/user_overlap/user_same_day_cross_forum_summary.csv`, `user_same_day_cross_forum_distribution.csv`, and `user_same_day_cross_forum_pairwise.csv`.
 9. Pre-cleaning data-quality trend analysis (percentages, ChatGPT event marker):
    - `.venv/bin/python scripts/plot_data_quality_trends.py --config config/political_forums_setup.yaml`
@@ -38,7 +40,19 @@ This repository supports thesis analysis of AI-writing adoption in political Red
 10. Deterministic cleaning pass for interim analysis dataset:
    - `.venv/bin/python scripts/clean_daily_chunks.py --config config/political_forums_setup.yaml`
    - Writes cleaned daily chunks to `data/interim/political_forums/cleaned_daily_chunks/`.
-   - Writes cleaning audits to `results/tables/clean_daily_chunks_audit_by_day.csv`, `results/tables/clean_daily_chunks_audit_by_subreddit.csv`, and `results/tables/clean_daily_chunks_notes.txt`.
+   - Writes cleaning audits to `results/tables/cleaning/clean_daily_chunks_audit_by_day.csv`, `results/tables/cleaning/clean_daily_chunks_audit_by_subreddit.csv`, and `results/tables/cleaning/clean_daily_chunks_notes.txt`.
+11. Event-time metric preparation (subreddit + pooled, lexical/structure/toxicity proxies):
+   - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml`
+   - Writes tables to `results/tables/event_time/` and compatibility export to `results/tables/event_time_daily_metrics.csv`.
+12. Event-time plotting:
+   - `.venv/bin/python scripts/plot_event_time_metrics.py --config config/political_forums_setup.yaml`
+   - Writes pooled figures to `results/figures/event_time/` (lexicon, style proxies, toxicity, strict-vs-extended overlay, style panel, z-score components).
+   - Writes per-subreddit overlays to `results/figures/event_time/by_subreddit/`.
+   - Includes one figure with strict 10-word individual rates plus strict-10 combined rate in one graph (pooled).
+13. Optional sampled LLM-detector robustness table (CPU-only default heuristic, optional HF model):
+   - `.venv/bin/python scripts/run_llm_detector_sample.py --config config/political_forums_setup.yaml`
+   - Optional HF detector branch: add `--use_hf_model` (requires `transformers` installed in `.venv`).
+   - Writes `results/tables/event_time/llm_detector_sample_scores_daily.csv`.
 
 ## External Resource
 - Academic Torrents Reddit dataset page:
@@ -54,11 +68,15 @@ This repository supports thesis analysis of AI-writing adoption in political Red
 - `data/raw/political_forums/daily_chunks/`: Filtered per-subreddit per-day comments.
 - `data/interim/`, `data/processed/`: Intermediate and model-ready data layers.
 - `results/figures/`, `results/tables/`, `results/logs/`: Generated artifacts.
+  - Policy: generated outputs are grouped in subfolders under each artifact root.
   - `results/tables/filtering/`: Filtering audit outputs and dedupe reports.
+  - `results/tables/cleaning/`: Cleaning audit tables and cleaning run notes.
   - `results/tables/data_quality_trends/`: Daily pre-cleaning quality metrics and validation tables.
   - `results/tables/user_overlap/`: Cross-forum overlap and same-day overlap analysis tables.
+- `results/tables/event_time/`: Event-time metric aggregates, lexicon trajectories, and optional sampled detector outputs.
   - `results/logs/filter_dump/`: Dump filtering run logs and resumable state files.
   - `results/figures/data_quality_trends/`: Daily percentage trend plots with launch-day marker.
+- `results/figures/event_time/`: Event-time figures for linguistic, AI-style, and toxicity proxies.
 - `Projects/`, `Decisions/`: Obsidian durable memory notes.
 - `Templates/`: Standardized lightweight note templates.
 - `MasterSystemPrompt.md`: Stable project-level context and execution policy.
@@ -78,6 +96,7 @@ This repository supports thesis analysis of AI-writing adoption in political Red
 ## Dependencies
 - Core Python packages are listed in `requirements.txt`.
 - Key packages: `pandas`, `pyarrow`, `zstandard`, `orjson`, `PyYAML`, `matplotlib`, `seaborn`, `textstat`, `vaderSentiment`.
+- Optional package for sampled detector robustness branch: `transformers`.
 
 ## Usage
 - Use external raw dumps as source of truth for ingestion.
@@ -102,6 +121,18 @@ This repository supports thesis analysis of AI-writing adoption in political Red
   - `is_url_only` (body is URL-only)
   - `is_short_text` (body character length `< 20`)
 - The filter supports `--worker_mode one|two|auto`; default is `one` (sequential: both month files always run, best for typical external USB throughput).
+- Use `scripts/prepare_event_time_metrics.py` to build metric-ready daily aggregates from cleaned chunks for pooled and subreddit event-time analysis.
+- Event-time outputs include:
+  - semicolon rate, comment length, complexity index
+  - AI-likeness composite index and component columns
+  - strict 10-word and extended AI-typical word rates
+  - formality markers, list-structure intensity, repetition/template similarity, assistant-tone phrase rate
+  - toxicity proxies: VADER negativity mean and lexical toxic incidence rate
+- Use `scripts/plot_event_time_metrics.py` to render event-time plots, including a combined figure with strict 10 individual word trajectories plus strict-10 combined trajectory.
+- Use `scripts/run_llm_detector_sample.py` for optional sampled robustness scoring:
+  - deterministic stratified sampling by subreddit x day
+  - default free heuristic LLM-style score
+  - optional pinned Hugging Face classifier branch (CPU-compatible; slower)
 - Use `--worker_mode two` if your storage can sustain parallel reads (e.g. fast internal disk).
 - The filter supports `--prefilter_mode tokens|regex`; default is `tokens` and `regex` is intended for A/B benchmarking.
 - Checkpointing remains at `1_000_000` scanned lines by default.

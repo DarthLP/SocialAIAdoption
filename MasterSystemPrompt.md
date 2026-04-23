@@ -19,8 +19,12 @@ Build a reproducible pipeline to study AI-writing adoption in political Reddit c
   - `data/interim/`, `data/processed/` for downstream transformations
 - Output layer: `results/figures/`, `results/tables/`, `results/logs/`
   - Filtering audits and dedupe reports are grouped in `results/tables/filtering/`
+  - Cleaning audits are grouped in `results/tables/cleaning/`
   - Dump filtering logs/state files are grouped in `results/logs/filter_dump/`
   - Overlap analysis outputs are grouped in `results/tables/user_overlap/`
+  - Data-quality trend figures/tables are grouped in `results/figures/data_quality_trends/` and `results/tables/data_quality_trends/`
+  - Event-time metric tables/figures are grouped in `results/tables/event_time/` and `results/figures/event_time/`
+  - Policy: artifacts should always be written to grouped subfolders under `results/*/`
 - Dump filtering architecture:
   - Configurable worker mode for monthly filtering (`--worker_mode one|two|auto`)
   - Byte-level subreddit prefilter before JSON parsing
@@ -37,6 +41,9 @@ Build a reproducible pipeline to study AI-writing adoption in political Reddit c
   - Same-day cross-forum activity utility (`scripts/user_same_day_cross_forum.py`) for temporally-aligned author overlap diagnostics
   - Pre-cleaning trend utility (`scripts/plot_data_quality_trends.py`) for daily quality-indicator counts/rates and launch-anchored visualization
   - Interim cleaning utility (`scripts/clean_daily_chunks.py`) for deterministic drop-rules plus retained-row metadata flags
+  - Event-time metrics utility (`scripts/prepare_event_time_metrics.py`) for daily subreddit/pooled language and AI-style aggregates
+  - Event-time plotting utility (`scripts/plot_event_time_metrics.py`) for launch-anchored pooled and per-subreddit trend figures, style-proxy panels, strict-vs-extended lexicon overlay, z-score component plot, and strict-10 per-word plus combined trajectory figure
+  - Optional sampled detector utility (`scripts/run_llm_detector_sample.py`) for CPU-first robustness scoring with deterministic sampling
 - Operational rules: `.cursor/rules/project.mdc`
 - Durable memory: `Projects/`, `Decisions/`
 
@@ -65,4 +72,4 @@ A work item is complete only if:
 - The vault remains low-noise and non-duplicative.
 
 ## Current Status
-Dump-first ingestion path established; filtering uses configurable worker concurrency (default sequential one-worker for external-disk stability), large checkpoints, and time-aware progress logging to generate per-subreddit/day datasets for Nov/Dec 2022. Pre-cleaning quality trend outputs are standardized under `results/tables/data_quality_trends/` and `results/figures/data_quality_trends/`. Interim cleaned outputs now exist under `data/interim/political_forums/cleaned_daily_chunks/` with explicit drop rules (`[removed]`, `[deleted]`, `AutoModerator`, `stickied`, `distinguished=moderator`) and retained-row flags (`is_deleted_author`, `is_bot_name_heuristic`, `is_url_only`, `is_short_text`).
+Dump-first ingestion path established; filtering uses configurable worker concurrency (default sequential one-worker for external-disk stability), large checkpoints, and time-aware progress logging to generate per-subreddit/day datasets for Nov/Dec 2022. Pre-cleaning quality trend outputs are standardized under `results/tables/data_quality_trends/` and `results/figures/data_quality_trends/`. Interim cleaned outputs exist under `data/interim/political_forums/cleaned_daily_chunks/` with explicit drop rules (`[removed]`, `[deleted]`, `AutoModerator`, `stickied`, `distinguished=moderator`) and retained-row flags (`is_deleted_author`, `is_bot_name_heuristic`, `is_url_only`, `is_short_text`). Event-time metrics are now generated under `results/tables/event_time/` with pooled + subreddit daily aggregates for linguistic style, AI-likeness components, strict/extended AI lexicon rates, and toxicity proxies; event-time figures are generated under `results/figures/event_time/` including strict-10 individual-word plus combined trajectory visualization.

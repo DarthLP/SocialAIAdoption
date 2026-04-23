@@ -44,3 +44,10 @@ Before finishing substantial work, verify whether these files need updates and u
 - `MasterSystemPrompt.md`
 - `README.md`
 - `TODO.md`
+
+## Output Subfolder Rule
+- Generated artifacts under `results/` must be written to explicit subfolders, never directly to root artifact folders.
+- Use:
+  - `results/tables/<artifact_group>/...`
+  - `results/figures/<artifact_group>/...`
+  - `results/logs/<artifact_group>/...`
