@@ -15,6 +15,9 @@ This repository supports thesis analysis of AI-writing adoption in political Red
 4. Run filtering:
    - `.venv/bin/python scripts/filter_dump_comments.py --config config/political_forums_setup.yaml`
    - Optional anchor rerun mode: `.venv/bin/python scripts/filter_dump_comments.py --config config/political_forums_setup.yaml --resume_from_anchor first_in_window`
+   - External-disk recommended mode (single worker): `.venv/bin/python scripts/filter_dump_comments.py --config config/political_forums_setup.yaml --worker_mode one`
+   - Optional two-worker mode: `.venv/bin/python scripts/filter_dump_comments.py --config config/political_forums_setup.yaml --worker_mode two`
+   - Optional prefilter A/B mode: `.venv/bin/python scripts/filter_dump_comments.py --config config/political_forums_setup.yaml --prefilter_mode regex`
 5. Check outputs:
    - `data/raw/political_forums/daily_chunks/`
    - `results/tables/dump_filter_counts_by_day.csv`
@@ -63,7 +66,10 @@ This repository supports thesis analysis of AI-writing adoption in political Red
 - Use external raw dumps as source of truth for ingestion.
 - Use `scripts/filter_dump_comments.py` to generate filtered day-chunk comments in the project data directory.
 - Use `scripts/dedupe_daily_chunks.py` when needed to remove duplicate comment ids introduced by interrupted/restarted filtering.
-- The filter runs two worker processes by default (one per monthly file) and checkpoints every `1_000_000` scanned lines.
+- The filter supports `--worker_mode one|two|auto`; default is `two` (parallel baseline).
+- On this setup, small-slice benchmarking showed `two` workers faster than `one`, so parallel is the recommended default.
+- The filter supports `--prefilter_mode tokens|regex`; default is `tokens` and `regex` is intended for A/B benchmarking.
+- Checkpointing remains at `1_000_000` scanned lines by default.
 - Progress logs include throughput (`lines/s`) and latest seen `created_utc` timestamp to monitor where the run is in event time.
 - On graceful stop (`Ctrl+C`/`SIGTERM`), workers checkpoint immediately so restart resumes from the exact saved line and avoids tail-interval duplicate appends.
 - Workers stop early once data has passed the relevant time window boundary (for example, `RC_2022-11` stops after reaching Dec 1 UTC).

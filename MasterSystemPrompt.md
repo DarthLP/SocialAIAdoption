@@ -19,8 +19,11 @@ Build a reproducible pipeline to study AI-writing adoption in political Reddit c
   - `data/interim/`, `data/processed/` for downstream transformations
 - Output layer: `results/figures/`, `results/tables/`, `results/logs/`
 - Dump filtering architecture:
-  - Two-process monthly filtering (`RC_2022-11.zst` and `RC_2022-12.zst` in parallel workers)
+  - Configurable worker mode for monthly filtering (`--worker_mode one|two|auto`)
   - Byte-level subreddit prefilter before JSON parsing
+  - Optional regex prefilter mode for controlled A/B benchmarking
+  - Binary NDJSON append writes to reduce text encoding overhead
+  - UTC-day cache for repeated date computations in hot path
   - Per-worker resumable state/log files with merged final audit counters
   - Resume fingerprint guard (path/size/mtime) to prevent unsafe checkpoint reuse if source file changes
   - Optional anchor-based rerun start from persisted `first_in_window_line`

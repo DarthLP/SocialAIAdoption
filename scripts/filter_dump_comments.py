@@ -1,14 +1,14 @@
 """
 Script summary:
 This script filters large Reddit comment dump files (`.zst`) into the project's
-analysis-ready day-chunk layout using a two-process pipeline (one worker per month
-file). It keeps only configured subreddits, date window, and required fields, then
+analysis-ready day-chunk layout using a configurable worker pipeline (one or two
+workers). It keeps only configured subreddits, date window, and required fields, then
 writes NDJSON outputs per subreddit/day.
 
 Functionality:
-- Runs `RC_2022-11.zst` and `RC_2022-12.zst` concurrently in isolated workers.
+- Runs `RC_2022-11.zst` and `RC_2022-12.zst` with configurable worker concurrency.
 - Streams compressed dumps without full decompression to disk.
-- Uses byte-level subreddit prefiltering before JSON parsing for throughput.
+- Uses configurable prefiltering (`tokens` or `regex`) before JSON parsing for throughput testing.
 - Uses `orjson` parsing when available, with stdlib fallback.
 - Stops each worker early once its file passes the configured relevant time boundary.
 - Validates source file fingerprints before trusting resume checkpoints.
@@ -29,13 +29,14 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import re
 import signal
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, Tuple
+from typing import Any, Dict, Iterable, Pattern, Tuple
 
 import pandas as pd
 import zstandard as zstd
@@ -52,11 +53,11 @@ except ImportError:  # pragma: no cover - fallback for environments without orjs
     orjson = None
 
 
-def serialize_record(record: Dict[str, Any]) -> str:
-    """Function summary: serialize one output record to NDJSON text."""
+def serialize_record(record: Dict[str, Any]) -> bytes:
+    """Function summary: serialize one output record to NDJSON bytes."""
     if orjson is not None:
-        return orjson.dumps(record).decode("utf-8")
-    return json.dumps(record, ensure_ascii=True)
+        return orjson.dumps(record)
+    return json.dumps(record, ensure_ascii=True).encode("utf-8")
 
 
 def parse_args() -> argparse.Namespace:
@@ -72,6 +73,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--state_file", type=str, default="results/logs/filter_dump_state.json")
     parser.add_argument("--log_file", type=str, default="results/logs/filter_dump.log")
     parser.add_argument("--checkpoint_every", type=int, default=1_000_000)
+    parser.add_argument(
+        "--worker_mode",
+        type=str,
+        default="two",
+        choices=["auto", "one", "two"],
+        help="Worker count strategy. Default 'two' (parallel baseline).",
+    )
+    parser.add_argument(
+        "--prefilter_mode",
+        type=str,
+        default="tokens",
+        choices=["tokens", "regex"],
+        help="Line prefilter mode before JSON parse. 'tokens' is default.",
+    )
     parser.add_argument(
         "--resume_from_anchor",
         type=str,
@@ -207,6 +222,12 @@ def fingerprints_match(a: Dict[str, Any] | None, b: Dict[str, Any] | None) -> bo
     )
 
 
+def compile_subreddit_regex(subreddits_sorted: list[str]) -> Pattern[bytes]:
+    """Function summary: compile bytes regex matching target subreddit values in raw JSON lines."""
+    alternation = b"|".join(re.escape(item.encode("utf-8")) for item in subreddits_sorted)
+    return re.compile(b'"subreddit":\\s?"(?:' + alternation + b')"')
+
+
 def checkpoint_log_message(
     *,
     source_file: Path,
@@ -248,6 +269,8 @@ def process_file(
     base_raw_dir: Path,
     checkpoint_every: int,
     serialized_subreddit_tokens: list[str],
+    prefilter_mode: str,
+    subreddit_pattern: str | None,
     resume_from_anchor: str,
 ) -> Dict[str, Any]:
     """Function summary: stream one dump file, filter records, write day-chunk outputs, and checkpoint progress."""
@@ -303,6 +326,9 @@ def process_file(
     checkpoint_started_monotonic = run_started_monotonic
     checkpoint_started_rows = 0
     serialized_tokens = [token.encode("utf-8") for token in serialized_subreddit_tokens]
+    compiled_pattern: Pattern[bytes] | None = (
+        re.compile(subreddit_pattern.encode("utf-8")) if subreddit_pattern and prefilter_mode == "regex" else None
+    )
     stop_requested = False
 
     def request_stop(signum: int, frame: Any) -> None:
@@ -343,6 +369,7 @@ def process_file(
 
     writers: Dict[Path, Any] = {}
     output_cache: Dict[Tuple[str, str], Path] = {}
+    day_cache: Dict[int, Tuple[str, int]] = {}
     completed = False
     try:
         with source_file.open("rb") as compressed:
@@ -370,7 +397,10 @@ def process_file(
                             if not line_bytes:
                                 continue
 
-                            if not any(token in line_bytes for token in serialized_tokens):
+                            if prefilter_mode == "regex":
+                                if compiled_pattern is None or compiled_pattern.search(line_bytes) is None:
+                                    continue
+                            elif not any(token in line_bytes for token in serialized_tokens):
                                 continue
 
                             try:
@@ -404,8 +434,14 @@ def process_file(
                             if "first_in_window_line" not in anchors:
                                 anchors["first_in_window_line"] = rows_seen
                                 anchors["first_in_window_created_utc"] = created_utc
-                            date_key = datetime.fromtimestamp(created_utc, tz=timezone.utc).date().isoformat()
-                            if datetime.fromtimestamp(created_utc, tz=timezone.utc).hour >= 12:
+                            epoch_day = created_utc // 86400
+                            day_entry = day_cache.get(epoch_day)
+                            if day_entry is None:
+                                dt = datetime.fromtimestamp(created_utc, tz=timezone.utc)
+                                day_entry = (dt.date().isoformat(), epoch_day * 86400 + 12 * 3600)
+                                day_cache[epoch_day] = day_entry
+                            date_key, noon_ts = day_entry
+                            if created_utc >= noon_ts:
                                 noon_map = anchors.setdefault("line_at_noon_utc", {})
                                 if isinstance(noon_map, dict) and date_key not in noon_map:
                                     noon_map[date_key] = rows_seen
@@ -414,11 +450,15 @@ def process_file(
                             cache_key = (subreddit, date_key)
                             out_file = output_cache.get(cache_key)
                             if out_file is None:
-                                out_file = output_path(base_raw_dir, subreddit, created_utc)
+                                target_dir = base_raw_dir / "daily_chunks" / subreddit
+                                target_dir.mkdir(parents=True, exist_ok=True)
+                                out_file = target_dir / f"{date_key}.ndjson"
                                 output_cache[cache_key] = out_file
                             if out_file not in writers:
-                                writers[out_file] = out_file.open("a", encoding="utf-8")
-                            writers[out_file].write(serialize_record(out) + "\n")
+                                writers[out_file] = out_file.open("ab")
+                            payload = serialize_record(out)
+                            writers[out_file].write(payload)
+                            writers[out_file].write(b"\n")
                             rows_kept += 1
 
                             counters[(subreddit, date_key)] = counters.get((subreddit, date_key), 0) + 1
@@ -465,6 +505,8 @@ def process_file_worker(
     base_raw_dir: str,
     checkpoint_every: int,
     serialized_subreddit_tokens: list[str],
+    prefilter_mode: str,
+    subreddit_pattern: str | None,
     resume_from_anchor: str,
 ) -> Dict[str, Any]:
     """Function summary: execute one file worker in a separate process and return merge metadata."""
@@ -479,6 +521,8 @@ def process_file_worker(
         base_raw_dir=Path(base_raw_dir),
         checkpoint_every=checkpoint_every,
         serialized_subreddit_tokens=serialized_subreddit_tokens,
+        prefilter_mode=prefilter_mode,
+        subreddit_pattern=subreddit_pattern,
         resume_from_anchor=resume_from_anchor,
     )
 
@@ -509,8 +553,19 @@ def main() -> None:
     for subreddit in subreddits_sorted:
         serialized_subreddit_tokens.append(f"\"subreddit\":\"{subreddit}\"")
         serialized_subreddit_tokens.append(f"\"subreddit\": \"{subreddit}\"")
+    subreddit_pattern = compile_subreddit_regex(subreddits_sorted).pattern.decode("utf-8")
 
-    append_log(log_path, "start dump filtering run")
+    selected_worker_mode = args.worker_mode
+    if selected_worker_mode == "auto":
+        selected_worker_mode = "one"
+    worker_count = 1 if selected_worker_mode == "one" else 2
+    append_log(
+        log_path,
+        (
+            "start dump filtering run "
+            f"worker_mode={selected_worker_mode} worker_count={worker_count} prefilter_mode={args.prefilter_mode}"
+        ),
+    )
     worker_inputs = []
     for source_file in required_files:
         per_worker_state, per_worker_log = worker_paths(state_path, log_path, source_file)
@@ -526,12 +581,14 @@ def main() -> None:
                 "base_raw_dir": str(base_raw_dir),
                 "checkpoint_every": int(args.checkpoint_every),
                 "serialized_subreddit_tokens": serialized_subreddit_tokens,
+                "prefilter_mode": str(args.prefilter_mode),
+                "subreddit_pattern": subreddit_pattern,
                 "resume_from_anchor": str(args.resume_from_anchor),
             }
         )
 
     worker_results = []
-    with ProcessPoolExecutor(max_workers=2) as executor:
+    with ProcessPoolExecutor(max_workers=worker_count) as executor:
         futures = [executor.submit(process_file_worker, **params) for params in worker_inputs]
         for future in futures:
             worker_results.append(future.result())
