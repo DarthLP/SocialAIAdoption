@@ -1,0 +1,48 @@
+project:
+  name: "SocialAIAdoption"
+  description: "Dump-filtered political discussion dataset around ChatGPT launch."
+
+event_window:
+  start_utc: "2022-11-16T00:00:00Z"
+  end_utc_exclusive: "2022-12-14T00:00:00Z"
+  launch_day_utc: "2022-11-30T00:00:00Z"
+
+subreddits:
+  primary:
+    - politics
+    - PoliticalDiscussion
+    - NeutralPolitics
+    - moderatepolitics
+    - Ask_Politics
+  reserve:
+    - geopolitics
+    - PoliticalDebate
+
+dataset:
+  fields:
+    - id
+    - author
+    - subreddit
+    - created_utc
+    - body
+    - score
+    - parent_id
+    - link_id
+    - permalink
+    - edited
+    - controversiality
+    - distinguished
+    - stickied
+
+toxicity:
+  enabled: false
+  method: "vader_compound_proxy"
+  note: "Set enabled true and provide Perspective API key if needed."
+
+paths:
+  raw_dir: "data/raw/political_forums"
+  interim_dir: "data/interim/political_forums"
+  processed_dir: "data/processed/political_forums"
+  logs_dir: "results/logs"
+  tables_dir: "results/tables"
+  figures_dir: "results/figures"

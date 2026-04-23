@@ -1,0 +1,53 @@
+# Master System Prompt
+
+## Script Summary
+This document defines stable technical context for the thesis workspace, including architecture, reproducibility standards, and project execution policy. Keep it concise and update it when workflow conventions or core technical decisions change.
+
+## Project Objective
+Build a reproducible pipeline to study AI-writing adoption in political Reddit communities around ChatGPT launch using monthly dump ingestion plus local filtering.
+
+## Scope Boundaries
+- This file stores stable context and execution conventions.
+- This file does not store transient daily task chatter.
+- Daily operational state belongs in `TODO.md`.
+
+## Technical Architecture Overview
+- Code layer: `src/`, `scripts/`, `config/`
+- Data layer:
+  - External raw dumps on mounted storage (`/Volumes/Expansion/Masterthesis/RawData/...`)
+  - Project filtered raw outputs (`data/raw/political_forums/daily_chunks/`)
+  - `data/interim/`, `data/processed/` for downstream transformations
+- Output layer: `results/figures/`, `results/tables/`, `results/logs/`
+- Dump filtering architecture:
+  - Two-process monthly filtering (`RC_2022-11.zst` and `RC_2022-12.zst` in parallel workers)
+  - Byte-level subreddit prefilter before JSON parsing
+  - Per-worker resumable state/log files with merged final audit counters
+- Operational rules: `.cursor/rules/project.mdc`
+- Durable memory: `Projects/`, `Decisions/`
+
+## Architecture and Debugging Policy
+- Keep only a concise architecture summary in this file for now.
+- Document major architecture changes here when they affect workflows or reproducibility.
+- Record repeated or high-impact debugging lessons in decision notes until a dedicated debugging area is needed again.
+
+## Core Workflow
+1. Read rules + targeted memory notes.
+2. Ensure required monthly dumps are available on external storage.
+3. Filter dumps to project scope (subreddits, date window, required fields).
+4. Build analysis outputs reproducibly from filtered data.
+5. Update `TODO.md` and only minimal durable notes.
+
+## Code and Note Conventions
+- Use repository-local Python environment.
+- Keep files and folders consistent with naming conventions.
+- Use Obsidian-compatible markdown and wikilinks for knowledge notes.
+
+## Quality Gates
+A work item is complete only if:
+- The implementation is reproducible from scripts/config.
+- Impacted documentation is updated where necessary (`README.md`, `TODO.md`, this file).
+- Durable notes are updated only when new stable knowledge emerged.
+- The vault remains low-noise and non-duplicative.
+
+## Current Status
+Dump-first ingestion path established; filtering now uses a throughput-optimized two-worker pipeline with large checkpoints and time-aware progress logging to generate per-subreddit/day datasets for Nov/Dec 2022.

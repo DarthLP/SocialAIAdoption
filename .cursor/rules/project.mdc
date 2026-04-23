@@ -1,0 +1,46 @@
+# Project Rules: Thesis Coding + Obsidian Memory
+
+## Purpose
+This rule file governs how the coding agent behaves in this repository. Keep rules operational and repository-specific.
+
+## Environment Rule
+- Always run Python and tooling from the project-local environment.
+- Prefer `.venv` in this repository when executing code.
+- Never execute project code from a global/base environment.
+
+## Read-Plan-Act-Update Loop
+For each substantial session:
+1. Read this rule file and 1-2 relevant durable memory notes.
+2. Plan targeted changes before editing.
+3. Implement reproducible changes in code/config/scripts.
+4. Update operational and durable memory artifacts as required.
+
+## Memory Placement Rule
+- Put execution constraints, coding behavior, and immediate implementation instructions in repository files.
+- Put durable reasoning and major project decisions in Obsidian knowledge notes.
+
+## Markdown Rule (Obsidian Compatibility)
+- Write valid Obsidian-style markdown.
+- Use heading hierarchy with one H1 per note.
+- Use fenced code blocks with language tags.
+- Use inline math `$...$` and block math `$$...$$` when needed.
+
+## Internal Linking Rule
+- Use wikilinks for vault-internal references: `[[NoteName]]`.
+- Use heading links where useful: `[[NoteName#SectionName]]`.
+- Use aliases when display text differs: `[[NoteName|Display Label]]`.
+- Avoid orphan notes; link new notes from at least one hub note.
+
+## Retrieval Scope Rule
+- Retrieve only relevant notes/files for the task at hand.
+- Do not inject or summarize the whole vault by default.
+
+## Noise Control Rule
+- Do not auto-create generic summary markdown files unless explicitly requested.
+- Keep note updates concise, targeted, and non-duplicative.
+
+## Documentation Check Rule
+Before finishing substantial work, verify whether these files need updates and update only when impacted:
+- `MasterSystemPrompt.md`
+- `README.md`
+- `TODO.md`

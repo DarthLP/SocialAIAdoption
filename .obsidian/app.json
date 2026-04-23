@@ -1,0 +1,16 @@
+{
+  "userIgnoreFilters": [
+    ".venv",
+    "__pycache__",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "data/raw",
+    "results/logs",
+    ".git",
+    ".DS_Store",
+    "dist",
+    "build"
+  ]
+}
