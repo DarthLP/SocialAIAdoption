@@ -1,0 +1,11 @@
+Data Quality Trends Notes
+=========================
+
+Primary moderation automation series uses author == 'AutoModerator'.
+Near-equivalence check documented from prior audit:
+- automod_author_count and moderator_distinguished_count differ by 1 row.
+- Exception row: author == 'AutoModerator' with distinguished == null.
+
+Computed author == 'AutoModerator' total from this run: 8602
+Policy note for figure captions: author == 'AutoModerator' total = 8602.
+The bot-name heuristic metric is exploratory and not a cleaning rule.

@@ -1,12 +1,14 @@
 """
 Script summary:
 This script filters large Reddit comment dump files (`.zst`) into the project's
-analysis-ready day-chunk layout using a configurable worker pipeline (one or two
-workers). It keeps only configured subreddits, date window, and required fields, then
-writes NDJSON outputs per subreddit/day.
+analysis-ready day-chunk layout using a configurable worker pipeline (sequential in
+one process by default, or two parallel worker processes). It keeps only configured
+subreddits, date window, and required fields, then writes NDJSON outputs per
+subreddit/day.
 
 Functionality:
-- Runs `RC_2022-11.zst` and `RC_2022-12.zst` with configurable worker concurrency.
+- Runs `RC_2022-11.zst` then `RC_2022-12.zst` in-process by default (`--worker_mode one`);
+  optional `--worker_mode two` runs both files in parallel worker processes.
 - Streams compressed dumps without full decompression to disk.
 - Uses configurable prefiltering (`tokens` or `regex`) before JSON parsing for throughput testing.
 - Uses `orjson` parsing when available, with stdlib fallback.
@@ -70,15 +72,19 @@ def parse_args() -> argparse.Namespace:
         default="/Volumes/Expansion/Masterthesis/RawData/reddit/comments",
         help="Directory containing RC_2022-11.zst and RC_2022-12.zst.",
     )
-    parser.add_argument("--state_file", type=str, default="results/logs/filter_dump_state.json")
-    parser.add_argument("--log_file", type=str, default="results/logs/filter_dump.log")
+    parser.add_argument(
+        "--state_file", type=str, default="results/logs/filter_dump/filter_dump_state.json"
+    )
+    parser.add_argument(
+        "--log_file", type=str, default="results/logs/filter_dump/filter_dump.log"
+    )
     parser.add_argument("--checkpoint_every", type=int, default=1_000_000)
     parser.add_argument(
         "--worker_mode",
         type=str,
-        default="two",
+        default="one",
         choices=["auto", "one", "two"],
-        help="Worker count strategy. Default 'two' (parallel baseline).",
+        help="Worker count strategy. Default 'one' (sequential; best for many external disks).",
     )
     parser.add_argument(
         "--prefilter_mode",
@@ -534,10 +540,11 @@ def main() -> None:
 
     base_raw_dir = Path(config["paths"]["raw_dir"])
     tables_dir = Path(config["paths"]["tables_dir"])
+    filtering_tables_dir = tables_dir / "filtering"
     source_dir = Path(args.source_dir)
     state_path = Path(args.state_file)
     log_path = Path(args.log_file)
-    tables_dir.mkdir(parents=True, exist_ok=True)
+    filtering_tables_dir.mkdir(parents=True, exist_ok=True)
 
     required_files = [source_dir / "RC_2022-11.zst", source_dir / "RC_2022-12.zst"]
     missing = [str(path) for path in required_files if not path.exists()]
@@ -588,10 +595,14 @@ def main() -> None:
         )
 
     worker_results = []
-    with ProcessPoolExecutor(max_workers=worker_count) as executor:
-        futures = [executor.submit(process_file_worker, **params) for params in worker_inputs]
-        for future in futures:
-            worker_results.append(future.result())
+    if worker_count == 1:
+        for params in worker_inputs:
+            worker_results.append(process_file_worker(**params))
+    else:
+        with ProcessPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(process_file_worker, **params) for params in worker_inputs]
+            for future in futures:
+                worker_results.append(future.result())
 
     all_counters = merge_counters(
         *[deserialize_counters(result.get("counters", {})).items() for result in worker_results]
@@ -625,7 +636,7 @@ def main() -> None:
         audit_df = pd.DataFrame(audit_rows).sort_values(["subreddit", "date_utc"]).reset_index(drop=True)
     else:
         audit_df = pd.DataFrame(columns=["subreddit", "date_utc", "rows"])
-    audit_path = tables_dir / "dump_filter_counts_by_day.csv"
+    audit_path = filtering_tables_dir / "dump_filter_counts_by_day.csv"
     audit_df.to_csv(audit_path, index=False)
 
     summary = (
@@ -633,7 +644,7 @@ def main() -> None:
         if not audit_df.empty
         else pd.DataFrame(columns=["subreddit", "rows_total"])
     )
-    summary_path = tables_dir / "dump_filter_counts_by_subreddit.csv"
+    summary_path = filtering_tables_dir / "dump_filter_counts_by_subreddit.csv"
     summary.to_csv(summary_path, index=False)
 
     append_log(

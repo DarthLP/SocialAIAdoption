@@ -1,0 +1,6 @@
+subreddit,rows_input,rows_kept,rows_dropped_any,drop_body_removed,drop_body_deleted,drop_author_automoderator,drop_stickied_true,drop_distinguished_moderator,drop_overlap_automod_and_distinguished,invalid_json_rows,kept_rate_pct
+Ask_Politics,454,326,128,28,11,88,88,89,88,0,71.80616740088107
+NeutralPolitics,377,186,191,85,17,14,32,89,14,0,49.3368700265252
+PoliticalDiscussion,26466,21631,4835,2869,570,903,551,1396,903,0,81.73127786594121
+moderatepolitics,44070,37737,6333,2719,2669,15,51,945,15,0,85.62968005445882
+politics,830135,719066,111069,70954,30538,7582,5927,9576,7581,0,86.6203689761304

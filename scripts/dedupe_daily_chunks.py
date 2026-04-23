@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--report_csv",
         type=str,
-        default="results/tables/dedupe_daily_chunks_report.csv",
+        default="results/tables/filtering/dedupe_daily_chunks_report.csv",
         help="CSV output path with per-file dedupe metrics.",
     )
     return parser.parse_args()

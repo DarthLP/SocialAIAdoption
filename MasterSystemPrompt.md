@@ -18,6 +18,9 @@ Build a reproducible pipeline to study AI-writing adoption in political Reddit c
   - Project filtered raw outputs (`data/raw/political_forums/daily_chunks/`)
   - `data/interim/`, `data/processed/` for downstream transformations
 - Output layer: `results/figures/`, `results/tables/`, `results/logs/`
+  - Filtering audits and dedupe reports are grouped in `results/tables/filtering/`
+  - Dump filtering logs/state files are grouped in `results/logs/filter_dump/`
+  - Overlap analysis outputs are grouped in `results/tables/user_overlap/`
 - Dump filtering architecture:
   - Configurable worker mode for monthly filtering (`--worker_mode one|two|auto`)
   - Byte-level subreddit prefilter before JSON parsing
@@ -30,6 +33,10 @@ Build a reproducible pipeline to study AI-writing adoption in political Reddit c
   - Graceful-stop signal handling that checkpoints immediately for duplicate-safe resume
   - Early-stop boundary logic to end monthly scans once configured window data is exhausted
   - Post-run dedupe utility (`scripts/dedupe_daily_chunks.py`) for id-based overlap cleanup if needed
+  - Cross-forum user overlap utility (`scripts/user_overlap_across_forums.py`) for author-level forum-membership diagnostics
+  - Same-day cross-forum activity utility (`scripts/user_same_day_cross_forum.py`) for temporally-aligned author overlap diagnostics
+  - Pre-cleaning trend utility (`scripts/plot_data_quality_trends.py`) for daily quality-indicator counts/rates and launch-anchored visualization
+  - Interim cleaning utility (`scripts/clean_daily_chunks.py`) for deterministic drop-rules plus retained-row metadata flags
 - Operational rules: `.cursor/rules/project.mdc`
 - Durable memory: `Projects/`, `Decisions/`
 
@@ -58,4 +65,4 @@ A work item is complete only if:
 - The vault remains low-noise and non-duplicative.
 
 ## Current Status
-Dump-first ingestion path established; filtering now uses a throughput-optimized two-worker pipeline with large checkpoints and time-aware progress logging to generate per-subreddit/day datasets for Nov/Dec 2022.
+Dump-first ingestion path established; filtering uses configurable worker concurrency (default sequential one-worker for external-disk stability), large checkpoints, and time-aware progress logging to generate per-subreddit/day datasets for Nov/Dec 2022. Pre-cleaning quality trend outputs are standardized under `results/tables/data_quality_trends/` and `results/figures/data_quality_trends/`. Interim cleaned outputs now exist under `data/interim/political_forums/cleaned_daily_chunks/` with explicit drop rules (`[removed]`, `[deleted]`, `AutoModerator`, `stickied`, `distinguished=moderator`) and retained-row flags (`is_deleted_author`, `is_bot_name_heuristic`, `is_url_only`, `is_short_text`).

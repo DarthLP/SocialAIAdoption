@@ -1,0 +1,11 @@
+forum_a,forum_b,authors_a,authors_b,shared_authors,jaccard
+Ask_Politics,NeutralPolitics,149,93,2,0.0083
+Ask_Politics,PoliticalDiscussion,149,4937,40,0.0079
+Ask_Politics,moderatepolitics,149,3976,7,0.0017
+Ask_Politics,politics,149,144401,50,0.0003
+NeutralPolitics,PoliticalDiscussion,93,4937,8,0.0016
+NeutralPolitics,moderatepolitics,93,3976,8,0.0020
+NeutralPolitics,politics,93,144401,24,0.0002
+PoliticalDiscussion,moderatepolitics,4937,3976,297,0.0345
+PoliticalDiscussion,politics,4937,144401,1768,0.0120
+moderatepolitics,politics,3976,144401,882,0.0060
