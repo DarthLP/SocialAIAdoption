@@ -1,7 +1,14 @@
 # SocialAIAdoption
 
 ## Objective
-This repository supports thesis analysis of AI-writing adoption in political Reddit communities around the ChatGPT launch date. The current pipeline is dump-first: download monthly Reddit dumps to external storage, then filter locally into a compact project dataset for reproducible analysis.
+This repository supports thesis analysis of AI-writing adoption in **political** Reddit communities around the ChatGPT launch date, plus a **tech comparison** arm (non-political) for contrast. The default [`config/political_forums_setup.yaml`](config/political_forums_setup.yaml) `subreddits.primary` list is:
+
+- **Political:** `politics`, `PoliticalDiscussion`, `NeutralPolitics`, `moderatepolitics`, `Ask_Politics`
+- **Coding comparison:** `learnprogramming`, `AskProgramming`, `CodingHelp`
+- **Career comparison:** `cscareerquestions`, `ITCareerQuestions`, `csMajors`
+- **General Q&A (mid-size):** `answers`, `TooAfraidToAsk`, `OutOfTheLoop`
+
+The pipeline is dump-first: download monthly Reddit dumps to external storage, then filter locally into a compact project dataset for reproducible analysis.
 
 ## Quick Start
 1. Create and activate the local environment:
@@ -9,11 +16,11 @@ This repository supports thesis analysis of AI-writing adoption in political Red
    - `source .venv/bin/activate`
 2. Install dependencies:
    - `pip install -r requirements.txt`
-3. Verify dump files are present on external storage:
-   - `/Volumes/Expansion/Masterthesis/RawData/reddit/comments/RC_2022-11.zst`
-   - `/Volumes/Expansion/Masterthesis/RawData/reddit/comments/RC_2022-12.zst`
+3. Verify dump files are present on external storage (must cover every calendar month in `event_window`; default config uses **2022-11-01** through **2023-04-30** UTC, so six comment files):
+   - `.../reddit/comments/RC_2022-11.zst` … `RC_2023-04.zst` under `/Volumes/Expansion/Masterthesis/RawData/` (or your `--source_dir`).
 4. Run filtering:
-   - `.venv/bin/python scripts/filter_dump_comments.py --config config/political_forums_setup.yaml` (default: one worker, Nov then Dec in order)
+   - `.venv/bin/python scripts/filter_dump_comments.py --config config/political_forums_setup.yaml` (default: one worker, all required `RC_*.zst` files in chronological order)
+   - **If you add or remove entries under `subreddits.primary` after a month is already marked complete** in worker state, delete the corresponding `results/logs/filter_dump/filter_dump_state.RC_YYYY-MM.json` files (and merged `filter_dump_state.json` if present) before re-running; otherwise completed months are skipped and new subreddits will not be extracted.
    - Optional anchor rerun mode: `.venv/bin/python scripts/filter_dump_comments.py --config config/political_forums_setup.yaml --resume_from_anchor first_in_window`
    - Optional two-worker parallel mode: `.venv/bin/python scripts/filter_dump_comments.py --config config/political_forums_setup.yaml --worker_mode two`
    - Optional prefilter A/B mode: `.venv/bin/python scripts/filter_dump_comments.py --config config/political_forums_setup.yaml --prefilter_mode regex`
@@ -21,8 +28,7 @@ This repository supports thesis analysis of AI-writing adoption in political Red
    - `data/raw/political_forums/daily_chunks/`
    - `results/tables/filtering/dump_filter_counts_by_day.csv`
    - `results/tables/filtering/dump_filter_counts_by_subreddit.csv`
-   - `results/logs/filter_dump/filter_dump.RC_2022-11.log`
-   - `results/logs/filter_dump/filter_dump.RC_2022-12.log`
+   - `results/logs/filter_dump/filter_dump.RC_<YYYY-MM>.log` (one log per monthly source file)
 6. Optional overlap cleanup after stop/restart:
    - Dry run: `.venv/bin/python scripts/dedupe_daily_chunks.py --config config/political_forums_setup.yaml`
    - Apply: `.venv/bin/python scripts/dedupe_daily_chunks.py --config config/political_forums_setup.yaml --apply`
@@ -59,6 +65,15 @@ This repository supports thesis analysis of AI-writing adoption in political Red
   - [reddit-ba051999301b109eab37d16f027b3f49ade2de13](https://academictorrents.com/details/ba051999301b109eab37d16f027b3f49ade2de13/tech&filelist=1)
 - Example torrent command for Nov/Dec 2022 comments only:
   - `aria2c --dir "/Volumes/Expansion/Masterthesis/RawData" --seed-ratio=0 --file-allocation=none --select-file=204,205 "data/reddit-ba051999301b109eab37d16f027b3f49ade2de13.torrent"`
+- **January–April 2023 comment months** (same torrent; file indices `206`–`209` = `RC_2023-01.zst` … `RC_2023-04.zst`):
+  1. **Preflight** (do not start a second client on the same files):
+     - `pgrep -x aria2c || echo "ok: no aria2c"`
+     - If that prints a PID, wait or quit the other run before starting.
+  2. **Download** (writes under `RawData/reddit/comments/` next to any existing dumps; `--continue=true` resumes partials without touching unrelated files):
+     - From repo root, with the `.torrent` saved as `data/reddit-ba051999301b109eab37d16f027b3f49ade2de13.torrent`:
+       - `caffeinate -dims aria2c --dir "/Volumes/Expansion/Masterthesis/RawData" --seed-ratio=0 --file-allocation=none --continue=true --select-file=206,207,208,209 "data/reddit-ba051999301b109eab37d16f027b3f49ade2de13.torrent"`
+     - `caffeinate -dims` keeps the display, system, and disk awake while `aria2c` runs (use `-i` only if you prefer a lighter hold).
+  3. **Other calendar months**: run `aria2c --show-files=true path/to.torrent` and adjust `--select-file=` to the indices you need (indices are **1-based** and specific to this torrent revision). For **2024** January–April comments on the same listing, use `--select-file=218,219,220,221`.
 
 ## Directory Structure
 - `.cursor/rules/`: Cursor operational rules.
@@ -83,7 +98,7 @@ This repository supports thesis analysis of AI-writing adoption in political Red
 - `TODO.md`: Active implementation board.
 
 ## Implementation Timeline
-- Stage 1: Acquire monthly dump files on external storage (Nov/Dec 2022).
+- Stage 1: Acquire monthly dump files on external storage (default window: **Nov 2022–Apr 2023** comment months).
 - Stage 2: Filter dumps to target subreddits/date window/fields.
 - Stage 3: Build normalized analysis tables and daily event-time aggregates.
 - Stage 4: Produce descriptives, plots, and regression-ready datasets.
@@ -100,15 +115,15 @@ This repository supports thesis analysis of AI-writing adoption in political Red
 
 ## Usage
 - Use external raw dumps as source of truth for ingestion.
-- Use `scripts/filter_dump_comments.py` to generate filtered day-chunk comments in the project data directory.
+- Use `scripts/filter_dump_comments.py` to generate filtered day-chunk comments in the project data directory. Required `RC_YYYY-MM.zst` basenames are derived from `event_window` using `src.config_utils.comment_dump_filenames`.
 - Use `scripts/dedupe_daily_chunks.py` when needed to remove duplicate comment ids introduced by interrupted/restarted filtering.
 - Use `scripts/user_overlap_across_forums.py` to check how many users post in more than one target subreddit (exact match on Reddit's globally-unique `author` field; `[deleted]` and known bots excluded by default).
 - Use `scripts/user_same_day_cross_forum.py` for a stricter, temporally-aligned overlap check: same user posting in >=2 different subreddits on the same UTC day.
 - Use `scripts/plot_data_quality_trends.py` before cleaning decisions to inspect indicator behavior over time around launch day (`2022-11-30`).
 - Trend metrics include: `rows_total`, `body_removed_count`, `body_deleted_count`, `author_deleted_count`, `automod_author_count`, `stickied_count`, and exploratory `bot_name_heuristic_count` plus daily percent rates.
 - Trend figures are percentage-based for comparability across variable daily volume; absolute counts remain available in the output tables.
-- For moderation automation, use `author == "AutoModerator"` as the canonical plotted series. A documented near-equivalence check found only one mismatch row versus `distinguished == "moderator"` (AutoModerator with null distinguished).
-- Figures include the policy note: `author == "AutoModerator"` total = `8602` for this analysis window.
+- For moderation automation, use `author == "AutoModerator"` as the canonical plotted series. A documented near-equivalence check on an earlier narrow window found only one mismatch row versus `distinguished == "moderator"` (AutoModerator with null distinguished).
+- Quality-trend figures annotate AutoModerator plots with the **sum of `automod_author_count` over the current event window** (see `results/tables/data_quality_trends/quality_trends_notes.txt`).
 - Use `scripts/clean_daily_chunks.py` to build the interim cleaned corpus with the current policy:
   - Drop rows where `body == "[removed]"` or `body == "[deleted]"`.
   - Drop rows where `author == "AutoModerator"`.
@@ -120,8 +135,8 @@ This repository supports thesis analysis of AI-writing adoption in political Red
   - `is_bot_name_heuristic` (`"bot"` substring in lowercase author)
   - `is_url_only` (body is URL-only)
   - `is_short_text` (body character length `< 20`)
-- The filter supports `--worker_mode one|two|auto`; default is `one` (sequential: both month files always run, best for typical external USB throughput).
-- Use `scripts/prepare_event_time_metrics.py` to build metric-ready daily aggregates from cleaned chunks for pooled and subreddit event-time analysis.
+- The filter supports `--worker_mode one|two|auto`; default is `one` (sequential: every required month file runs in order, best for typical external USB throughput).
+- Use `scripts/prepare_event_time_metrics.py` to build metric-ready daily aggregates from cleaned chunks for pooled and subreddit event-time analysis. Pooled `ALL` rows aggregate across **every** forum in `subreddits.primary` (political and tech); use per-subreddit tables or stratify later if you need domain-pure pools.
 - Event-time outputs include:
   - semicolon rate, comment length, complexity index
   - AI-likeness composite index and component columns
@@ -138,7 +153,9 @@ This repository supports thesis analysis of AI-writing adoption in political Red
 - Checkpointing remains at `1_000_000` scanned lines by default.
 - Progress logs include throughput (`lines/s`) and latest seen `created_utc` timestamp to monitor where the run is in event time.
 - On graceful stop (`Ctrl+C`/`SIGTERM`), workers checkpoint immediately so restart resumes from the exact saved line and avoids tail-interval duplicate appends.
-- Workers stop early once data has passed the relevant time window boundary (for example, `RC_2022-11` stops after reaching Dec 1 UTC).
+- Workers stop early once data has passed the relevant time window boundary (for example, `RC_2022-11` stops after the scan passes **Dec 1 UTC** file-internal ordering, and the last file stops after passing `end_utc_exclusive`).
+- **Widening `start_utc` earlier inside a month you already filtered** (e.g. moving from Nov 16 to Nov 1 while keeping `RC_2022-11.zst`): delete that month’s per-file state under `results/logs/filter_dump/` (`filter_dump_state.RC_2022-11.json` and the merged `filter_dump_state.json` if present) before re-running, or the worker will resume mid-file and **miss** the new early-window rows.
+- **Widening `end_utc_exclusive` within the same `RC_*.zst` month** (e.g. you previously stopped in mid-December and now include all of December): worker state stores `filter_window_start_ts` / `filter_window_end_ts_exclusive`; if the window changes, a previously `completed` month file is **not** short-circuited and resumes from the saved line offset (no manual delete). Legacy state files without those keys still resume once instead of skipping, which may re-stream a fully finished large month; delete that worker state if you want to avoid the extra pass.
 - Worker state includes source file fingerprint checks (`path`, `size`, `mtime`); resume fails fast if file metadata changed.
 - Worker state also stores low-cost anchors (for example `first_in_window_line`) for optional fast-start reruns.
 - Use `--resume_from_anchor first_in_window` only when you intentionally want to rerun from that saved anchor (typically with fresh outputs or followed by dedupe).

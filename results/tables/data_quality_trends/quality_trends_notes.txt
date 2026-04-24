@@ -7,5 +7,5 @@ Near-equivalence check documented from prior audit:
 - Exception row: author == 'AutoModerator' with distinguished == null.
 
 Computed author == 'AutoModerator' total from this run: 8602
-Policy note for figure captions: author == 'AutoModerator' total = 8602.
+Figure captions for automod series use this same total for the current event window.
 The bot-name heuristic metric is exploratory and not a cleaning rule.

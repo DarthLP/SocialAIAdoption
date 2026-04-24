@@ -1,10 +1,13 @@
 project:
   name: "SocialAIAdoption"
-  description: "Dump-filtered political discussion dataset around ChatGPT launch."
+  description: >-
+    Dump-filtered political discussion plus tech comparison (3 coding, 3 career) and
+    general-question subs (answers, TooAfraidToAsk, OutOfTheLoop) for format/topic diversity,
+    around ChatGPT launch.
 
 event_window:
-  start_utc: "2022-11-16T00:00:00Z"
-  end_utc_exclusive: "2022-12-15T00:00:00Z"
+  start_utc: "2022-11-01T00:00:00Z"
+  end_utc_exclusive: "2023-05-01T00:00:00Z"
   launch_day_utc: "2022-11-30T00:00:00Z"
 
 subreddits:
@@ -14,6 +17,15 @@ subreddits:
     - NeutralPolitics
     - moderatepolitics
     - Ask_Politics
+    - learnprogramming
+    - AskProgramming
+    - CodingHelp
+    - cscareerquestions
+    - ITCareerQuestions
+    - csMajors
+    - answers
+    - TooAfraidToAsk
+    - OutOfTheLoop
   reserve:
     - geopolitics
     - PoliticalDebate

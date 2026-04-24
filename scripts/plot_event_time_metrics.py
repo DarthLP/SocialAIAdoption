@@ -17,6 +17,7 @@ How to apply/run:
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 from pathlib import Path
 import sys
 
@@ -28,7 +29,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.config_utils import load_config
+from src.config_utils import load_config, utc_ts
 
 
 def parse_args() -> argparse.Namespace:
@@ -43,20 +44,29 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def plot_metric(df: pd.DataFrame, y_col: str, title: str, out_path: Path) -> None:
+def event_time_xlabel(config: dict) -> str:
+    """Function summary: build x-axis label text from config launch_day_utc (UTC date string)."""
+    launch_ts = utc_ts(str(config["event_window"]["launch_day_utc"]))
+    launch_date = datetime.fromtimestamp(launch_ts, tz=timezone.utc).date().isoformat()
+    return f"Event time (days from {launch_date})"
+
+
+def plot_metric(df: pd.DataFrame, y_col: str, title: str, out_path: Path, *, event_time_xlabel_text: str) -> None:
     """Function summary: generate and save one event-time line plot for a chosen metric."""
     plt.figure(figsize=(10, 5))
     sns.lineplot(data=df, x="event_time_t", y=y_col, marker="o")
     plt.axvline(x=0, color="red", linestyle="--", linewidth=1)
     plt.title(title)
-    plt.xlabel("Event time (days from 2022-11-30)")
+    plt.xlabel(event_time_xlabel_text)
     plt.ylabel(y_col)
     plt.tight_layout()
     plt.savefig(out_path, dpi=140)
     plt.close()
 
 
-def plot_metric_by_subreddit(df: pd.DataFrame, y_col: str, title: str, out_path: Path) -> None:
+def plot_metric_by_subreddit(
+    df: pd.DataFrame, y_col: str, title: str, out_path: Path, *, event_time_xlabel_text: str
+) -> None:
     """Function summary: plot one metric over event time with one line per subreddit."""
     if df.empty or y_col not in df.columns:
         return
@@ -73,7 +83,7 @@ def plot_metric_by_subreddit(df: pd.DataFrame, y_col: str, title: str, out_path:
     )
     plt.axvline(x=0, color="red", linestyle="--", linewidth=1)
     plt.title(title)
-    plt.xlabel("Event time (days from 2022-11-30)")
+    plt.xlabel(event_time_xlabel_text)
     plt.ylabel(y_col)
     plt.legend(title="Subreddit", loc="best")
     plt.tight_layout()
@@ -82,7 +92,16 @@ def plot_metric_by_subreddit(df: pd.DataFrame, y_col: str, title: str, out_path:
 
 
 def plot_two_series_same_axes(
-    df: pd.DataFrame, y_a: str, y_b: str, label_a: str, label_b: str, title: str, y_label: str, out_path: Path
+    df: pd.DataFrame,
+    y_a: str,
+    y_b: str,
+    label_a: str,
+    label_b: str,
+    title: str,
+    y_label: str,
+    out_path: Path,
+    *,
+    event_time_xlabel_text: str,
 ) -> None:
     """Function summary: plot two columns from the same pooled frame on one axes with legend."""
     if df.empty or y_a not in df.columns or y_b not in df.columns:
@@ -93,7 +112,7 @@ def plot_two_series_same_axes(
     plt.plot(d["event_time_t"], d[y_b], marker="s", label=label_b)
     plt.axvline(x=0, color="red", linestyle="--", linewidth=1)
     plt.title(title)
-    plt.xlabel("Event time (days from 2022-11-30)")
+    plt.xlabel(event_time_xlabel_text)
     plt.ylabel(y_label)
     plt.legend(loc="best")
     plt.tight_layout()
@@ -101,7 +120,7 @@ def plot_two_series_same_axes(
     plt.close()
 
 
-def plot_style_panel_pooled(df: pd.DataFrame, out_path: Path) -> None:
+def plot_style_panel_pooled(df: pd.DataFrame, out_path: Path, *, event_time_xlabel_text: str) -> None:
     """Function summary: save a 2x2 pooled panel of main style proxy metrics."""
     panels = [
         ("assistant_tone_rate_100w", "Assistant-tone phrases (per 100 words)"),
@@ -121,7 +140,7 @@ def plot_style_panel_pooled(df: pd.DataFrame, out_path: Path) -> None:
         ax.plot(d["event_time_t"], d[col], marker="o")
         ax.axvline(x=0, color="red", linestyle="--", linewidth=1)
         ax.set_title(subtitle)
-        ax.set_xlabel("Event time (days from 2022-11-30)")
+        ax.set_xlabel(event_time_xlabel_text)
         ax.set_ylabel(col)
     fig.suptitle("Event-time: Style proxies (pooled)", fontsize=14)
     fig.tight_layout()
@@ -129,7 +148,7 @@ def plot_style_panel_pooled(df: pd.DataFrame, out_path: Path) -> None:
     plt.close(fig)
 
 
-def plot_ai_likeness_components_pooled(df: pd.DataFrame, out_path: Path) -> None:
+def plot_ai_likeness_components_pooled(df: pd.DataFrame, out_path: Path, *, event_time_xlabel_text: str) -> None:
     """Function summary: plot z-scored AI-likeness input components on one pooled figure."""
     cols = [
         "z_ai_word_rate_100w",
@@ -147,7 +166,7 @@ def plot_ai_likeness_components_pooled(df: pd.DataFrame, out_path: Path) -> None
     plt.axvline(x=0, color="red", linestyle="--", linewidth=1)
     plt.axhline(y=0, color="gray", linestyle=":", linewidth=0.8)
     plt.title("Event-time: AI-likeness index components (z-scores, pooled)")
-    plt.xlabel("Event time (days from 2022-11-30)")
+    plt.xlabel(event_time_xlabel_text)
     plt.ylabel("z-score")
     plt.legend(loc="best", fontsize=8)
     plt.tight_layout()
@@ -155,7 +174,9 @@ def plot_ai_likeness_components_pooled(df: pd.DataFrame, out_path: Path) -> None
     plt.close()
 
 
-def plot_ai_word_individual_plus_combined(ai_word_long_df: pd.DataFrame, out_path: Path) -> None:
+def plot_ai_word_individual_plus_combined(
+    ai_word_long_df: pd.DataFrame, out_path: Path, *, event_time_xlabel_text: str
+) -> None:
     """Function summary: plot strict individual word rates and strict combined rate in one graph."""
     subset = ai_word_long_df[
         (ai_word_long_df["subreddit"] == "ALL")
@@ -189,7 +210,7 @@ def plot_ai_word_individual_plus_combined(ai_word_long_df: pd.DataFrame, out_pat
 
     plt.axvline(x=0, color="red", linestyle="--", linewidth=1)
     plt.title("Event-time: Strict AI Word Rates (10 Individual + Combined)")
-    plt.xlabel("Event time (days from 2022-11-30)")
+    plt.xlabel(event_time_xlabel_text)
     plt.ylabel("Rate per 100 words")
     plt.legend(title="Series", loc="best")
     plt.tight_layout()
@@ -201,6 +222,7 @@ def main() -> None:
     """Function summary: load daily data and write pooled and per-subreddit event-time figures."""
     args = parse_args()
     config = load_config(args.config)
+    xt = event_time_xlabel(config)
     figures_dir = Path(config["paths"]["figures_dir"]) / "event_time"
     by_subreddit_figures_dir = figures_dir / "by_subreddit"
     tables_dir = Path(config["paths"]["tables_dir"])
@@ -254,7 +276,7 @@ def main() -> None:
     ]
     for y_col, title, fname in pooled_specs:
         if y_col in df_pooled.columns:
-            plot_metric(df_pooled, y_col, title, figures_dir / fname)
+            plot_metric(df_pooled, y_col, title, figures_dir / fname, event_time_xlabel_text=xt)
 
     if "toxic_lexicon_rate_100w" in df_pooled.columns:
         plot_metric(
@@ -262,6 +284,7 @@ def main() -> None:
             "toxic_lexicon_rate_100w",
             "Event-time: Toxic Lexicon Incidence (per 100 words)",
             figures_dir / "event_time_toxic_lexicon_rate.png",
+            event_time_xlabel_text=xt,
         )
 
     plot_two_series_same_axes(
@@ -273,9 +296,12 @@ def main() -> None:
         "Event-time: Strict vs Extended AI Lexicon (pooled)",
         "Rate per 100 words",
         figures_dir / "event_time_ai_lexicon_strict_vs_extended.png",
+        event_time_xlabel_text=xt,
     )
-    plot_style_panel_pooled(df_pooled, figures_dir / "event_time_style_proxies_panel.png")
-    plot_ai_likeness_components_pooled(df_pooled, figures_dir / "event_time_ai_likeness_components_z.png")
+    plot_style_panel_pooled(df_pooled, figures_dir / "event_time_style_proxies_panel.png", event_time_xlabel_text=xt)
+    plot_ai_likeness_components_pooled(
+        df_pooled, figures_dir / "event_time_ai_likeness_components_z.png", event_time_xlabel_text=xt
+    )
 
     if not df_by_sub.empty:
         by_sub_specs: list[tuple[str, str, str]] = [
@@ -311,7 +337,9 @@ def main() -> None:
         ]
         for y_col, title, fname in by_sub_specs:
             if y_col in df_by_sub.columns:
-                plot_metric_by_subreddit(df_by_sub, y_col, title, by_subreddit_figures_dir / fname)
+                plot_metric_by_subreddit(
+                    df_by_sub, y_col, title, by_subreddit_figures_dir / fname, event_time_xlabel_text=xt
+                )
 
     ai_word_long_path = tables_dir / "event_time" / "ai_word_rates_daily_long.csv"
     if ai_word_long_path.exists():
@@ -319,6 +347,7 @@ def main() -> None:
         plot_ai_word_individual_plus_combined(
             ai_word_long_df,
             figures_dir / "event_time_ai_words_individual_plus_combined.png",
+            event_time_xlabel_text=xt,
         )
 
 

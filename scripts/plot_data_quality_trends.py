@@ -13,7 +13,7 @@ Functionality:
 - Writes tidy outputs to `results/tables/data_quality_trends/`.
 - Generates percentage trend plots in
   `results/figures/data_quality_trends/`.
-- Annotates AutoModerator plots with the fixed total note requested by project policy.
+- Annotates AutoModerator plots with the AutoModerator row total summed for the current window.
 - Validates `rows_total` against `results/tables/filtering/dump_filter_counts_by_day.csv`.
 
 How to apply/run:
@@ -236,22 +236,39 @@ def add_launch_marker(ax: Any, event_date: datetime) -> None:
     ax.axvline(x=event_date, color="red", linestyle="--", linewidth=1)
 
 
-def format_date_axis(ax: Any) -> None:
-    """Function summary: format date ticks to prevent overlap with dense daily labels."""
-    locator = mdates.DayLocator(interval=3)
+def date_span_days(overall_df: pd.DataFrame) -> int:
+    """Function summary: return inclusive number of UTC calendar days covered by overall_df for tick spacing."""
+    if overall_df.empty or "date" not in overall_df.columns:
+        return 1
+    dmin = pd.Timestamp(overall_df["date"].min()).normalize()
+    dmax = pd.Timestamp(overall_df["date"].max()).normalize()
+    return max(1, int((dmax - dmin).days) + 1)
+
+
+def format_date_axis(ax: Any, span_days: int) -> None:
+    """Function summary: format date ticks using a day interval derived from span_days to limit crowding."""
+    if span_days <= 45:
+        interval = 3
+    elif span_days <= 100:
+        interval = 7
+    elif span_days <= 200:
+        interval = 14
+    else:
+        interval = max(14, span_days // 15)
+    locator = mdates.DayLocator(interval=interval)
     formatter = mdates.DateFormatter("%Y-%m-%d")
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
     plt.setp(ax.get_xticklabels(), rotation=30, ha="right")
 
 
-def add_automod_annotation(fig: Any, metric_name: str) -> None:
-    """Function summary: attach required AutoModerator total note on relevant plots."""
+def add_automod_annotation(fig: Any, metric_name: str, automod_total: int) -> None:
+    """Function summary: attach AutoModerator total note on automod rate plots using the current-window sum."""
     if metric_name.startswith("automod_author_"):
         fig.text(
             0.01,
             0.01,
-            'Note: author == "AutoModerator" total = 8602 in this analysis window.',
+            f'Note: author == "AutoModerator" total = {automod_total} in this analysis window.',
             ha="left",
             va="bottom",
             fontsize=9,
@@ -263,16 +280,19 @@ def plot_overall(
     metric: str,
     out_path: Path,
     event_date: datetime,
+    *,
+    span_days: int,
+    automod_total: int,
 ) -> None:
     """Function summary: plot one overall daily trend line with launch marker and annotation."""
     fig, ax = plt.subplots(figsize=(12, 5))
     sns.lineplot(data=df.sort_values("date"), x="date", y=metric, marker="o", ax=ax)
     add_launch_marker(ax, event_date)
-    format_date_axis(ax)
+    format_date_axis(ax, span_days)
     ax.set_title(f"Overall Daily Trend: {METRIC_LABELS[metric]}")
     ax.set_xlabel("Date (UTC)")
     ax.set_ylabel(METRIC_LABELS[metric])
-    add_automod_annotation(fig, metric)
+    add_automod_annotation(fig, metric, automod_total)
     fig.tight_layout()
     fig.savefig(out_path, dpi=140)
     plt.close(fig)
@@ -283,6 +303,9 @@ def plot_by_subreddit(
     metric: str,
     out_path: Path,
     event_date: datetime,
+    *,
+    span_days: int,
+    automod_total: int,
 ) -> None:
     """Function summary: plot one daily trend metric by subreddit with shared launch marker."""
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -295,12 +318,12 @@ def plot_by_subreddit(
         ax=ax,
     )
     add_launch_marker(ax, event_date)
-    format_date_axis(ax)
+    format_date_axis(ax, span_days)
     ax.set_title(f"Per-Subreddit Daily Trend: {METRIC_LABELS[metric]}")
     ax.set_xlabel("Date (UTC)")
     ax.set_ylabel(METRIC_LABELS[metric])
     ax.legend(title="Subreddit", loc="best")
-    add_automod_annotation(fig, metric)
+    add_automod_annotation(fig, metric, automod_total)
     fig.tight_layout()
     fig.savefig(out_path, dpi=140)
     plt.close(fig)
@@ -311,6 +334,9 @@ def make_plots(
     overall_df: pd.DataFrame,
     figures_subdir: Path,
     event_ts: int,
+    *,
+    automod_total: int,
+    span_days: int,
 ) -> None:
     """Function summary: generate percentage-only plot sets for overall and subreddit views."""
     event_date = datetime.fromtimestamp(event_ts, tz=timezone.utc).replace(tzinfo=None)
@@ -320,12 +346,16 @@ def make_plots(
             metric,
             figures_subdir / f"overall_{metric}.png",
             event_date,
+            span_days=span_days,
+            automod_total=automod_total,
         )
         plot_by_subreddit(
             per_subreddit_df,
             metric,
             figures_subdir / f"by_subreddit_{metric}.png",
             event_date,
+            span_days=span_days,
+            automod_total=automod_total,
         )
 
 
@@ -346,7 +376,7 @@ def write_metadata_note(
         "- Exception row: author == 'AutoModerator' with distinguished == null.",
         "",
         f"Computed author == 'AutoModerator' total from this run: {automod_total}",
-        "Policy note for figure captions: author == 'AutoModerator' total = 8602.",
+        "Figure captions for automod series use this same total for the current event window.",
         "The bot-name heuristic metric is exploratory and not a cleaning rule.",
     ]
     note_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -368,7 +398,16 @@ def main() -> None:
 
     write_tables(per_subreddit_df, overall_df, validation_df, paths.tables_subdir)
     write_metadata_note(per_subreddit_df, paths.tables_subdir)
-    make_plots(per_subreddit_df, overall_df, paths.figures_subdir, event_ts)
+    automod_total = int(per_subreddit_df["automod_author_count"].sum())
+    span_days = date_span_days(overall_df)
+    make_plots(
+        per_subreddit_df,
+        overall_df,
+        paths.figures_subdir,
+        event_ts,
+        automod_total=automod_total,
+        span_days=span_days,
+    )
 
 
 if __name__ == "__main__":

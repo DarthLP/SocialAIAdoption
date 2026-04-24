@@ -7,8 +7,10 @@ subreddits, date window, and required fields, then writes NDJSON outputs per
 subreddit/day.
 
 Functionality:
-- Runs `RC_2022-11.zst` then `RC_2022-12.zst` in-process by default (`--worker_mode one`);
-  optional `--worker_mode two` runs both files in parallel worker processes.
+- Selects monthly `RC_YYYY-MM.zst` files from `event_window` (all calendar months from
+  `start_utc` through the month before `end_utc_exclusive`), in chronological order.
+- Runs one dump after another in-process by default (`--worker_mode one`); optional
+  `--worker_mode two` runs up to two dump workers in parallel (`ProcessPoolExecutor`).
 - Streams compressed dumps without full decompression to disk.
 - Uses configurable prefiltering (`tokens` or `regex`) before JSON parsing for throughput testing.
 - Uses `orjson` parsing when available, with stdlib fallback.
@@ -47,7 +49,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.config_utils import load_config, utc_ts
+from src.config_utils import comment_dump_filenames, load_config, utc_ts
 
 try:
     import orjson
@@ -70,7 +72,7 @@ def parse_args() -> argparse.Namespace:
         "--source_dir",
         type=str,
         default="/Volumes/Expansion/Masterthesis/RawData/reddit/comments",
-        help="Directory containing RC_2022-11.zst and RC_2022-12.zst.",
+        help="Directory containing RC_YYYY-MM.zst files listed for event_window (see config).",
     )
     parser.add_argument(
         "--state_file", type=str, default="results/logs/filter_dump/filter_dump_state.json"
@@ -297,17 +299,36 @@ def process_file(
 
     anchor_line = anchors.get("first_in_window_line")
     use_anchor = resume_from_anchor == "first_in_window" and isinstance(anchor_line, int) and anchor_line >= 0
+    stored_start = file_state.get("filter_window_start_ts")
+    stored_end = file_state.get("filter_window_end_ts_exclusive")
+    window_matches = (
+        stored_start is not None
+        and stored_end is not None
+        and int(stored_start) == int(start_ts)
+        and int(stored_end) == int(end_ts)
+    )
     if file_state.get("completed", False) and not use_anchor:
-        append_log(log_path, f"skip completed file={source_file.name}")
-        return {
-            "source_file": source_file.name,
-            "lines_processed": int(file_state.get("lines_processed", 0)),
-            "rows_kept": int(file_state.get("rows_kept", 0)),
-            "completed": True,
-            "counters": serialize_counters(counters),
-            "state_path": str(state_path),
-            "log_path": str(log_path),
-        }
+        if window_matches:
+            append_log(log_path, f"skip completed file={source_file.name} filter_window_unchanged")
+            return {
+                "source_file": source_file.name,
+                "lines_processed": int(file_state.get("lines_processed", 0)),
+                "rows_kept": int(file_state.get("rows_kept", 0)),
+                "completed": True,
+                "counters": serialize_counters(counters),
+                "state_path": str(state_path),
+                "log_path": str(log_path),
+            }
+        append_log(
+            log_path,
+            (
+                f"resume_after_completed file={source_file.name} "
+                f"reason=filter_window_changed_or_legacy_missing_keys "
+                f"stored=({stored_start},{stored_end}) current=({start_ts},{end_ts})"
+            ),
+        )
+        file_state["completed"] = False
+
     if use_anchor and file_state.get("completed", False):
         append_log(
             log_path,
@@ -356,6 +377,8 @@ def process_file(
         file_state["lines_processed"] = rows_seen
         file_state["rows_kept"] = rows_kept
         file_state["completed"] = False
+        file_state["filter_window_start_ts"] = int(start_ts)
+        file_state["filter_window_end_ts_exclusive"] = int(end_ts)
         state["counters"] = serialize_counters(counters)
         state["anchors"] = anchors
         state["source_fingerprint"] = current_fingerprint
@@ -480,6 +503,8 @@ def process_file(
     file_state["lines_processed"] = rows_seen
     file_state["rows_kept"] = rows_kept
     file_state["completed"] = completed
+    file_state["filter_window_start_ts"] = int(start_ts)
+    file_state["filter_window_end_ts_exclusive"] = int(end_ts)
     state["counters"] = serialize_counters(counters)
     state["rows_kept_total"] = rows_kept
     state["anchors"] = anchors
@@ -534,7 +559,7 @@ def process_file_worker(
 
 
 def main() -> None:
-    """Function summary: execute dump filtering for Nov/Dec files and write audit outputs."""
+    """Function summary: execute dump filtering for all event-window months and write audit outputs."""
     args = parse_args()
     config = load_config(args.config)
 
@@ -546,7 +571,11 @@ def main() -> None:
     log_path = Path(args.log_file)
     filtering_tables_dir.mkdir(parents=True, exist_ok=True)
 
-    required_files = [source_dir / "RC_2022-11.zst", source_dir / "RC_2022-12.zst"]
+    ew = config["event_window"]
+    dump_names = comment_dump_filenames(str(ew["start_utc"]), str(ew["end_utc_exclusive"]))
+    if not dump_names:
+        raise ValueError("event_window produced no comment dump months; check start_utc and end_utc_exclusive.")
+    required_files = [source_dir / name for name in dump_names]
     missing = [str(path) for path in required_files if not path.exists()]
     if missing:
         raise FileNotFoundError(f"Missing required dump files: {missing}")
@@ -570,7 +599,8 @@ def main() -> None:
         log_path,
         (
             "start dump filtering run "
-            f"worker_mode={selected_worker_mode} worker_count={worker_count} prefilter_mode={args.prefilter_mode}"
+            f"worker_mode={selected_worker_mode} worker_count={worker_count} prefilter_mode={args.prefilter_mode} "
+            f"source_files={[p.name for p in required_files]}"
         ),
     )
     worker_inputs = []
