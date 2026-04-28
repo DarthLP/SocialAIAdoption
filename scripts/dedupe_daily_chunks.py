@@ -20,9 +20,12 @@ How to run:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import csv
 import json
+import os
 from pathlib import Path
+import re
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict
 
@@ -33,6 +36,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config_utils import load_config
+
+ID_FIELD_REGEX = re.compile(r'"id"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"')
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,6 +54,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="results/tables/filtering/dedupe_daily_chunks_report.csv",
         help="CSV output path with per-file dedupe metrics.",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=max(1, min(8, (os.cpu_count() or 2) - 1)),
+        help="Number of worker processes for per-file dedupe work (default: auto).",
     )
     return parser.parse_args()
 
@@ -71,16 +82,9 @@ def dedupe_file(path: Path, apply_changes: bool) -> Dict[str, Any]:
                     line = raw_line.rstrip("\n")
                     if not line:
                         continue
-                    try:
-                        rec = json.loads(line)
-                    except json.JSONDecodeError:
-                        invalid_json_rows += 1
-                        rows_kept += 1
-                        tmp.write(raw_line)
-                        continue
-
-                    rec_id = rec.get("id")
-                    if isinstance(rec_id, str) and rec_id:
+                    match = ID_FIELD_REGEX.search(line)
+                    rec_id = match.group(1) if match else None
+                    if rec_id:
                         if rec_id in seen_ids:
                             rows_removed += 1
                             continue
@@ -88,9 +92,25 @@ def dedupe_file(path: Path, apply_changes: bool) -> Dict[str, Any]:
                         rows_kept += 1
                         tmp.write(raw_line)
                     else:
-                        missing_id_rows += 1
-                        rows_kept += 1
-                        tmp.write(raw_line)
+                        try:
+                            rec = json.loads(line)
+                        except json.JSONDecodeError:
+                            invalid_json_rows += 1
+                            rows_kept += 1
+                            tmp.write(raw_line)
+                            continue
+                        rec_id = rec.get("id")
+                        if isinstance(rec_id, str) and rec_id:
+                            if rec_id in seen_ids:
+                                rows_removed += 1
+                                continue
+                            seen_ids.add(rec_id)
+                            rows_kept += 1
+                            tmp.write(raw_line)
+                        else:
+                            missing_id_rows += 1
+                            rows_kept += 1
+                            tmp.write(raw_line)
 
         tmp_path.replace(path)
     else:
@@ -100,23 +120,31 @@ def dedupe_file(path: Path, apply_changes: bool) -> Dict[str, Any]:
                 line = raw_line.rstrip("\n")
                 if not line:
                     continue
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    invalid_json_rows += 1
-                    rows_kept += 1
-                    continue
-
-                rec_id = rec.get("id")
-                if isinstance(rec_id, str) and rec_id:
+                match = ID_FIELD_REGEX.search(line)
+                rec_id = match.group(1) if match else None
+                if rec_id:
                     if rec_id in seen_ids:
                         rows_removed += 1
                         continue
                     seen_ids.add(rec_id)
                     rows_kept += 1
                 else:
-                    missing_id_rows += 1
-                    rows_kept += 1
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        invalid_json_rows += 1
+                        rows_kept += 1
+                        continue
+                    rec_id = rec.get("id")
+                    if isinstance(rec_id, str) and rec_id:
+                        if rec_id in seen_ids:
+                            rows_removed += 1
+                            continue
+                        seen_ids.add(rec_id)
+                        rows_kept += 1
+                    else:
+                        missing_id_rows += 1
+                        rows_kept += 1
 
     return {
         "file": str(path),
@@ -161,17 +189,57 @@ def main() -> None:
     config = load_config(args.config)
     base_raw_dir = Path(config["paths"]["raw_dir"])
     report_path = Path(args.report_csv)
+    workers = max(1, int(args.workers))
 
     files = iter_daily_chunk_files(base_raw_dir)
-    print(f"found_files={len(files)} apply={bool(args.apply)}")
+    print(f"found_files={len(files)} apply={bool(args.apply)} workers={workers}")
 
     results: list[Dict[str, Any]] = []
-    for path in files:
-        stats = dedupe_file(path, apply_changes=bool(args.apply))
-        results.append(stats)
-        if stats["rows_removed"] > 0:
-            print(f"deduped file={path} removed={stats['rows_removed']} total={stats['rows_total']}")
+    total_files = len(files)
+    rows_scanned_acc = 0
 
+    def handle_stats(idx: int, stats: Dict[str, Any]) -> None:
+        nonlocal rows_scanned_acc
+        results.append(stats)
+        rows_scanned_acc += int(stats["rows_total"])
+        if stats["rows_removed"] > 0:
+            print(f"deduped file={stats['file']} removed={stats['rows_removed']} total={stats['rows_total']}")
+        if idx == total_files or idx % 500 == 0:
+            print(f"progress files={idx}/{total_files} rows_scanned={rows_scanned_acc}")
+
+    if workers == 1 or total_files == 0:
+        for idx, path in enumerate(files, start=1):
+            stats = dedupe_file(path, apply_changes=bool(args.apply))
+            handle_stats(idx, stats)
+    else:
+        pool = concurrent.futures.ProcessPoolExecutor(max_workers=workers)
+        try:
+            future_to_index = {
+                pool.submit(dedupe_file, path, bool(args.apply)): idx
+                for idx, path in enumerate(files, start=1)
+            }
+            done_count = 0
+            for future in concurrent.futures.as_completed(future_to_index):
+                done_count += 1
+                try:
+                    stats = future.result()
+                except TimeoutError as err:
+                    idx = future_to_index[future]
+                    print(f"warning file_index={idx}/{total_files} skipped_due_to_timeout err={err}")
+                    continue
+                except OSError as err:
+                    idx = future_to_index[future]
+                    print(f"warning file_index={idx}/{total_files} skipped_due_to_os_error err={err}")
+                    continue
+                handle_stats(done_count, stats)
+        except KeyboardInterrupt:
+            print("interrupted: shutting down workers now")
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise SystemExit(130)
+        finally:
+            pool.shutdown(wait=True, cancel_futures=False)
+
+    results.sort(key=lambda r: str(r["file"]))
     write_report(report_path, results)
     total_rows = sum(int(r["rows_total"]) for r in results)
     total_removed = sum(int(r["rows_removed"]) for r in results)

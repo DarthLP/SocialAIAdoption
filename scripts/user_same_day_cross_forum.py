@@ -7,7 +7,7 @@ window) by enforcing temporal co-activity: author X is only counted if, on at
 least one specific UTC date, X commented in at least two distinct subreddits.
 
 Functionality:
-- Recursively scans `data/interim/political_forums/cleaned_daily_chunks/<subreddit>/*.ndjson`.
+- Recursively scans `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/*.parquet`.
 - For each comment, builds a mapping (author, utc_date) -> set of subreddits.
 - Optionally excludes removed accounts (`[deleted]`) and known bot accounts.
 - Reports:
@@ -30,8 +30,9 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
 import sys
+import pandas as pd
+
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from itertools import combinations
@@ -81,31 +82,24 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def iter_ndjson_records(path: Path) -> Iterable[Tuple[str, int]]:
-    """Function summary: yield (author, created_utc) tuples from an NDJSON file.
+def iter_parquet_records(path: Path) -> Iterable[Tuple[str, int]]:
+    """Function summary: yield (author, created_utc) tuples from a Parquet file.
 
     Parameters:
-        path: Path to an NDJSON file where each line is a JSON comment object.
+        path: Path to a Parquet file with cleaned comment rows.
 
     Yields:
         Tuples of (author, created_utc_seconds_int) for valid records only.
     """
-    with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            author = rec.get("author")
-            created = rec.get("created_utc")
-            if not isinstance(author, str) or not author:
-                continue
-            if not isinstance(created, (int, float)):
-                continue
-            yield author, int(created)
+    frame = pd.read_parquet(path, columns=["author", "created_utc"])
+    frame["author"] = frame["author"].astype("string")
+    frame["created_utc"] = pd.to_numeric(frame["created_utc"], errors="coerce")
+    frame = frame.dropna(subset=["author", "created_utc"])
+    for row in frame.itertuples(index=False):
+        author = str(getattr(row, "author", "") or "")
+        created = int(getattr(row, "created_utc"))
+        if author:
+            yield author, created
 
 
 def build_same_day_index(
@@ -129,11 +123,11 @@ def build_same_day_index(
     index: Dict[Tuple[str, str], Set[str]] = defaultdict(set)
     for forum_dir in sorted(p for p in daily_chunks_dir.iterdir() if p.is_dir()):
         forum = forum_dir.name
-        files = sorted(forum_dir.glob("*.ndjson"))
+        files = sorted(forum_dir.glob("*.parquet"))
         n_records = 0
         for f in files:
             file_date_fallback = f.stem
-            for author, created in iter_ndjson_records(f):
+            for author, created in iter_parquet_records(f):
                 if not include_deleted and author == "[deleted]":
                     continue
                 if not include_bots and author in bot_list:
@@ -277,7 +271,7 @@ def main() -> None:
     config = load_config(args.config)
 
     interim_dir = PROJECT_ROOT / config["paths"]["interim_dir"]
-    daily_chunks_dir = interim_dir / "cleaned_daily_chunks"
+    daily_chunks_dir = interim_dir / "cleaned_monthly_chunks"
     tables_dir = PROJECT_ROOT / config["paths"]["tables_dir"]
     overlap_tables_dir = tables_dir / OVERLAP_TABLES_SUBDIR
 

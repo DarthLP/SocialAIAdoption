@@ -1,13 +1,13 @@
 """
 Script summary:
 This script prepares metric-ready daily event-time aggregates from cleaned Reddit
-daily chunks for subreddit-level and pooled analysis. It computes linguistic,
+monthly chunks for subreddit-level and pooled analysis. It computes linguistic,
 AI-style, and affect/safety proxy metrics, then writes reproducible tables used
 by event-time plots and robustness checks.
 
 Functionality:
-- Reads cleaned daily files from:
-  `data/interim/political_forums/cleaned_daily_chunks/<subreddit>/<YYYY-MM-DD>.ndjson`.
+- Reads cleaned monthly Parquet files from:
+  `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`.
 - Computes daily subreddit and pooled aggregates for:
   - semicolon rate
   - comment length
@@ -30,7 +30,6 @@ How to apply/run:
 from __future__ import annotations
 
 import argparse
-import json
 import re
 from collections import Counter, deque
 from dataclasses import dataclass
@@ -158,7 +157,7 @@ ASSISTANT_TONE_PHRASES = [
 class RuntimePaths:
     """Function summary: store resolved runtime input and output paths for this script."""
 
-    cleaned_daily_chunks_dir: Path
+    cleaned_monthly_chunks_dir: Path
     event_time_tables_dir: Path
     tables_dir: Path
 
@@ -183,20 +182,34 @@ def build_paths(config: Dict[str, Any]) -> RuntimePaths:
     event_time_tables_dir = tables_dir / "event_time"
     event_time_tables_dir.mkdir(parents=True, exist_ok=True)
     return RuntimePaths(
-        cleaned_daily_chunks_dir=interim_dir / "cleaned_daily_chunks",
+        cleaned_monthly_chunks_dir=interim_dir / "cleaned_monthly_chunks",
         event_time_tables_dir=event_time_tables_dir,
         tables_dir=tables_dir,
     )
 
 
-def iter_daily_files(cleaned_daily_chunks_dir: Path, subreddits: Iterable[str]) -> Iterable[tuple[str, Path]]:
-    """Function summary: yield existing daily cleaned NDJSON paths for each configured subreddit."""
+def iter_monthly_files(cleaned_monthly_chunks_dir: Path, subreddits: Iterable[str]) -> Iterable[tuple[str, Path]]:
+    """Function summary: yield existing cleaned monthly Parquet paths for each configured subreddit."""
     for subreddit in sorted(subreddits):
-        subreddit_dir = cleaned_daily_chunks_dir / subreddit
+        subreddit_dir = cleaned_monthly_chunks_dir / subreddit
         if not subreddit_dir.exists():
             continue
-        for ndjson_path in sorted(subreddit_dir.glob("*.ndjson")):
-            yield subreddit, ndjson_path
+        for parquet_path in sorted(subreddit_dir.glob("*.parquet")):
+            yield subreddit, parquet_path
+
+
+def validate_month_schema(df: pd.DataFrame, file_path: Path, subreddit: str) -> pd.DataFrame:
+    """Function summary: validate required columns for monthly interim data and return cleaned frame."""
+    required_cols = {"body", "date_utc", "subreddit"}
+    missing = sorted(required_cols.difference(df.columns))
+    if missing:
+        raise ValueError(f"Missing required columns {missing} in monthly interim file: {file_path}")
+    out = df.copy()
+    out = out[out["subreddit"].astype("string") == subreddit]
+    out["body"] = out["body"].astype("string")
+    out["date_utc"] = out["date_utc"].astype("string")
+    out = out.dropna(subset=["body", "date_utc"])
+    return out
 
 
 def tokenize_words(text: str) -> list[str]:
@@ -335,103 +348,100 @@ def update_counter_for_comment(
 
 
 def aggregate_daily_metrics(
-    cleaned_daily_chunks_dir: Path,
+    cleaned_monthly_chunks_dir: Path,
     subreddits: list[str],
     similarity_window: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Function summary: aggregate subreddit-day metrics and strict-word long-format rates from cleaned files."""
+    """Function summary: aggregate subreddit-day metrics and strict-word long-format rates from cleaned monthly files."""
     analyzer = SentimentIntensityAnalyzer()
     rows: list[Dict[str, Any]] = []
     ai_word_long_rows: list[Dict[str, Any]] = []
 
-    for subreddit, file_path in iter_daily_files(cleaned_daily_chunks_dir, subreddits):
-        date_utc = file_path.stem
-        counter = build_empty_counter()
-        recent_tokens: deque[set[str]] = deque()
-
-        with file_path.open("r", encoding="utf-8") as handle:
-            for raw_line in handle:
-                line = raw_line.strip()
-                if not line:
-                    continue
-                record = json.loads(line)
-                body = str(record.get("body") or "")
+    for subreddit, file_path in iter_monthly_files(cleaned_monthly_chunks_dir, subreddits):
+        month_df = pd.read_parquet(file_path)
+        month_df = validate_month_schema(month_df, file_path=file_path, subreddit=subreddit)
+        if month_df.empty:
+            continue
+        for date_utc, day_df in month_df.groupby("date_utc", sort=True):
+            counter = build_empty_counter()
+            recent_tokens: deque[set[str]] = deque()
+            for body in day_df["body"]:
                 update_counter_for_comment(
                     counter=counter,
-                    body=body,
+                    body=str(body or ""),
                     analyzer=analyzer,
                     similarity_window=similarity_window,
                     recent_tokens=recent_tokens,
                 )
 
-        n_comments = int(counter["n_comments"])
-        n_words = int(counter["n_words"])
-        strict_total_hits = int(sum(counter["strict_word_counts"].values()))
-        row = {
-            "subreddit": subreddit,
-            "date_utc": date_utc,
-            "n_comments": n_comments,
-            "n_words": n_words,
-            "semicolon_rate_100w": safe_rate_100w(counter["total_semicolons"], n_words),
-            "comment_length_words": (float(counter["sum_comment_length_words"]) / float(n_comments)) if n_comments else 0.0,
-            "complexity_index": compute_complexity_index(
-                total_sentences=int(counter["total_sentences"]),
-                total_words=n_words,
-                total_word_chars=int(counter["total_word_chars"]),
-                n_comments=n_comments,
-            ),
-            "ai_word_rate_100w": safe_rate_100w(strict_total_hits, n_words),
-            "ai_word_extended_rate_100w": safe_rate_100w(counter["extended_ai_word_hits"], n_words),
-            "vader_compound_mean": (float(counter["vader_compound_sum"]) / float(n_comments)) if n_comments else 0.0,
-            "vader_negativity_mean": (float(counter["vader_negativity_sum"]) / float(n_comments)) if n_comments else 0.0,
-            "toxicity_score": (float(counter["vader_negativity_sum"]) / float(n_comments)) if n_comments else 0.0,
-            "toxic_lexicon_rate_100w": safe_rate_100w(counter["toxic_lexicon_hits"], n_words),
-            "contraction_rate_100w": safe_rate_100w(counter["contraction_count"], n_words),
-            "full_form_rate_100w": safe_rate_100w(counter["full_form_count"], n_words),
-            "formality_balance_100w": safe_rate_100w(counter["full_form_count"], n_words)
-            - safe_rate_100w(counter["contraction_count"], n_words),
-            "list_structure_intensity": (float(counter["list_structured_count"]) / float(n_comments)) if n_comments else 0.0,
-            "repetition_template_similarity": (float(counter["similarity_sum"]) / float(n_comments)) if n_comments else 0.0,
-            "assistant_tone_rate_100w": safe_rate_100w(counter["assistant_tone_phrase_count"], n_words),
-            "strict_ai_word_hits_total": strict_total_hits,
-            "extended_ai_word_hits_total": int(counter["extended_ai_word_hits"]),
-        }
-        rows.append(row)
+            n_comments = int(counter["n_comments"])
+            n_words = int(counter["n_words"])
+            strict_total_hits = int(sum(counter["strict_word_counts"].values()))
+            row = {
+                "subreddit": subreddit,
+                "date_utc": date_utc,
+                "n_comments": n_comments,
+                "n_words": n_words,
+                "semicolon_rate_100w": safe_rate_100w(counter["total_semicolons"], n_words),
+                "comment_length_words": (float(counter["sum_comment_length_words"]) / float(n_comments)) if n_comments else 0.0,
+                "complexity_index": compute_complexity_index(
+                    total_sentences=int(counter["total_sentences"]),
+                    total_words=n_words,
+                    total_word_chars=int(counter["total_word_chars"]),
+                    n_comments=n_comments,
+                ),
+                "ai_word_rate_100w": safe_rate_100w(strict_total_hits, n_words),
+                "ai_word_extended_rate_100w": safe_rate_100w(counter["extended_ai_word_hits"], n_words),
+                "vader_compound_mean": (float(counter["vader_compound_sum"]) / float(n_comments)) if n_comments else 0.0,
+                "vader_negativity_mean": (float(counter["vader_negativity_sum"]) / float(n_comments)) if n_comments else 0.0,
+                "toxicity_score": (float(counter["vader_negativity_sum"]) / float(n_comments)) if n_comments else 0.0,
+                "toxic_lexicon_rate_100w": safe_rate_100w(counter["toxic_lexicon_hits"], n_words),
+                "contraction_rate_100w": safe_rate_100w(counter["contraction_count"], n_words),
+                "full_form_rate_100w": safe_rate_100w(counter["full_form_count"], n_words),
+                "formality_balance_100w": safe_rate_100w(counter["full_form_count"], n_words)
+                - safe_rate_100w(counter["contraction_count"], n_words),
+                "list_structure_intensity": (float(counter["list_structured_count"]) / float(n_comments)) if n_comments else 0.0,
+                "repetition_template_similarity": (float(counter["similarity_sum"]) / float(n_comments)) if n_comments else 0.0,
+                "assistant_tone_rate_100w": safe_rate_100w(counter["assistant_tone_phrase_count"], n_words),
+                "strict_ai_word_hits_total": strict_total_hits,
+                "extended_ai_word_hits_total": int(counter["extended_ai_word_hits"]),
+            }
+            rows.append(row)
 
-        for word in STRICT_AI_WORDS:
+            for word in STRICT_AI_WORDS:
+                ai_word_long_rows.append(
+                    {
+                        "subreddit": subreddit,
+                        "date_utc": date_utc,
+                        "word": word,
+                        "word_group": "strict_individual",
+                        "hits": int(counter["strict_word_counts"][word]),
+                        "rate_100w": safe_rate_100w(counter["strict_word_counts"][word], n_words),
+                        "n_words": n_words,
+                    }
+                )
             ai_word_long_rows.append(
                 {
                     "subreddit": subreddit,
                     "date_utc": date_utc,
-                    "word": word,
-                    "word_group": "strict_individual",
-                    "hits": int(counter["strict_word_counts"][word]),
-                    "rate_100w": safe_rate_100w(counter["strict_word_counts"][word], n_words),
+                    "word": "strict_10_combined",
+                    "word_group": "strict_combined",
+                    "hits": strict_total_hits,
+                    "rate_100w": safe_rate_100w(strict_total_hits, n_words),
                     "n_words": n_words,
                 }
             )
-        ai_word_long_rows.append(
-            {
-                "subreddit": subreddit,
-                "date_utc": date_utc,
-                "word": "strict_10_combined",
-                "word_group": "strict_combined",
-                "hits": strict_total_hits,
-                "rate_100w": safe_rate_100w(strict_total_hits, n_words),
-                "n_words": n_words,
-            }
-        )
-        ai_word_long_rows.append(
-            {
-                "subreddit": subreddit,
-                "date_utc": date_utc,
-                "word": "extended_combined",
-                "word_group": "extended_combined",
-                "hits": int(counter["extended_ai_word_hits"]),
-                "rate_100w": safe_rate_100w(counter["extended_ai_word_hits"], n_words),
-                "n_words": n_words,
-            }
-        )
+            ai_word_long_rows.append(
+                {
+                    "subreddit": subreddit,
+                    "date_utc": date_utc,
+                    "word": "extended_combined",
+                    "word_group": "extended_combined",
+                    "hits": int(counter["extended_ai_word_hits"]),
+                    "rate_100w": safe_rate_100w(counter["extended_ai_word_hits"], n_words),
+                    "n_words": n_words,
+                }
+            )
 
     metrics_df = pd.DataFrame(rows).sort_values(["subreddit", "date_utc"]).reset_index(drop=True) if rows else pd.DataFrame()
     ai_word_long_df = (
@@ -563,12 +573,12 @@ def main() -> None:
     paths = build_paths(config)
 
     metrics_df, ai_word_long_df = aggregate_daily_metrics(
-        cleaned_daily_chunks_dir=paths.cleaned_daily_chunks_dir,
+        cleaned_monthly_chunks_dir=paths.cleaned_monthly_chunks_dir,
         subreddits=subreddits,
         similarity_window=int(args.similarity_window),
     )
     if metrics_df.empty:
-        raise FileNotFoundError(f"No cleaned daily chunk files found under: {paths.cleaned_daily_chunks_dir}")
+        raise FileNotFoundError(f"No cleaned monthly chunk files found under: {paths.cleaned_monthly_chunks_dir}")
 
     metrics_df = add_event_time_columns(metrics_df, launch_ts)
     metrics_df = add_ai_likeness_index(metrics_df)

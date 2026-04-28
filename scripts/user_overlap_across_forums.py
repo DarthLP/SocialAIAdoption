@@ -6,7 +6,7 @@ Reddit's `author` field is a globally-unique username, cross-forum user
 matching is an exact string match on `author`.
 
 Functionality:
-- Recursively scans `data/interim/political_forums/cleaned_daily_chunks/<subreddit>/*.ndjson`.
+- Recursively scans `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/*.parquet`.
 - Builds a mapping of author -> set of subreddits the author commented in.
 - Optionally excludes removed accounts (`[deleted]`) and known bots.
 - Reports:
@@ -30,8 +30,9 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
 import sys
+import pandas as pd
+
 from collections import Counter, defaultdict
 from itertools import combinations
 from pathlib import Path
@@ -81,27 +82,19 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def iter_ndjson_authors(path: Path) -> Iterable[str]:
-    """Function summary: yield each record's `author` field from an NDJSON file.
+def iter_parquet_authors(path: Path) -> Iterable[str]:
+    """Function summary: yield each record's `author` field from a monthly Parquet file.
 
     Parameters:
-        path: Path to an NDJSON file where each line is a JSON comment object.
+        path: Path to a Parquet file with cleaned comment rows.
 
     Yields:
         The value of the `author` key for each record (skips malformed lines).
     """
-    with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            author = rec.get("author")
-            if isinstance(author, str) and author:
-                yield author
+    frame = pd.read_parquet(path, columns=["author"])
+    for author in frame["author"].astype("string").dropna().tolist():
+        if isinstance(author, str) and author:
+            yield author
 
 
 def collect_authors_by_forum(
@@ -124,9 +117,9 @@ def collect_authors_by_forum(
     forums: Dict[str, Set[str]] = {}
     for forum_dir in sorted(p for p in daily_chunks_dir.iterdir() if p.is_dir()):
         authors: Set[str] = set()
-        files = sorted(forum_dir.glob("*.ndjson"))
+        files = sorted(forum_dir.glob("*.parquet"))
         for f in files:
-            for author in iter_ndjson_authors(f):
+            for author in iter_parquet_authors(f):
                 if not include_deleted and author == "[deleted]":
                     continue
                 if not include_bots and author in bot_list:
@@ -235,7 +228,7 @@ def main() -> None:
     config = load_config(args.config)
 
     interim_dir = PROJECT_ROOT / config["paths"]["interim_dir"]
-    daily_chunks_dir = interim_dir / "cleaned_daily_chunks"
+    daily_chunks_dir = interim_dir / "cleaned_monthly_chunks"
     tables_dir = PROJECT_ROOT / config["paths"]["tables_dir"]
     overlap_tables_dir = tables_dir / OVERLAP_TABLES_SUBDIR
 

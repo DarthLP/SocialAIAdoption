@@ -17,6 +17,7 @@ Build a reproducible pipeline to study AI-writing adoption in political Reddit c
   - External raw dumps on mounted storage (`/Volumes/Expansion/Masterthesis/RawData/...`); additional months are acquired with `aria2c` selective `--select-file=` on the Academic Torrents bundle (see `README.md` for examples, preflight `pgrep -x aria2c`, and optional `caffeinate` wrapper).
   - Project filtered raw outputs (`data/raw/political_forums/daily_chunks/`)
   - `data/interim/`, `data/processed/` for downstream transformations
+  - Interim canonical format: monthly Parquet (`data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`)
 - Output layer: `results/figures/`, `results/tables/`, `results/logs/`
   - Filtering audits and dedupe reports are grouped in `results/tables/filtering/`
   - Cleaning audits are grouped in `results/tables/cleaning/`
@@ -44,10 +45,11 @@ Build a reproducible pipeline to study AI-writing adoption in political Reddit c
   - Cross-forum user overlap utility (`scripts/user_overlap_across_forums.py`) for author-level forum-membership diagnostics
   - Same-day cross-forum activity utility (`scripts/user_same_day_cross_forum.py`) for temporally-aligned author overlap diagnostics
   - Pre-cleaning trend utility (`scripts/plot_data_quality_trends.py`) for daily quality-indicator counts/rates and launch-anchored visualization
-  - Interim cleaning utility (`scripts/clean_daily_chunks.py`) for deterministic drop-rules plus retained-row metadata flags
+  - Interim cleaning utility (`scripts/clean_daily_chunks.py`) for deterministic drop-rules plus retained-row metadata flags, canonical schema enforcement, and coercion diagnostics
   - Event-time metrics utility (`scripts/prepare_event_time_metrics.py`) for daily subreddit/pooled language and AI-style aggregates (pooled `ALL` mixes all `subreddits.primary` forums unless stratified pools are added later)
   - Event-time plotting utility (`scripts/plot_event_time_metrics.py`) for launch-anchored pooled and per-subreddit trend figures, style-proxy panels, strict-vs-extended lexicon overlay, z-score component plot, and strict-10 per-word plus combined trajectory figure
   - Optional sampled detector utility (`scripts/run_llm_detector_sample.py`) for CPU-first robustness scoring with deterministic sampling
+  - Script execution order and concise script I/O descriptions are centralized in `scripts/README.md`
 - Operational rules: `.cursor/rules/project.mdc`
 - Durable memory: `Projects/`, `Decisions/`
 
@@ -76,4 +78,4 @@ A work item is complete only if:
 - The vault remains low-noise and non-duplicative.
 
 ## Current Status
-Default `event_window` spans **2022-11-01** through **2023-04-30** UTC (exclusive end `2023-05-01`), with launch anchor **2022-11-30**. `subreddits.primary` includes five political subs, six tech comparison subs (`learnprogramming`, `AskProgramming`, `CodingHelp`, `cscareerquestions`, `ITCareerQuestions`, `csMajors`), and three general-question subs (`answers`, `TooAfraidToAsk`, `OutOfTheLoop`). Filtering ingests six monthly comment dumps (`RC_2022-11` … `RC_2023-04`) using configurable worker concurrency (default sequential one-worker for external-disk stability), checkpoints, and time-aware progress logging into per-subreddit/day NDJSON. Pre-cleaning quality trends live under `results/tables/data_quality_trends/` and `results/figures/data_quality_trends/` (AutoModerator plot notes use the window-summed count from each run). Cleaned interim data uses explicit drop rules and retained-row flags as before. Event-time tables and figures remain under `results/tables/event_time/` and `results/figures/event_time/` (x-axis labels derive launch date from config).
+Default `event_window` spans **2022-11-01** through **2023-04-30** UTC (exclusive end `2023-05-01`), with launch anchor **2022-11-30**. `subreddits.primary` includes five political subs, six tech comparison subs (`learnprogramming`, `AskProgramming`, `CodingHelp`, `cscareerquestions`, `ITCareerQuestions`, `csMajors`), and three general-question subs (`answers`, `TooAfraidToAsk`, `OutOfTheLoop`). Filtering ingests six monthly comment dumps (`RC_2022-11` … `RC_2023-04`) using configurable worker concurrency (default sequential one-worker for external-disk stability), checkpoints, and time-aware progress logging into per-subreddit/day NDJSON. Pre-cleaning quality trends live under `results/tables/data_quality_trends/` and `results/figures/data_quality_trends/` (AutoModerator plot notes use the window-summed count from each run). Cleaned interim data is now stored as monthly Parquet per subreddit in `data/interim/political_forums/cleaned_monthly_chunks/`, with explicit schema coercion and mismatch reporting under `results/tables/cleaning/clean_daily_chunks_schema_*.csv`. Event-time tables and figures remain under `results/tables/event_time/` and `results/figures/event_time/` (x-axis labels derive launch date from config).

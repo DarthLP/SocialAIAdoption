@@ -5,8 +5,8 @@ sample of cleaned comments. It is designed as a robustness layer that complement
 full-corpus lexical/structure metrics with sampled detector-based signals.
 
 Functionality:
-- Reads cleaned daily chunks from
-  `data/interim/political_forums/cleaned_daily_chunks/<subreddit>/<YYYY-MM-DD>.ndjson`.
+- Reads cleaned monthly chunks from
+  `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`.
 - Builds deterministic subreddit x day stratified samples using a fixed seed.
 - Computes two detector-style outputs:
   - heuristic_llm_style_score (free, local, no additional dependencies)
@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,14 +81,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def iter_daily_files(cleaned_daily_chunks_dir: Path, subreddits: Iterable[str]) -> Iterable[tuple[str, Path]]:
-    """Function summary: iterate cleaned daily NDJSON files for configured subreddits."""
+def iter_monthly_files(cleaned_monthly_chunks_dir: Path, subreddits: Iterable[str]) -> Iterable[tuple[str, Path]]:
+    """Function summary: iterate cleaned monthly Parquet files for configured subreddits."""
     for subreddit in sorted(subreddits):
-        sub_dir = cleaned_daily_chunks_dir / subreddit
+        sub_dir = cleaned_monthly_chunks_dir / subreddit
         if not sub_dir.exists():
             continue
-        for ndjson_path in sorted(sub_dir.glob("*.ndjson")):
-            yield subreddit, ndjson_path
+        for parquet_path in sorted(sub_dir.glob("*.parquet")):
+            yield subreddit, parquet_path
 
 
 def stable_hash_as_float(text: str) -> float:
@@ -158,7 +157,7 @@ def main() -> None:
     launch_ts = utc_ts(config["event_window"]["launch_day_utc"])
     launch_date = datetime.fromtimestamp(launch_ts, tz=timezone.utc).date()
 
-    cleaned_daily_chunks_dir = Path(config["paths"]["interim_dir"]) / "cleaned_daily_chunks"
+    cleaned_monthly_chunks_dir = Path(config["paths"]["interim_dir"]) / "cleaned_monthly_chunks"
     tables_dir = Path(config["paths"]["tables_dir"]) / "event_time"
     tables_dir.mkdir(parents=True, exist_ok=True)
     subreddits = list(config["subreddits"]["primary"])
@@ -167,42 +166,46 @@ def main() -> None:
 
     rows: list[Dict[str, Any]] = []
     sample_target = int(args.sample_per_day_subreddit)
-    for subreddit, file_path in iter_daily_files(cleaned_daily_chunks_dir, subreddits):
-        date_utc = file_path.stem
-        sampled_records: list[Dict[str, Any]] = []
-        with file_path.open("r", encoding="utf-8") as handle:
-            for raw_line in handle:
-                line = raw_line.strip()
-                if not line:
-                    continue
-                record = json.loads(line)
-                text = str(record.get("body") or "")
-                # Stable Bernoulli gate then cap by target with deterministic ranking.
-                h = stable_hash_as_float(f"{subreddit}|{date_utc}|{record.get('id', '')}")
-                if h <= min(1.0, sample_target / 5000.0):
-                    sampled_records.append({"id": record.get("id", ""), "text": text, "h": h})
-        sampled_records = sorted(sampled_records, key=lambda r: (r["h"], str(r["id"])))[:sample_target]
-
-        if not sampled_records:
+    for subreddit, file_path in iter_monthly_files(cleaned_monthly_chunks_dir, subreddits):
+        month_df = pd.read_parquet(file_path)
+        required = {"id", "body", "date_utc", "subreddit"}
+        missing = sorted(required.difference(month_df.columns))
+        if missing:
+            raise ValueError(f"Missing required columns {missing} in {file_path}")
+        month_df = month_df[month_df["subreddit"].astype("string") == subreddit]
+        if month_df.empty:
             continue
-        heuristic_scores = [heuristic_llm_style_score(rec["text"]) for rec in sampled_records]
-        hf_scores = [score_with_hf(hf_pipe, rec["text"]) for rec in sampled_records] if hf_pipe is not None else []
-        event_time_t = (datetime.fromisoformat(date_utc).date() - launch_date).days
-        row = {
-            "subreddit": subreddit,
-            "date_utc": date_utc,
-            "event_time_t": int(event_time_t),
-            "sample_size": len(sampled_records),
-            "heuristic_llm_style_score_mean": float(sum(heuristic_scores) / len(heuristic_scores)),
-            "hf_llm_probability_mean": float(sum(hf_scores) / len(hf_scores)) if hf_scores else float("nan"),
-            "hf_model_id": HF_MODEL_ID if hf_pipe is not None else "",
-            "hf_model_revision": HF_MODEL_REVISION if hf_pipe is not None else "",
-            "seed": int(args.seed),
-        }
-        rows.append(row)
+        for date_utc, day_df in month_df.groupby("date_utc", sort=True):
+            sampled_records: list[Dict[str, Any]] = []
+            for row in day_df.itertuples(index=False):
+                text = str(getattr(row, "body", "") or "")
+                comment_id = str(getattr(row, "id", "") or "")
+                # Stable Bernoulli gate then cap by target with deterministic ranking.
+                h = stable_hash_as_float(f"{subreddit}|{date_utc}|{comment_id}")
+                if h <= min(1.0, sample_target / 5000.0):
+                    sampled_records.append({"id": comment_id, "text": text, "h": h})
+            sampled_records = sorted(sampled_records, key=lambda r: (r["h"], str(r["id"])))[:sample_target]
+
+            if not sampled_records:
+                continue
+            heuristic_scores = [heuristic_llm_style_score(rec["text"]) for rec in sampled_records]
+            hf_scores = [score_with_hf(hf_pipe, rec["text"]) for rec in sampled_records] if hf_pipe is not None else []
+            event_time_t = (datetime.fromisoformat(str(date_utc)).date() - launch_date).days
+            out_row = {
+                "subreddit": subreddit,
+                "date_utc": str(date_utc),
+                "event_time_t": int(event_time_t),
+                "sample_size": len(sampled_records),
+                "heuristic_llm_style_score_mean": float(sum(heuristic_scores) / len(heuristic_scores)),
+                "hf_llm_probability_mean": float(sum(hf_scores) / len(hf_scores)) if hf_scores else float("nan"),
+                "hf_model_id": HF_MODEL_ID if hf_pipe is not None else "",
+                "hf_model_revision": HF_MODEL_REVISION if hf_pipe is not None else "",
+                "seed": int(args.seed),
+            }
+            rows.append(out_row)
 
     if not rows:
-        raise FileNotFoundError(f"No sampled records found under: {cleaned_daily_chunks_dir}")
+        raise FileNotFoundError(f"No sampled records found under: {cleaned_monthly_chunks_dir}")
 
     by_subreddit_df = pd.DataFrame(rows).sort_values(["subreddit", "date_utc"]).reset_index(drop=True)
     pooled_rows = []

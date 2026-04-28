@@ -34,19 +34,19 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
    - Apply: `.venv/bin/python scripts/dedupe_daily_chunks.py --config config/political_forums_setup.yaml --apply`
 7. Optional cross-forum user overlap analysis (unique-author matching across subreddits):
    - `.venv/bin/python scripts/user_overlap_across_forums.py --config config/political_forums_setup.yaml`
-   - Uses cleaned input: `data/interim/political_forums/cleaned_daily_chunks/`
+   - Uses cleaned input: `data/interim/political_forums/cleaned_monthly_chunks/`
    - Writes `results/tables/user_overlap/user_overlap_by_forum.csv`, `user_overlap_forum_count_distribution.csv`, and `user_overlap_pairwise.csv`.
 8. Optional same-day cross-forum activity analysis (users posting in >=2 forums on the same UTC day):
    - `.venv/bin/python scripts/user_same_day_cross_forum.py --config config/political_forums_setup.yaml`
-   - Uses cleaned input: `data/interim/political_forums/cleaned_daily_chunks/`
+   - Uses cleaned input: `data/interim/political_forums/cleaned_monthly_chunks/`
    - Writes `results/tables/user_overlap/user_same_day_cross_forum_summary.csv`, `user_same_day_cross_forum_distribution.csv`, and `user_same_day_cross_forum_pairwise.csv`.
 9. Pre-cleaning data-quality trend analysis (percentages, ChatGPT event marker):
    - `.venv/bin/python scripts/plot_data_quality_trends.py --config config/political_forums_setup.yaml`
    - Writes tables to `results/tables/data_quality_trends/` and figures to `results/figures/data_quality_trends/`.
 10. Deterministic cleaning pass for interim analysis dataset:
    - `.venv/bin/python scripts/clean_daily_chunks.py --config config/political_forums_setup.yaml`
-   - Writes cleaned daily chunks to `data/interim/political_forums/cleaned_daily_chunks/`.
-   - Writes cleaning audits to `results/tables/cleaning/clean_daily_chunks_audit_by_day.csv`, `results/tables/cleaning/clean_daily_chunks_audit_by_subreddit.csv`, and `results/tables/cleaning/clean_daily_chunks_notes.txt`.
+   - Writes cleaned monthly Parquet files to `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`.
+   - Writes cleaning audits to `results/tables/cleaning/clean_daily_chunks_audit_by_day.csv`, `results/tables/cleaning/clean_daily_chunks_audit_by_subreddit.csv`, `results/tables/cleaning/clean_daily_chunks_notes.txt`, and schema-coercion diagnostics (`clean_daily_chunks_schema_*.csv`).
 11. Event-time metric preparation (subreddit + pooled, lexical/structure/toxicity proxies):
    - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml`
    - Writes tables to `results/tables/event_time/` and compatibility export to `results/tables/event_time_daily_metrics.csv`.
@@ -114,6 +114,7 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
 - Optional package for sampled detector robustness branch: `transformers`.
 
 ## Usage
+- For script-by-script execution order, short purpose, I/O data layers, and exact run commands, see `scripts/README.md`.
 - Use external raw dumps as source of truth for ingestion.
 - Use `scripts/filter_dump_comments.py` to generate filtered day-chunk comments in the project data directory. Required `RC_YYYY-MM.zst` basenames are derived from `event_window` using `src.config_utils.comment_dump_filenames`.
 - Use `scripts/dedupe_daily_chunks.py` when needed to remove duplicate comment ids introduced by interrupted/restarted filtering.
@@ -135,6 +136,8 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
   - `is_bot_name_heuristic` (`"bot"` substring in lowercase author)
   - `is_url_only` (body is URL-only)
   - `is_short_text` (body character length `< 20`)
+- Interim cleaned storage is Parquet-only and month-per-forum at `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`.
+- `scripts/clean_daily_chunks.py` enforces a fixed schema for interim data and writes mismatch/coercion diagnostics under `results/tables/cleaning/clean_daily_chunks_schema_*.csv`.
 - The filter supports `--worker_mode one|two|auto`; default is `one` (sequential: every required month file runs in order, best for typical external USB throughput).
 - Use `scripts/prepare_event_time_metrics.py` to build metric-ready daily aggregates from cleaned chunks for pooled and subreddit event-time analysis. Pooled `ALL` rows aggregate across **every** forum in `subreddits.primary` (political and tech); use per-subreddit tables or stratify later if you need domain-pure pools.
 - Event-time outputs include:
