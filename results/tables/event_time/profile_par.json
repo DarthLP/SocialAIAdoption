@@ -1,0 +1,12 @@
+{
+  "comments_processed": 1606,
+  "days_processed": 10,
+  "files_processed": 2,
+  "phase_aggregate_s": 0.4852,
+  "phase_postprocess_s": 0.0206,
+  "phase_read_s": 0.0872,
+  "phase_validate_s": 0.0031,
+  "phase_write_s": 0.0058,
+  "rows_read": 8899,
+  "seconds_per_100k_comments": 37.4802
+}

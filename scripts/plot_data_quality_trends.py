@@ -9,10 +9,13 @@ Functionality:
 - Reads `data/raw/political_forums/daily_chunks/<subreddit>/<YYYY-MM-DD>.ndjson`.
 - Computes counts for removed/deleted placeholders, deleted authors, AutoModerator,
   stickied comments, and an exploratory bot-name heuristic.
+- Enforces configured event window bounds before writing trend tables and figures.
 - Computes percentage rates relative to daily `rows_total`.
 - Writes tidy outputs to `results/tables/data_quality_trends/`.
 - Generates percentage trend plots in
   `results/figures/data_quality_trends/`.
+- Uses a non-interactive plotting backend by default for terminal-safe rendering.
+- Logs per-metric `plot_progress` markers so long plotting runs show progress.
 - Annotates AutoModerator plots with the AutoModerator row total summed for the current window.
 - Validates `rows_total` against `results/tables/filtering/dump_filter_counts_by_day.csv`.
 
@@ -24,12 +27,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
 from typing import Any, Dict, Iterable
 
+import matplotlib
+if "MPLBACKEND" not in os.environ:
+    matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import pandas as pd
@@ -173,6 +180,19 @@ def compute_daily_metrics(raw_daily_chunks_dir: Path, subreddits: list[str]) -> 
     return df
 
 
+def filter_to_event_window(df: pd.DataFrame, start_ts: int, end_ts_exclusive: int) -> pd.DataFrame:
+    """Function summary: keep only rows whose UTC day falls within configured event window timestamps."""
+    if df.empty:
+        return df.copy()
+    out = df.copy()
+    out["date"] = pd.to_datetime(out["date_utc"], utc=True)
+    start = pd.Timestamp(start_ts, unit="s", tz="UTC")
+    end_exclusive = pd.Timestamp(end_ts_exclusive, unit="s", tz="UTC")
+    mask = (out["date"] >= start) & (out["date"] < end_exclusive)
+    filtered = out.loc[mask].drop(columns=["date"])
+    return filtered.reset_index(drop=True)
+
+
 def add_time_and_rate_columns(df: pd.DataFrame, event_ts: int) -> pd.DataFrame:
     """Function summary: add UTC date columns, event-day offsets, and percentage rate metrics."""
     out = df.copy()
@@ -231,9 +251,10 @@ def write_tables(
     validation_df.to_csv(tables_subdir / "daily_quality_metrics_validation_vs_filter_counts.csv", index=False)
 
 
-def add_launch_marker(ax: Any, event_date: datetime) -> None:
-    """Function summary: draw the launch-day vertical reference line on one plot axis."""
-    ax.axvline(x=event_date, color="red", linestyle="--", linewidth=1)
+def add_release_markers(ax: Any, release_dates: list[datetime]) -> None:
+    """Function summary: draw vertical reference lines for key ChatGPT release dates on one plot axis."""
+    for release_date in release_dates:
+        ax.axvline(x=release_date, color="red", linestyle=":", linewidth=1.2)
 
 
 def date_span_days(overall_df: pd.DataFrame) -> int:
@@ -246,16 +267,9 @@ def date_span_days(overall_df: pd.DataFrame) -> int:
 
 
 def format_date_axis(ax: Any, span_days: int) -> None:
-    """Function summary: format date ticks using a day interval derived from span_days to limit crowding."""
-    if span_days <= 45:
-        interval = 3
-    elif span_days <= 100:
-        interval = 7
-    elif span_days <= 200:
-        interval = 14
-    else:
-        interval = max(14, span_days // 15)
-    locator = mdates.DayLocator(interval=interval)
+    """Function summary: format date ticks at month starts to keep all date-based plots consistent."""
+    _ = span_days
+    locator = mdates.MonthLocator(bymonthday=1)
     formatter = mdates.DateFormatter("%Y-%m-%d")
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
@@ -279,15 +293,25 @@ def plot_overall(
     df: pd.DataFrame,
     metric: str,
     out_path: Path,
-    event_date: datetime,
+    release_dates: list[datetime],
     *,
     span_days: int,
     automod_total: int,
 ) -> None:
     """Function summary: plot one overall daily trend line with launch marker and annotation."""
+    if df.empty:
+        return
+    ordered = df.sort_values("date").copy()
+    metric_values = ordered[metric].fillna(0.0)
     fig, ax = plt.subplots(figsize=(12, 5))
-    sns.lineplot(data=df.sort_values("date"), x="date", y=metric, marker="o", ax=ax)
-    add_launch_marker(ax, event_date)
+    ax.plot(
+        ordered["date"],
+        metric_values,
+        marker="o",
+        markersize=3,
+        linewidth=1.5,
+    )
+    add_release_markers(ax, release_dates)
     format_date_axis(ax, span_days)
     ax.set_title(f"Overall Daily Trend: {METRIC_LABELS[metric]}")
     ax.set_xlabel("Date (UTC)")
@@ -302,22 +326,30 @@ def plot_by_subreddit(
     df: pd.DataFrame,
     metric: str,
     out_path: Path,
-    event_date: datetime,
+    release_dates: list[datetime],
     *,
     span_days: int,
     automod_total: int,
 ) -> None:
     """Function summary: plot one daily trend metric by subreddit with shared launch marker."""
+    if df.empty:
+        return
+    ordered = df.sort_values(["subreddit", "date"]).copy()
     fig, ax = plt.subplots(figsize=(12, 6))
-    sns.lineplot(
-        data=df.sort_values(["subreddit", "date"]),
-        x="date",
-        y=metric,
-        hue="subreddit",
-        marker="o",
-        ax=ax,
-    )
-    add_launch_marker(ax, event_date)
+    subreddits = sorted(ordered["subreddit"].dropna().unique())
+    color_map = dict(zip(subreddits, sns.color_palette("tab20", n_colors=max(1, len(subreddits)))))
+    for subreddit, group in ordered.groupby("subreddit", sort=True):
+        series = group[metric].fillna(0.0)
+        ax.plot(
+            group["date"],
+            series,
+            marker="o",
+            markersize=2.5,
+            linewidth=1.2,
+            label=subreddit,
+            color=color_map.get(subreddit),
+        )
+    add_release_markers(ax, release_dates)
     format_date_axis(ax, span_days)
     ax.set_title(f"Per-Subreddit Daily Trend: {METRIC_LABELS[metric]}")
     ax.set_xlabel("Date (UTC)")
@@ -339,24 +371,32 @@ def make_plots(
     span_days: int,
 ) -> None:
     """Function summary: generate percentage-only plot sets for overall and subreddit views."""
-    event_date = datetime.fromtimestamp(event_ts, tz=timezone.utc).replace(tzinfo=None)
-    for metric in PLOT_RATE_METRICS:
+    _ = event_ts
+    release_dates = [
+        datetime(2022, 11, 30),
+        datetime(2023, 3, 14),
+    ]
+    total_metrics = len(PLOT_RATE_METRICS)
+    for idx, metric in enumerate(PLOT_RATE_METRICS, start=1):
+        print(f"plot_progress metric={idx}/{total_metrics} name={metric} stage=overall")
         plot_overall(
             overall_df,
             metric,
             figures_subdir / f"overall_{metric}.png",
-            event_date,
+            release_dates,
             span_days=span_days,
             automod_total=automod_total,
         )
+        print(f"plot_progress metric={idx}/{total_metrics} name={metric} stage=by_subreddit")
         plot_by_subreddit(
             per_subreddit_df,
             metric,
             figures_subdir / f"by_subreddit_{metric}.png",
-            event_date,
+            release_dates,
             span_days=span_days,
             automod_total=automod_total,
         )
+        print(f"plot_progress metric={idx}/{total_metrics} name={metric} stage=done")
 
 
 def write_metadata_note(
@@ -389,9 +429,25 @@ def main() -> None:
     config = load_config(args.config)
     paths = build_paths(config)
     subreddits = list(config["subreddits"]["primary"])
+    start_ts = utc_ts(config["event_window"]["start_utc"])
+    end_ts_exclusive = utc_ts(config["event_window"]["end_utc_exclusive"])
     event_ts = utc_ts(config["event_window"]["launch_day_utc"])
+    missing_subreddits = sorted(
+        subreddit
+        for subreddit in subreddits
+        if not (paths.raw_daily_chunks_dir / subreddit).exists()
+    )
+    if missing_subreddits:
+        missing_joined = ",".join(missing_subreddits)
+        print(f"warning missing_subreddit_dirs={missing_joined}")
 
     per_subreddit_counts = compute_daily_metrics(paths.raw_daily_chunks_dir, subreddits)
+    per_subreddit_counts = filter_to_event_window(
+        per_subreddit_counts,
+        start_ts=start_ts,
+        end_ts_exclusive=end_ts_exclusive,
+    )
+    print(f"rows_after_event_window_filter={len(per_subreddit_counts)}")
     per_subreddit_df = add_time_and_rate_columns(per_subreddit_counts, event_ts)
     overall_df = build_overall_daily(per_subreddit_counts, event_ts)
     validation_df = validate_against_baseline(per_subreddit_counts, paths.baseline_counts_path)

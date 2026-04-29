@@ -53,6 +53,13 @@ Configuration default:
 - Output layer:
   - `results/tables/data_quality_trends/*`
   - `results/figures/data_quality_trends/*`
+- Notes:
+  - Enforces `event_window.start_utc` to `event_window.end_utc_exclusive` during plotting-table generation.
+  - Draws vertical red dotted markers at `2022-11-30` (ChatGPT release) and `2023-03-14` (GPT-4 release).
+  - Uses month-start date ticks (`YYYY-MM-01`) for consistent calendar alignment across plots.
+  - Uses explicit high-contrast palettes for multi-line subreddit overlays to keep lines visually distinguishable.
+  - Prints `plot_progress` lines per metric so long runs show forward progress.
+  - Uses non-interactive Matplotlib backend by default for terminal-safe figure rendering.
 - Run:
   - `.venv/bin/python scripts/plot_data_quality_trends.py --config config/political_forums_setup.yaml`
 
@@ -83,6 +90,13 @@ Configuration default:
   - `results/tables/event_time_daily_metrics.csv` (compatibility export)
 - Run:
   - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml`
+- Performance/bounded-benchmark options:
+  - Sample one month file per subreddit with phase timing:
+    - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml --max_month_files_per_subreddit 1 --profile`
+  - Hard cap total processed month files and days per month:
+    - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml --max_total_month_files 2 --max_days_per_month 10 --profile_output results/tables/event_time/prepare_event_time_metrics_profile.json`
+  - Optional month-level parallelism on faster storage:
+    - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml --workers 4`
 
 ### 6) Create event-time figures (required for visual analysis)
 - Script: `plot_event_time_metrics.py`
@@ -91,6 +105,10 @@ Configuration default:
 - Output layer:
   - `results/figures/event_time/*`
   - `results/figures/event_time/by_subreddit/*`
+- Notes:
+  - Plots use calendar-date x-axes with month-start ticks (`YYYY-MM-01`), not relative day offsets.
+  - Draws vertical red dotted markers at `2022-11-30` and `2023-03-14`.
+  - Applies explicit high-contrast palette assignment in multi-line subreddit figures.
 - Run:
   - `.venv/bin/python scripts/plot_event_time_metrics.py --config config/political_forums_setup.yaml`
 

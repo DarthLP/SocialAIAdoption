@@ -22,6 +22,7 @@ from pathlib import Path
 import sys
 
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import pandas as pd
 import seaborn as sns
 
@@ -51,13 +52,45 @@ def event_time_xlabel(config: dict) -> str:
     return f"Event time (days from {launch_date})"
 
 
+def ensure_date_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Function summary: ensure a naive UTC datetime date column exists for calendar-date plotting."""
+    out = df.copy()
+    out["date"] = pd.to_datetime(out["date"], utc=False, errors="coerce")
+    if out["date"].isna().all():
+        out["date"] = pd.to_datetime(out["date_utc"], utc=True, errors="coerce").dt.tz_convert(None)
+    return out.dropna(subset=["date"])
+
+
+def release_dates() -> list[datetime]:
+    """Function summary: return the configured ChatGPT and GPT-4 public release dates used as visual anchors."""
+    return [datetime(2022, 11, 30), datetime(2023, 3, 14)]
+
+
+def add_release_markers(ax: plt.Axes) -> None:
+    """Function summary: draw red vertical dotted reference lines at ChatGPT and GPT-4 release dates."""
+    for release_date in release_dates():
+        ax.axvline(x=release_date, color="red", linestyle=":", linewidth=1.2)
+
+
+def format_month_start_axis(ax: plt.Axes) -> None:
+    """Function summary: force monthly x-axis ticks to the first day of each month for date-based plots."""
+    ax.xaxis.set_major_locator(mdates.MonthLocator(bymonthday=1))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+    plt.setp(ax.get_xticklabels(), rotation=30, ha="right")
+
+
 def plot_metric(df: pd.DataFrame, y_col: str, title: str, out_path: Path, *, event_time_xlabel_text: str) -> None:
-    """Function summary: generate and save one event-time line plot for a chosen metric."""
+    """Function summary: generate and save one date-based line plot for a chosen pooled metric."""
+    _ = event_time_xlabel_text
+    d = ensure_date_column(df).sort_values("date")
+    if d.empty:
+        return
     plt.figure(figsize=(10, 5))
-    sns.lineplot(data=df, x="event_time_t", y=y_col, marker="o")
-    plt.axvline(x=0, color="red", linestyle="--", linewidth=1)
+    sns.lineplot(data=d, x="date", y=y_col, marker="o")
+    add_release_markers(plt.gca())
+    format_month_start_axis(plt.gca())
     plt.title(title)
-    plt.xlabel(event_time_xlabel_text)
+    plt.xlabel("Date (UTC)")
     plt.ylabel(y_col)
     plt.tight_layout()
     plt.savefig(out_path, dpi=140)
@@ -67,23 +100,28 @@ def plot_metric(df: pd.DataFrame, y_col: str, title: str, out_path: Path, *, eve
 def plot_metric_by_subreddit(
     df: pd.DataFrame, y_col: str, title: str, out_path: Path, *, event_time_xlabel_text: str
 ) -> None:
-    """Function summary: plot one metric over event time with one line per subreddit."""
+    """Function summary: plot one metric over calendar dates with one line per subreddit."""
+    _ = event_time_xlabel_text
     if df.empty or y_col not in df.columns:
         return
-    sub_df = df[df["subreddit"] != "ALL"].copy()
+    sub_df = ensure_date_column(df[df["subreddit"] != "ALL"].copy())
     if sub_df.empty:
         return
+    subreddits = sorted(sub_df["subreddit"].dropna().unique())
+    palette = dict(zip(subreddits, sns.color_palette("tab20", n_colors=max(1, len(subreddits)))))
     plt.figure(figsize=(12, 6))
     sns.lineplot(
-        data=sub_df.sort_values(["subreddit", "event_time_t"]),
-        x="event_time_t",
+        data=sub_df.sort_values(["subreddit", "date"]),
+        x="date",
         y=y_col,
         hue="subreddit",
+        palette=palette,
         marker="o",
     )
-    plt.axvline(x=0, color="red", linestyle="--", linewidth=1)
+    add_release_markers(plt.gca())
+    format_month_start_axis(plt.gca())
     plt.title(title)
-    plt.xlabel(event_time_xlabel_text)
+    plt.xlabel("Date (UTC)")
     plt.ylabel(y_col)
     plt.legend(title="Subreddit", loc="best")
     plt.tight_layout()
@@ -103,16 +141,20 @@ def plot_two_series_same_axes(
     *,
     event_time_xlabel_text: str,
 ) -> None:
-    """Function summary: plot two columns from the same pooled frame on one axes with legend."""
+    """Function summary: plot two pooled columns on a shared calendar-date axis with legend."""
+    _ = event_time_xlabel_text
     if df.empty or y_a not in df.columns or y_b not in df.columns:
         return
-    d = df.sort_values("event_time_t")
+    d = ensure_date_column(df).sort_values("date")
+    if d.empty:
+        return
     plt.figure(figsize=(10, 5))
-    plt.plot(d["event_time_t"], d[y_a], marker="o", label=label_a)
-    plt.plot(d["event_time_t"], d[y_b], marker="s", label=label_b)
-    plt.axvline(x=0, color="red", linestyle="--", linewidth=1)
+    plt.plot(d["date"], d[y_a], marker="o", label=label_a)
+    plt.plot(d["date"], d[y_b], marker="s", label=label_b)
+    add_release_markers(plt.gca())
+    format_month_start_axis(plt.gca())
     plt.title(title)
-    plt.xlabel(event_time_xlabel_text)
+    plt.xlabel("Date (UTC)")
     plt.ylabel(y_label)
     plt.legend(loc="best")
     plt.tight_layout()
@@ -121,7 +163,8 @@ def plot_two_series_same_axes(
 
 
 def plot_style_panel_pooled(df: pd.DataFrame, out_path: Path, *, event_time_xlabel_text: str) -> None:
-    """Function summary: save a 2x2 pooled panel of main style proxy metrics."""
+    """Function summary: save a 2x2 pooled panel of main style proxy metrics on date-based axes."""
+    _ = event_time_xlabel_text
     panels = [
         ("assistant_tone_rate_100w", "Assistant-tone phrases (per 100 words)"),
         ("list_structure_intensity", "List-structure intensity (share of comments)"),
@@ -130,17 +173,20 @@ def plot_style_panel_pooled(df: pd.DataFrame, out_path: Path, *, event_time_xlab
     ]
     if df.empty:
         return
-    d = df.sort_values("event_time_t")
+    d = ensure_date_column(df).sort_values("date")
+    if d.empty:
+        return
     fig, axes = plt.subplots(2, 2, figsize=(12, 9))
     axes_flat = axes.flatten()
     for ax, (col, subtitle) in zip(axes_flat, panels):
         if col not in d.columns:
             ax.set_visible(False)
             continue
-        ax.plot(d["event_time_t"], d[col], marker="o")
-        ax.axvline(x=0, color="red", linestyle="--", linewidth=1)
+        ax.plot(d["date"], d[col], marker="o")
+        add_release_markers(ax)
+        format_month_start_axis(ax)
         ax.set_title(subtitle)
-        ax.set_xlabel(event_time_xlabel_text)
+        ax.set_xlabel("Date (UTC)")
         ax.set_ylabel(col)
     fig.suptitle("Event-time: Style proxies (pooled)", fontsize=14)
     fig.tight_layout()
@@ -149,7 +195,8 @@ def plot_style_panel_pooled(df: pd.DataFrame, out_path: Path, *, event_time_xlab
 
 
 def plot_ai_likeness_components_pooled(df: pd.DataFrame, out_path: Path, *, event_time_xlabel_text: str) -> None:
-    """Function summary: plot z-scored AI-likeness input components on one pooled figure."""
+    """Function summary: plot z-scored AI-likeness input components on one pooled date-based figure."""
+    _ = event_time_xlabel_text
     cols = [
         "z_ai_word_rate_100w",
         "z_formality_balance_100w",
@@ -159,14 +206,17 @@ def plot_ai_likeness_components_pooled(df: pd.DataFrame, out_path: Path, *, even
     ]
     if df.empty or not all(c in df.columns for c in cols):
         return
-    d = df.sort_values("event_time_t")
+    d = ensure_date_column(df).sort_values("date")
+    if d.empty:
+        return
     plt.figure(figsize=(11, 6))
     for col in cols:
-        plt.plot(d["event_time_t"], d[col], marker="o", label=col, linewidth=1.4)
-    plt.axvline(x=0, color="red", linestyle="--", linewidth=1)
+        plt.plot(d["date"], d[col], marker="o", label=col, linewidth=1.4)
+    add_release_markers(plt.gca())
+    format_month_start_axis(plt.gca())
     plt.axhline(y=0, color="gray", linestyle=":", linewidth=0.8)
     plt.title("Event-time: AI-likeness index components (z-scores, pooled)")
-    plt.xlabel(event_time_xlabel_text)
+    plt.xlabel("Date (UTC)")
     plt.ylabel("z-score")
     plt.legend(loc="best", fontsize=8)
     plt.tight_layout()
@@ -177,11 +227,15 @@ def plot_ai_likeness_components_pooled(df: pd.DataFrame, out_path: Path, *, even
 def plot_ai_word_individual_plus_combined(
     ai_word_long_df: pd.DataFrame, out_path: Path, *, event_time_xlabel_text: str
 ) -> None:
-    """Function summary: plot strict individual word rates and strict combined rate in one graph."""
+    """Function summary: plot strict individual word rates and strict combined rate on a calendar-date axis."""
+    _ = event_time_xlabel_text
     subset = ai_word_long_df[
         (ai_word_long_df["subreddit"] == "ALL")
         & (ai_word_long_df["word_group"].isin(["strict_individual", "strict_combined"]))
     ].copy()
+    if subset.empty:
+        return
+    subset = ensure_date_column(subset)
     if subset.empty:
         return
 
@@ -190,27 +244,29 @@ def plot_ai_word_individual_plus_combined(
     plot_df["series"] = plot_df["word"]
     sns.lineplot(
         data=plot_df,
-        x="event_time_t",
+        x="date",
         y="rate_100w",
         hue="series",
         marker="o",
+        palette="tab20",
         linewidth=1.6,
     )
 
     combined_mask = plot_df["series"] == "strict_10_combined"
     if combined_mask.any():
-        combined_df = plot_df[combined_mask].sort_values("event_time_t")
+        combined_df = plot_df[combined_mask].sort_values("date")
         plt.plot(
-            combined_df["event_time_t"],
+            combined_df["date"],
             combined_df["rate_100w"],
             linestyle="--",
             linewidth=3.0,
             label="strict_10_combined",
         )
 
-    plt.axvline(x=0, color="red", linestyle="--", linewidth=1)
+    add_release_markers(plt.gca())
+    format_month_start_axis(plt.gca())
     plt.title("Event-time: Strict AI Word Rates (10 Individual + Combined)")
-    plt.xlabel(event_time_xlabel_text)
+    plt.xlabel("Date (UTC)")
     plt.ylabel("Rate per 100 words")
     plt.legend(title="Series", loc="best")
     plt.tight_layout()

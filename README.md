@@ -40,9 +40,10 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
    - `.venv/bin/python scripts/user_same_day_cross_forum.py --config config/political_forums_setup.yaml`
    - Uses cleaned input: `data/interim/political_forums/cleaned_monthly_chunks/`
    - Writes `results/tables/user_overlap/user_same_day_cross_forum_summary.csv`, `user_same_day_cross_forum_distribution.csv`, and `user_same_day_cross_forum_pairwise.csv`.
-9. Pre-cleaning data-quality trend analysis (percentages, ChatGPT event marker):
+9. Pre-cleaning data-quality trend analysis (percentages, ChatGPT/GPT-4 event markers):
    - `.venv/bin/python scripts/plot_data_quality_trends.py --config config/political_forums_setup.yaml`
    - Writes tables to `results/tables/data_quality_trends/` and figures to `results/figures/data_quality_trends/`.
+   - Uses calendar-date month-start ticks and red dotted vertical markers at `2022-11-30` and `2023-03-14`.
 10. Deterministic cleaning pass for interim analysis dataset:
    - `.venv/bin/python scripts/clean_daily_chunks.py --config config/political_forums_setup.yaml`
    - Writes cleaned monthly Parquet files to `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`.
@@ -50,11 +51,17 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
 11. Event-time metric preparation (subreddit + pooled, lexical/structure/toxicity proxies):
    - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml`
    - Writes tables to `results/tables/event_time/` and compatibility export to `results/tables/event_time_daily_metrics.csv`.
+   - For fast benchmarking without full-run wait time, use bounded sampling controls:
+     - `--max_month_files_per_subreddit`, `--max_total_month_files`, `--max_days_per_month`
+     - optional phase profiling via `--profile` / `--profile_output ...json`
+     - optional month-level parallel processing via `--workers N`
 12. Event-time plotting:
    - `.venv/bin/python scripts/plot_event_time_metrics.py --config config/political_forums_setup.yaml`
    - Writes pooled figures to `results/figures/event_time/` (lexicon, style proxies, toxicity, strict-vs-extended overlay, style panel, z-score components).
    - Writes per-subreddit overlays to `results/figures/event_time/by_subreddit/`.
    - Includes one figure with strict 10-word individual rates plus strict-10 combined rate in one graph (pooled).
+   - Uses calendar-date x-axes with month-start ticks, plus red dotted release markers for ChatGPT (`2022-11-30`) and GPT-4 (`2023-03-14`).
+   - Multi-line subreddit overlays use explicit high-contrast palettes for clearer line separation.
 13. Optional sampled LLM-detector robustness table (CPU-only default heuristic, optional HF model):
    - `.venv/bin/python scripts/run_llm_detector_sample.py --config config/political_forums_setup.yaml`
    - Optional HF detector branch: add `--use_hf_model` (requires `transformers` installed in `.venv`).
@@ -90,7 +97,7 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
   - `results/tables/user_overlap/`: Cross-forum overlap and same-day overlap analysis tables.
 - `results/tables/event_time/`: Event-time metric aggregates, lexicon trajectories, and optional sampled detector outputs.
   - `results/logs/filter_dump/`: Dump filtering run logs and resumable state files.
-  - `results/figures/data_quality_trends/`: Daily percentage trend plots with launch-day marker.
+- `results/figures/data_quality_trends/`: Daily percentage trend plots with ChatGPT and GPT-4 release markers.
 - `results/figures/event_time/`: Event-time figures for linguistic, AI-style, and toxicity proxies.
 - `Projects/`, `Decisions/`: Obsidian durable memory notes.
 - `Templates/`: Standardized lightweight note templates.
@@ -120,7 +127,7 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
 - Use `scripts/dedupe_daily_chunks.py` when needed to remove duplicate comment ids introduced by interrupted/restarted filtering.
 - Use `scripts/user_overlap_across_forums.py` to check how many users post in more than one target subreddit (exact match on Reddit's globally-unique `author` field; `[deleted]` and known bots excluded by default).
 - Use `scripts/user_same_day_cross_forum.py` for a stricter, temporally-aligned overlap check: same user posting in >=2 different subreddits on the same UTC day.
-- Use `scripts/plot_data_quality_trends.py` before cleaning decisions to inspect indicator behavior over time around launch day (`2022-11-30`).
+- Use `scripts/plot_data_quality_trends.py` before cleaning decisions to inspect indicator behavior over time around key release dates (`2022-11-30` and `2023-03-14`) with month-start tick alignment.
 - Trend metrics include: `rows_total`, `body_removed_count`, `body_deleted_count`, `author_deleted_count`, `automod_author_count`, `stickied_count`, and exploratory `bot_name_heuristic_count` plus daily percent rates.
 - Trend figures are percentage-based for comparability across variable daily volume; absolute counts remain available in the output tables.
 - For moderation automation, use `author == "AutoModerator"` as the canonical plotted series. A documented near-equivalence check on an earlier narrow window found only one mismatch row versus `distinguished == "moderator"` (AutoModerator with null distinguished).
@@ -146,7 +153,7 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
   - strict 10-word and extended AI-typical word rates
   - formality markers, list-structure intensity, repetition/template similarity, assistant-tone phrase rate
   - toxicity proxies: VADER negativity mean and lexical toxic incidence rate
-- Use `scripts/plot_event_time_metrics.py` to render event-time plots, including a combined figure with strict 10 individual word trajectories plus strict-10 combined trajectory.
+- Use `scripts/plot_event_time_metrics.py` to render date-based trend plots, including a combined figure with strict 10 individual word trajectories plus strict-10 combined trajectory.
 - Use `scripts/run_llm_detector_sample.py` for optional sampled robustness scoring:
   - deterministic stratified sampling by subreddit x day
   - default free heuristic LLM-style score
