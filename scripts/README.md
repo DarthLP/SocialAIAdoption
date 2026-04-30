@@ -78,18 +78,33 @@ Configuration default:
 - Run:
   - `.venv/bin/python scripts/clean_daily_chunks.py --config config/political_forums_setup.yaml`
 
-### 5) Build event-time metric tables (required for event-time plotting)
-- Script: `prepare_event_time_metrics.py`
-- Why: Aggregates cleaned daily comments into subreddit-level and pooled event-time metrics.
+### 5) Compute reusable per-comment feature shards (recommended before event-time aggregation)
+- Script: `compute_comment_features.py`
+- Why: Computes reusable comment-level metrics once (detector, passive proxy, perplexity, hostility, emotions, and lexical/style channels), then reuses them in aggregation/validation.
 - Input layer: `data/interim/political_forums/cleaned_monthly_chunks/`
+- Output layer:
+  - `data/interim/political_forums/comment_features/<subreddit>/<YYYY-MM>.parquet`
+- Run:
+  - `.venv/bin/python scripts/compute_comment_features.py --config config/political_forums_setup.yaml`
+- Fast-run options:
+  - bounded scope: `--max_month_files_per_subreddit`, `--max_total_month_files`, `--max_days_per_month`
+  - profiling: `--profile`, `--profile_output ...json`
+  - incremental rerun controls: `--overwrite`, `--subreddits`, `--months`
+  - runtime tuning: `--batch_size`, `--device auto|mps|cpu`, `--workers`
+
+### 6) Build event-time metric tables (required for event-time plotting)
+- Script: `prepare_event_time_metrics.py`
+- Why: Aggregates subreddit-level and pooled event-time metrics, preferably from reusable `comment_features` shards.
+- Input layer: `data/interim/political_forums/comment_features/` (preferred) or `data/interim/political_forums/cleaned_monthly_chunks/` (fallback)
 - Output layer:
   - `results/tables/event_time/event_time_daily_metrics_by_subreddit.csv`
   - `results/tables/event_time/event_time_daily_metrics_pooled.csv`
   - `results/tables/event_time/ai_word_rates_daily_long.csv`
+  - `results/tables/event_time/comment_feature_validation_associations.csv` (when comment features are used)
   - `results/tables/event_time/event_time_metrics_notes.txt`
   - `results/tables/event_time_daily_metrics.csv` (compatibility export)
 - Run:
-  - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml`
+  - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml --prefer_comment_features`
 - Performance/bounded-benchmark options:
   - Sample one month file per subreddit with phase timing:
     - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml --max_month_files_per_subreddit 1 --profile`
@@ -98,21 +113,31 @@ Configuration default:
   - Optional month-level parallelism on faster storage:
     - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml --workers 4`
 
-### 6) Create event-time figures (required for visual analysis)
+### 7) Create event-time figures (required for visual analysis)
 - Script: `plot_event_time_metrics.py`
 - Why: Generates pooled and per-subreddit trend figures across linguistic, AI-style, and toxicity proxies.
 - Input layer: `results/tables/event_time/*` (or compatibility file when needed)
 - Output layer:
-  - `results/figures/event_time/*`
-  - `results/figures/event_time/by_subreddit/*`
+  - `results/figures/event_time/pooled/{daily,weekly,rolling_daily}/*`
+  - `results/figures/event_time/by_subreddit/{daily,weekly,rolling_daily}/*`
+  - `results/figures/event_time/by_topic/{daily,weekly,rolling_daily}/*` (when `--topic_views` is enabled)
 - Notes:
   - Plots use calendar-date x-axes with month-start ticks (`YYYY-MM-01`), not relative day offsets.
   - Draws vertical red dotted markers at `2022-11-30` and `2023-03-14`.
   - Applies explicit high-contrast palette assignment in multi-line subreddit figures.
 - Run:
   - `.venv/bin/python scripts/plot_event_time_metrics.py --config config/political_forums_setup.yaml`
+  - Topic-level daily/weekly/rolling-daily views:
+    - `.venv/bin/python scripts/plot_event_time_metrics.py --config config/political_forums_setup.yaml --topic_views --topic_rolling_window 7`
+  - Topic map used in topic-level figures:
+    - `coding`: `AskProgramming`, `CodingHelp`, `learnprogramming`
+    - `politics`: `Ask_Politics`, `NeutralPolitics`, `PoliticalDiscussion`, `politics`, `moderatepolitics`
+    - `career`: `cscareerquestions`, `ITCareerQuestions`, `csMajors`
+    - `general_questions`: `answers`, `OutOfTheLoop`, `TooAfraidToAsk`
+  - Pooled, per-subreddit, and optional per-topic figures are split into view folders:
+    - `daily/`, `weekly/`, `rolling_daily/`
 
-### 7) Optional sampled detector robustness check
+### 8) Optional sampled detector robustness check
 - Script: `run_llm_detector_sample.py`
 - Why: Adds an optional robustness layer using sampled detector-like scoring.
 - Input layer: `data/interim/political_forums/cleaned_monthly_chunks/`
@@ -122,7 +147,7 @@ Configuration default:
   - Heuristic only: `.venv/bin/python scripts/run_llm_detector_sample.py --config config/political_forums_setup.yaml`
   - Optional HF model: `.venv/bin/python scripts/run_llm_detector_sample.py --config config/political_forums_setup.yaml --use_hf_model`
 
-### 8) Optional user-overlap diagnostics (after cleaning)
+### 9) Optional user-overlap diagnostics (after cleaning)
 - Script: `user_overlap_across_forums.py`
 - Why: Measures cross-forum author overlap across the configured forum set.
 - Input layer: `data/interim/political_forums/cleaned_monthly_chunks/`
@@ -130,7 +155,7 @@ Configuration default:
 - Run:
   - `.venv/bin/python scripts/user_overlap_across_forums.py --config config/political_forums_setup.yaml`
 
-### 9) Optional same-day cross-forum activity diagnostics (after cleaning)
+### 10) Optional same-day cross-forum activity diagnostics (after cleaning)
 - Script: `user_same_day_cross_forum.py`
 - Why: Focuses on users active in multiple forums on the same UTC day.
 - Input layer: `data/interim/political_forums/cleaned_monthly_chunks/`
@@ -145,7 +170,8 @@ Configuration default:
 - `data/raw/.../daily_chunks/` -> `dedupe_daily_chunks.py` (optional) -> deduped raw chunks
 - `data/raw/.../daily_chunks/` -> `plot_data_quality_trends.py` -> quality tables/figures in `results/`
 - `data/raw/.../daily_chunks/` -> `clean_daily_chunks.py` -> `data/interim/.../cleaned_monthly_chunks/`
-- `data/interim/.../cleaned_monthly_chunks/` -> `prepare_event_time_metrics.py` -> `results/tables/event_time/`
+- `data/interim/.../cleaned_monthly_chunks/` -> `compute_comment_features.py` -> `data/interim/.../comment_features/`
+- `data/interim/.../comment_features/` -> `prepare_event_time_metrics.py --prefer_comment_features` -> `results/tables/event_time/`
 - `results/tables/event_time/` -> `plot_event_time_metrics.py` -> `results/figures/event_time/`
 - `data/interim/.../cleaned_monthly_chunks/` -> overlap and sampled-detector scripts (optional) -> `results/tables/*`
 
@@ -156,8 +182,9 @@ Configuration default:
 2. `dedupe_daily_chunks.py --apply` (when restart overlap risk exists)
 3. `plot_data_quality_trends.py`
 4. `clean_daily_chunks.py`
-5. `prepare_event_time_metrics.py`
-6. `plot_event_time_metrics.py`
+5. `compute_comment_features.py`
+6. `prepare_event_time_metrics.py --prefer_comment_features`
+7. `plot_event_time_metrics.py`
 
 Optional additions after step 4:
 - `run_llm_detector_sample.py`

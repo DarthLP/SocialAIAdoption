@@ -170,6 +170,7 @@ class RuntimePaths:
     """Function summary: store resolved runtime input and output paths for this script."""
 
     cleaned_monthly_chunks_dir: Path
+    comment_features_dir: Path
     event_time_tables_dir: Path
     tables_dir: Path
 
@@ -271,6 +272,11 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Optional path to write profiling JSON payload.",
     )
+    parser.add_argument(
+        "--prefer_comment_features",
+        action="store_true",
+        help="Prefer aggregating from data/interim/.../comment_features if available.",
+    )
     return parser.parse_args()
 
 
@@ -282,6 +288,7 @@ def build_paths(config: Dict[str, Any]) -> RuntimePaths:
     event_time_tables_dir.mkdir(parents=True, exist_ok=True)
     return RuntimePaths(
         cleaned_monthly_chunks_dir=interim_dir / "cleaned_monthly_chunks",
+        comment_features_dir=interim_dir / "comment_features",
         event_time_tables_dir=event_time_tables_dir,
         tables_dir=tables_dir,
     )
@@ -654,6 +661,201 @@ def aggregate_daily_metrics(
     return metrics_df, ai_word_long_df, stats
 
 
+def aggregate_daily_metrics_from_comment_features(
+    comment_features_dir: Path,
+    subreddits: list[str],
+    max_month_files_per_subreddit: int,
+    max_total_month_files: int,
+) -> tuple[pd.DataFrame, pd.DataFrame, ProfilingStats, pd.DataFrame]:
+    """Function summary: aggregate daily subreddit metrics directly from reusable comment-level feature parquet shards."""
+    rows: list[Dict[str, Any]] = []
+    ai_word_long_rows: list[Dict[str, Any]] = []
+    validation_rows: list[Dict[str, Any]] = []
+    stats = ProfilingStats()
+    month_jobs = list(
+        iter_monthly_files(
+            comment_features_dir,
+            subreddits,
+            max_month_files_per_subreddit=max_month_files_per_subreddit,
+            max_total_month_files=max_total_month_files,
+        )
+    )
+    for subreddit, file_path in month_jobs:
+        print(
+            f"[prepare_event_time_metrics] feature_source_start subreddit={subreddit} month={file_path.stem}",
+            flush=True,
+        )
+        t0 = time.perf_counter()
+        frame = pd.read_parquet(file_path)
+        stats.phase_read_s += time.perf_counter() - t0
+        stats.rows_read += int(len(frame))
+        if frame.empty:
+            print(
+                f"[prepare_event_time_metrics] feature_source_empty subreddit={subreddit} month={file_path.stem}",
+                flush=True,
+            )
+            continue
+        stats.files_processed += 1
+        required = {"date_utc", "n_words_comment", "strict_ai_word_hits_total", "extended_ai_word_hits_total"}
+        missing = sorted(required.difference(frame.columns))
+        if missing:
+            raise ValueError(f"Missing required columns {missing} in comment feature file: {file_path}")
+        if "subreddit" in frame.columns:
+            frame = frame[frame["subreddit"].astype("string") == subreddit].copy()
+        if frame.empty:
+            continue
+
+        for date_utc, group in frame.groupby("date_utc", sort=True):
+            def numeric_series(col: str, default: float = 0.0) -> pd.Series:
+                """Function summary: return one numeric pandas series for a column or a default-valued fallback series."""
+                if col in group.columns:
+                    return pd.to_numeric(group[col], errors="coerce")
+                return pd.Series([default] * len(group), index=group.index, dtype="float64")
+
+            n_comments = int(len(group))
+            n_words = int(numeric_series("n_words_comment", default=0.0).fillna(0.0).sum())
+            if n_comments <= 0:
+                continue
+            strict_total_hits = int(pd.to_numeric(group["strict_ai_word_hits_total"], errors="coerce").fillna(0.0).sum())
+            extended_total_hits = int(pd.to_numeric(group["extended_ai_word_hits_total"], errors="coerce").fillna(0.0).sum())
+            semicolon_total = float(numeric_series("semicolon_count", default=0.0).fillna(0.0).sum())
+            contraction_total = float(numeric_series("contraction_count", default=0.0).fillna(0.0).sum())
+            full_form_total = float(numeric_series("full_form_count", default=0.0).fillna(0.0).sum())
+            assistant_tone_total = float(numeric_series("assistant_tone_phrase_count", default=0.0).fillna(0.0).sum())
+            toxic_lexicon_total = float(numeric_series("toxic_lexicon_hits", default=0.0).fillna(0.0).sum())
+            sum_words = float(numeric_series("n_words_comment", default=0.0).fillna(0.0).sum())
+            sum_word_chars = float(numeric_series("total_word_chars_comment", default=0.0).fillna(0.0).sum())
+            sum_sentences = float(numeric_series("sentence_count_comment", default=0.0).fillna(0.0).sum())
+            complexity_index = compute_complexity_index(
+                total_sentences=int(sum_sentences),
+                total_words=int(sum_words),
+                total_word_chars=int(sum_word_chars),
+                n_comments=n_comments,
+            )
+            perplexity_series = numeric_series("perplexity")
+            row = {
+                "subreddit": subreddit,
+                "date_utc": str(date_utc),
+                "n_comments": n_comments,
+                "n_words": n_words,
+                "semicolon_rate_100w": safe_rate_100w(semicolon_total, n_words),
+                "comment_length_words": float(pd.to_numeric(group["comment_length_words"], errors="coerce").fillna(0.0).mean()),
+                "complexity_index": float(complexity_index),
+                "ai_word_rate_100w": safe_rate_100w(strict_total_hits, n_words),
+                "ai_word_extended_rate_100w": safe_rate_100w(extended_total_hits, n_words),
+                "vader_compound_mean": float(numeric_series("vader_compound", default=0.0).fillna(0.0).mean()),
+                "vader_negativity_mean": float(numeric_series("vader_negativity", default=0.0).fillna(0.0).mean()),
+                "toxicity_score": float(numeric_series("toxicity_score_comment", default=0.0).fillna(0.0).mean()),
+                "toxic_lexicon_rate_100w": safe_rate_100w(toxic_lexicon_total, n_words),
+                "contraction_rate_100w": safe_rate_100w(contraction_total, n_words),
+                "full_form_rate_100w": safe_rate_100w(full_form_total, n_words),
+                "formality_balance_100w": safe_rate_100w(full_form_total - contraction_total, n_words),
+                "list_structure_intensity": float(numeric_series("list_structure_flag", default=0.0).fillna(0.0).mean()),
+                "repetition_template_similarity": float(
+                    numeric_series("repetition_template_similarity", default=0.0).fillna(0.0).mean()
+                ),
+                "assistant_tone_rate_100w": safe_rate_100w(assistant_tone_total, n_words),
+                "strict_ai_word_hits_total": strict_total_hits,
+                "extended_ai_word_hits_total": extended_total_hits,
+                "detector_primary_human_score": float(
+                    numeric_series("detector_primary_human_score").dropna().mean()
+                ),
+                "detector_secondary_human_score": float(
+                    numeric_series("detector_secondary_human_score").dropna().mean()
+                ),
+                "hostility_score": float(numeric_series("hostility_score").dropna().mean()),
+                "emotion_anger": float(numeric_series("emotion_anger").dropna().mean()),
+                "emotion_fear": float(numeric_series("emotion_fear").dropna().mean()),
+                "emotion_sadness": float(numeric_series("emotion_sadness").dropna().mean()),
+                "emotion_surprise": float(numeric_series("emotion_surprise").dropna().mean()),
+                "passive_rate_100w": safe_rate_100w(
+                    numeric_series("passive_count", default=0.0).fillna(0.0).sum(), n_words
+                ),
+                "perplexity_mean": float(perplexity_series.dropna().mean()),
+                "coverage_detector_primary": float(numeric_series("detector_primary_human_score").notna().mean()),
+                "coverage_detector_secondary": float(numeric_series("detector_secondary_human_score").notna().mean()),
+                "coverage_perplexity": float(perplexity_series.notna().mean()),
+                "coverage_hostility": float(numeric_series("hostility_score").notna().mean()),
+                "coverage_emotion": float(numeric_series("emotion_anger").notna().mean()),
+                "detector_low_confidence_share": float((group["detector_confidence_flag"] == "low").mean())
+                if "detector_confidence_flag" in group.columns
+                else 0.0,
+            }
+            rows.append(row)
+
+            for word in STRICT_AI_WORDS:
+                col_name = f"strict_word_count__{word}"
+                hits = int(numeric_series(col_name, default=0.0).fillna(0.0).sum())
+                ai_word_long_rows.append(
+                    {
+                        "subreddit": subreddit,
+                        "date_utc": str(date_utc),
+                        "word": word,
+                        "word_group": "strict_individual",
+                        "hits": hits,
+                        "rate_100w": safe_rate_100w(hits, n_words),
+                        "n_words": n_words,
+                    }
+                )
+            ai_word_long_rows.append(
+                {
+                    "subreddit": subreddit,
+                    "date_utc": str(date_utc),
+                    "word": "strict_10_combined",
+                    "word_group": "strict_combined",
+                    "hits": strict_total_hits,
+                    "rate_100w": safe_rate_100w(strict_total_hits, n_words),
+                    "n_words": n_words,
+                }
+            )
+            ai_word_long_rows.append(
+                {
+                    "subreddit": subreddit,
+                    "date_utc": str(date_utc),
+                    "word": "extended_combined",
+                    "word_group": "extended_combined",
+                    "hits": extended_total_hits,
+                    "rate_100w": safe_rate_100w(extended_total_hits, n_words),
+                    "n_words": n_words,
+                }
+            )
+
+        stats.days_processed += int(frame["date_utc"].nunique())
+        stats.comments_processed += int(len(frame))
+        assoc_subset = frame[["comment_length_words", "passive_rate_100w", "perplexity", "detector_primary_human_score"]].copy()
+        if not assoc_subset.empty:
+            assoc_corr = assoc_subset.corr(numeric_only=True)
+            validation_rows.append(
+                {
+                    "subreddit": subreddit,
+                    "month": file_path.stem,
+                    "corr_human_vs_length": float(assoc_corr.loc["detector_primary_human_score", "comment_length_words"])
+                    if "detector_primary_human_score" in assoc_corr.index and "comment_length_words" in assoc_corr.columns
+                    else float("nan"),
+                    "corr_human_vs_passive": float(assoc_corr.loc["detector_primary_human_score", "passive_rate_100w"])
+                    if "detector_primary_human_score" in assoc_corr.index and "passive_rate_100w" in assoc_corr.columns
+                    else float("nan"),
+                    "corr_human_vs_perplexity": float(assoc_corr.loc["detector_primary_human_score", "perplexity"])
+                    if "detector_primary_human_score" in assoc_corr.index and "perplexity" in assoc_corr.columns
+                    else float("nan"),
+                    "n_comments": int(len(frame)),
+                }
+            )
+        print(
+            f"[prepare_event_time_metrics] feature_source_done subreddit={subreddit} month={file_path.stem} "
+            f"days={int(frame['date_utc'].nunique())} comments={int(len(frame))}",
+            flush=True,
+        )
+    metrics_df = pd.DataFrame(rows).sort_values(["subreddit", "date_utc"]).reset_index(drop=True) if rows else pd.DataFrame()
+    ai_word_long_df = (
+        pd.DataFrame(ai_word_long_rows).sort_values(["subreddit", "date_utc", "word_group", "word"]).reset_index(drop=True)
+        if ai_word_long_rows
+        else pd.DataFrame()
+    )
+    validation_df = pd.DataFrame(validation_rows).sort_values(["subreddit", "month"]).reset_index(drop=True) if validation_rows else pd.DataFrame()
+    return metrics_df, ai_word_long_df, stats, validation_df
+
+
 def add_event_time_columns(df: pd.DataFrame, launch_ts: int) -> pd.DataFrame:
     """Function summary: attach date and event-time offset columns relative to launch day."""
     out = df.copy()
@@ -727,6 +929,64 @@ def build_pooled_daily(metrics_df: pd.DataFrame, ai_word_long_df: pd.DataFrame, 
                 "assistant_tone_rate_100w": safe_rate_100w((group["assistant_tone_rate_100w"] * group["n_words"] / 100.0).sum(), n_words),
                 "strict_ai_word_hits_total": int(group["strict_ai_word_hits_total"].sum()),
                 "extended_ai_word_hits_total": int(group["extended_ai_word_hits_total"].sum()),
+                "detector_primary_human_score": float(
+                    group["detector_primary_human_score"].mul(group["n_comments"]).sum() / float(n_comments)
+                )
+                if "detector_primary_human_score" in group.columns
+                else float("nan"),
+                "detector_secondary_human_score": float(
+                    group["detector_secondary_human_score"].mul(group["n_comments"]).sum() / float(n_comments)
+                )
+                if "detector_secondary_human_score" in group.columns
+                else float("nan"),
+                "passive_rate_100w": safe_rate_100w(
+                    (group["passive_rate_100w"] * group["n_words"] / 100.0).sum(),
+                    n_words,
+                )
+                if "passive_rate_100w" in group.columns
+                else float("nan"),
+                "perplexity_mean": float(group["perplexity_mean"].mul(group["n_comments"]).sum() / float(n_comments))
+                if "perplexity_mean" in group.columns
+                else float("nan"),
+                "hostility_score": float(group["hostility_score"].mul(group["n_comments"]).sum() / float(n_comments))
+                if "hostility_score" in group.columns
+                else float("nan"),
+                "emotion_anger": float(group["emotion_anger"].mul(group["n_comments"]).sum() / float(n_comments))
+                if "emotion_anger" in group.columns
+                else float("nan"),
+                "emotion_fear": float(group["emotion_fear"].mul(group["n_comments"]).sum() / float(n_comments))
+                if "emotion_fear" in group.columns
+                else float("nan"),
+                "emotion_sadness": float(group["emotion_sadness"].mul(group["n_comments"]).sum() / float(n_comments))
+                if "emotion_sadness" in group.columns
+                else float("nan"),
+                "emotion_surprise": float(group["emotion_surprise"].mul(group["n_comments"]).sum() / float(n_comments))
+                if "emotion_surprise" in group.columns
+                else float("nan"),
+                "coverage_detector_primary": float(
+                    group["coverage_detector_primary"].mul(group["n_comments"]).sum() / float(n_comments)
+                )
+                if "coverage_detector_primary" in group.columns
+                else float("nan"),
+                "coverage_detector_secondary": float(
+                    group["coverage_detector_secondary"].mul(group["n_comments"]).sum() / float(n_comments)
+                )
+                if "coverage_detector_secondary" in group.columns
+                else float("nan"),
+                "coverage_perplexity": float(group["coverage_perplexity"].mul(group["n_comments"]).sum() / float(n_comments))
+                if "coverage_perplexity" in group.columns
+                else float("nan"),
+                "coverage_hostility": float(group["coverage_hostility"].mul(group["n_comments"]).sum() / float(n_comments))
+                if "coverage_hostility" in group.columns
+                else float("nan"),
+                "coverage_emotion": float(group["coverage_emotion"].mul(group["n_comments"]).sum() / float(n_comments))
+                if "coverage_emotion" in group.columns
+                else float("nan"),
+                "detector_low_confidence_share": float(
+                    group["detector_low_confidence_share"].mul(group["n_comments"]).sum() / float(n_comments)
+                )
+                if "detector_low_confidence_share" in group.columns
+                else float("nan"),
             }
         )
     pooled_df = pd.DataFrame(pooled_rows).sort_values("date_utc").reset_index(drop=True)
@@ -770,6 +1030,14 @@ def write_notes(path: Path) -> None:
         "Toxicity channels:",
         "- toxicity_score: VADER negativity mean = mean(max(0, -compound)).",
         "- toxic_lexicon_rate_100w: lexical incidence per 100 words from a lightweight toxic lexicon.",
+        "- hostility_score: classifier-derived hostility probability mean (when comment_features are available).",
+        "",
+        "Additional comment-feature metrics (when available):",
+        "- detector_primary_human_score / detector_secondary_human_score: detector-based human-likelihood means.",
+        "- passive_rate_100w: passive-construction proxy rate per 100 words.",
+        "- perplexity_mean: average language-model perplexity.",
+        "- emotion_anger/fear/sadness/surprise: mean emotion classifier scores.",
+        "- coverage_* columns: per-day non-null coverage by metric.",
         "",
         "AI-likeness index (z-score composite):",
         "- z(ai_word_rate_100w) + z(formality_balance_100w) + z(assistant_tone_rate_100w)",
@@ -788,18 +1056,35 @@ def main() -> None:
     subreddits = list(config["subreddits"]["primary"])
     paths = build_paths(config)
 
-    metrics_df, ai_word_long_df, stats = aggregate_daily_metrics(
-        cleaned_monthly_chunks_dir=paths.cleaned_monthly_chunks_dir,
-        subreddits=subreddits,
-        similarity_window=int(args.similarity_window),
-        min_words_for_similarity=int(args.min_words_for_similarity),
-        max_month_files_per_subreddit=int(args.max_month_files_per_subreddit),
-        max_total_month_files=int(args.max_total_month_files),
-        max_days_per_month=int(args.max_days_per_month),
-        workers=max(1, int(args.workers)),
+    validation_df = pd.DataFrame()
+    use_comment_features = bool(args.prefer_comment_features) and paths.comment_features_dir.exists()
+    print(
+        f"[prepare_event_time_metrics] mode={'comment_features' if use_comment_features else 'legacy_cleaned_chunks'} "
+        f"prefer_comment_features={bool(args.prefer_comment_features)}",
+        flush=True,
     )
+    if use_comment_features:
+        metrics_df, ai_word_long_df, stats, validation_df = aggregate_daily_metrics_from_comment_features(
+            comment_features_dir=paths.comment_features_dir,
+            subreddits=subreddits,
+            max_month_files_per_subreddit=int(args.max_month_files_per_subreddit),
+            max_total_month_files=int(args.max_total_month_files),
+        )
+    else:
+        metrics_df, ai_word_long_df, stats = aggregate_daily_metrics(
+            cleaned_monthly_chunks_dir=paths.cleaned_monthly_chunks_dir,
+            subreddits=subreddits,
+            similarity_window=int(args.similarity_window),
+            min_words_for_similarity=int(args.min_words_for_similarity),
+            max_month_files_per_subreddit=int(args.max_month_files_per_subreddit),
+            max_total_month_files=int(args.max_total_month_files),
+            max_days_per_month=int(args.max_days_per_month),
+            workers=max(1, int(args.workers)),
+        )
     if metrics_df.empty:
-        raise FileNotFoundError(f"No cleaned monthly chunk files found under: {paths.cleaned_monthly_chunks_dir}")
+        raise FileNotFoundError(
+            f"No metric source files found under: {paths.comment_features_dir if use_comment_features else paths.cleaned_monthly_chunks_dir}"
+        )
 
     post_started_at = time.perf_counter()
     metrics_df = add_event_time_columns(metrics_df, launch_ts)
@@ -816,6 +1101,8 @@ def main() -> None:
     metrics_df.to_csv(paths.event_time_tables_dir / "event_time_daily_metrics_by_subreddit.csv", index=False)
     pooled_df.to_csv(paths.event_time_tables_dir / "event_time_daily_metrics_pooled.csv", index=False)
     ai_word_long_df.to_csv(paths.event_time_tables_dir / "ai_word_rates_daily_long.csv", index=False)
+    if not validation_df.empty:
+        validation_df.to_csv(paths.event_time_tables_dir / "comment_feature_validation_associations.csv", index=False)
     write_notes(paths.event_time_tables_dir / "event_time_metrics_notes.txt")
 
     # Backward-compatible export for existing figure script convention.

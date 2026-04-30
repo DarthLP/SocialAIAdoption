@@ -9,3 +9,6 @@ tqdm
 PyYAML
 zstandard
 orjson
+transformers
+torch
+sentencepiece

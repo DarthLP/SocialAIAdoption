@@ -40,6 +40,7 @@ from pathlib import Path
 import re
 import sys
 from collections import defaultdict
+import time
 from typing import Any, Dict
 
 import pandas as pd
@@ -427,6 +428,7 @@ def main() -> None:
     files = list_daily_chunk_files(raw_daily_dir, subreddits)
     if not files:
         raise FileNotFoundError(f"No daily chunk files found under: {raw_daily_dir}")
+    print(f"[clean_daily_chunks] discovered_daily_files={len(files)}", flush=True)
 
     audits: list[Dict[str, Any]] = []
     grouped_files: dict[tuple[str, str], list[Path]] = defaultdict(list)
@@ -436,13 +438,27 @@ def main() -> None:
     schema_summary_rows: list[Dict[str, Any]] = []
     schema_issue_rows: list[Dict[str, Any]] = []
     schema_invalid_row_samples: list[Dict[str, Any]] = []
-    for (subreddit, year_month), month_files in sorted(grouped_files.items()):
+    grouped_items = sorted(grouped_files.items())
+    started_at = time.perf_counter()
+    for idx, ((subreddit, year_month), month_files) in enumerate(grouped_items, start=1):
+        print(
+            f"[clean_daily_chunks] month_start {idx}/{len(grouped_items)} subreddit={subreddit} month={year_month} files={len(month_files)}",
+            flush=True,
+        )
         monthly_records: list[Dict[str, Any]] = []
-        for in_path in sorted(month_files):
+        for file_idx, in_path in enumerate(sorted(month_files), start=1):
             date_utc = in_path.stem
+            print(
+                f"[clean_daily_chunks] file_start subreddit={subreddit} month={year_month} file={file_idx}/{len(month_files)} date={date_utc}",
+                flush=True,
+            )
             counters, kept_records = clean_one_file(in_path=in_path, subreddit=subreddit, date_utc=date_utc)
             audits.append(counters)
             monthly_records.extend(kept_records)
+            print(
+                f"[clean_daily_chunks] file_done subreddit={subreddit} date={date_utc} rows_input={counters['rows_input']} rows_kept={counters['rows_kept']}",
+                flush=True,
+            )
         cleaned_df, summary, issues, invalid_samples = apply_schema_and_collect_issues(
             records=monthly_records,
             subreddit=subreddit,
@@ -457,10 +473,16 @@ def main() -> None:
         schema_summary_rows.append(summary)
         schema_issue_rows.extend(issues)
         schema_invalid_row_samples.extend(invalid_samples)
+        elapsed = time.perf_counter() - started_at
+        print(
+            f"[clean_daily_chunks] month_done subreddit={subreddit} month={year_month} rows_after_schema={summary['rows_after_schema']} elapsed_s={elapsed:.1f}",
+            flush=True,
+        )
 
     audit_df = pd.DataFrame(audits)
     write_audit_outputs(audit_df, tables_dir)
     write_schema_outputs(schema_summary_rows, schema_issue_rows, schema_invalid_row_samples, tables_dir)
+    print("[clean_daily_chunks] done wrote_audits_and_schema_outputs=true", flush=True)
 
 
 if __name__ == "__main__":

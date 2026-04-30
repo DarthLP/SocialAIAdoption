@@ -48,21 +48,35 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
    - `.venv/bin/python scripts/clean_daily_chunks.py --config config/political_forums_setup.yaml`
    - Writes cleaned monthly Parquet files to `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`.
    - Writes cleaning audits to `results/tables/cleaning/clean_daily_chunks_audit_by_day.csv`, `results/tables/cleaning/clean_daily_chunks_audit_by_subreddit.csv`, `results/tables/cleaning/clean_daily_chunks_notes.txt`, and schema-coercion diagnostics (`clean_daily_chunks_schema_*.csv`).
-11. Event-time metric preparation (subreddit + pooled, lexical/structure/toxicity proxies):
-   - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml`
+11. Reusable per-comment feature extraction (recommended before event-time aggregation):
+   - `.venv/bin/python scripts/compute_comment_features.py --config config/political_forums_setup.yaml`
+   - Writes `data/interim/political_forums/comment_features/<subreddit>/<YYYY-MM>.parquet`.
+   - Keeps all comments (including short comments) and adds confidence/coverage metadata.
+   - Fast-run controls: `--device auto|mps|cpu`, `--batch_size`, `--workers`, `--max_month_files_per_subreddit`, `--max_total_month_files`, `--max_days_per_month`, `--profile`, `--overwrite`.
+12. Event-time metric preparation (subreddit + pooled, lexical/structure/toxicity proxies):
+   - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml --prefer_comment_features`
    - Writes tables to `results/tables/event_time/` and compatibility export to `results/tables/event_time_daily_metrics.csv`.
+   - Writes validation associations to `results/tables/event_time/comment_feature_validation_associations.csv` when comment-features are used.
    - For fast benchmarking without full-run wait time, use bounded sampling controls:
      - `--max_month_files_per_subreddit`, `--max_total_month_files`, `--max_days_per_month`
      - optional phase profiling via `--profile` / `--profile_output ...json`
      - optional month-level parallel processing via `--workers N`
-12. Event-time plotting:
+13. Event-time plotting:
    - `.venv/bin/python scripts/plot_event_time_metrics.py --config config/political_forums_setup.yaml`
-   - Writes pooled figures to `results/figures/event_time/` (lexicon, style proxies, toxicity, strict-vs-extended overlay, style panel, z-score components).
-   - Writes per-subreddit overlays to `results/figures/event_time/by_subreddit/`.
+   - Writes pooled figures to `results/figures/event_time/pooled/{daily,weekly,rolling_daily}/` (lexicon, style proxies, toxicity, strict-vs-extended overlay, style panel, z-score components).
+   - Writes per-subreddit overlays to `results/figures/event_time/by_subreddit/{daily,weekly,rolling_daily}/`.
    - Includes one figure with strict 10-word individual rates plus strict-10 combined rate in one graph (pooled).
    - Uses calendar-date x-axes with month-start ticks, plus red dotted release markers for ChatGPT (`2022-11-30`) and GPT-4 (`2023-03-14`).
    - Multi-line subreddit overlays use explicit high-contrast palettes for clearer line separation.
-13. Optional sampled LLM-detector robustness table (CPU-only default heuristic, optional HF model):
+  - Optional topic-level views (daily, weekly, rolling-daily):
+     - `.venv/bin/python scripts/plot_event_time_metrics.py --config config/political_forums_setup.yaml --topic_views --topic_rolling_window 7`
+     - Writes topic overlays to `results/figures/event_time/by_topic/{daily,weekly,rolling_daily}/`.
+     - Topic map:
+       - `coding`: `AskProgramming`, `CodingHelp`, `learnprogramming`
+       - `politics`: `Ask_Politics`, `NeutralPolitics`, `PoliticalDiscussion`, `politics`, `moderatepolitics`
+       - `career`: `cscareerquestions`, `ITCareerQuestions`, `csMajors`
+       - `general_questions`: `answers`, `OutOfTheLoop`, `TooAfraidToAsk`
+14. Optional sampled LLM-detector robustness table (CPU-only default heuristic, optional HF model):
    - `.venv/bin/python scripts/run_llm_detector_sample.py --config config/political_forums_setup.yaml`
    - Optional HF detector branch: add `--use_hf_model` (requires `transformers` installed in `.venv`).
    - Writes `results/tables/event_time/llm_detector_sample_scores_daily.csv`.
@@ -118,7 +132,7 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
 ## Dependencies
 - Core Python packages are listed in `requirements.txt`.
 - Key packages: `pandas`, `pyarrow`, `zstandard`, `orjson`, `PyYAML`, `matplotlib`, `seaborn`, `textstat`, `vaderSentiment`.
-- Optional package for sampled detector robustness branch: `transformers`.
+- Optional model-feature packages: `transformers`, `torch`, `sentencepiece`.
 
 ## Usage
 - For script-by-script execution order, short purpose, I/O data layers, and exact run commands, see `scripts/README.md`.
@@ -153,6 +167,7 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
   - strict 10-word and extended AI-typical word rates
   - formality markers, list-structure intensity, repetition/template similarity, assistant-tone phrase rate
   - toxicity proxies: VADER negativity mean and lexical toxic incidence rate
+- Additional reusable comment-feature outputs include detector-based human scores, passive proxy rate, perplexity, hostility score, emotion scores (anger/fear/sadness/surprise), and per-day coverage columns.
 - Use `scripts/plot_event_time_metrics.py` to render date-based trend plots, including a combined figure with strict 10 individual word trajectories plus strict-10 combined trajectory.
 - Use `scripts/run_llm_detector_sample.py` for optional sampled robustness scoring:
   - deterministic stratified sampling by subreddit x day
