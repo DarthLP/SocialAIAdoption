@@ -49,10 +49,9 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
    - Writes cleaned monthly Parquet files to `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`.
    - Writes cleaning audits to `results/tables/cleaning/clean_daily_chunks_audit_by_day.csv`, `results/tables/cleaning/clean_daily_chunks_audit_by_subreddit.csv`, `results/tables/cleaning/clean_daily_chunks_notes.txt`, and schema-coercion diagnostics (`clean_daily_chunks_schema_*.csv`).
 11. Reusable per-comment feature extraction (recommended before event-time aggregation):
-   - `.venv/bin/python scripts/compute_comment_features.py --config config/political_forums_setup.yaml`
-   - Writes `data/interim/political_forums/comment_features/<subreddit>/<YYYY-MM>.parquet`.
-   - Keeps all comments (including short comments) and adds confidence/coverage metadata.
-   - Fast-run controls: `--device auto|mps|cpu`, `--batch_size`, `--workers`, `--max_month_files_per_subreddit`, `--max_total_month_files`, `--max_days_per_month`, `--profile`, `--overwrite`.
+   - **Single-machine (default):** `.venv/bin/python scripts/compute_comment_features.py --config config/political_forums_setup.yaml` writes `data/interim/political_forums/comment_features/<subreddit>/<YYYY-MM>.parquet` (lexical + HF models together; `--device auto|mps|cpu`).
+   - **Split Colab GPU + laptop CPU:** (1) On Colab upload and run only [`colab_compute_comment_features_gpu.ipynb`](notebooks/colab_compute_comment_features_gpu.ipynb): the notebook is self-contained (embedded config + inlined inference from `src/comment_feature_models.py`); sync `cleaned_monthly_chunks` from Drive → run cells with GPU runtime when `DEVICE = "cuda"` → sync `comment_features_ml/` back to Drive. No Git clone and no subprocess to repo scripts on Colab. (2) On this machine copy Drive’s `comment_features_ml/` into `data/interim/political_forums/comment_features_ml/` and run `.venv/bin/python scripts/merge_ml_shards_into_comment_features.py --config config/political_forums_setup.yaml` to merge ML shards with locally computed lexical fields into `comment_features/` (same schema as the monolithic script).
+   - Fast-run controls (both ML and lexical scripts mirror the bounded flags where applicable): `--batch_size`, `--workers`, `--max_month_files_per_subreddit`, `--max_total_month_files`, `--max_days_per_month`, `--profile`, `--overwrite`, `--subreddits`, `--months`.
 12. Event-time metric preparation (subreddit + pooled, lexical/structure/toxicity proxies):
    - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml --prefer_comment_features`
    - Writes tables to `results/tables/event_time/` and compatibility export to `results/tables/event_time_daily_metrics.csv`.
@@ -100,6 +99,7 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
 - `.cursor/rules/`: Cursor operational rules.
 - `src/`: Reusable Python modules.
 - `scripts/`: Reproducible run entrypoints (filtering + plotting).
+- `notebooks/`: Self-contained Colab notebook(s) (e.g. ML comment features + Drive sync; source kept in repo via `scripts/_gen_colab_standalone_nb.py` when YAML or inference code changes).
 - `config/`: Run configuration files.
 - `data/raw/political_forums/daily_chunks/`: Filtered per-subreddit per-day comments.
 - `data/interim/`, `data/processed/`: Intermediate and model-ready data layers.

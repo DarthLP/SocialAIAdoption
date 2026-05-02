@@ -79,18 +79,17 @@ Configuration default:
   - `.venv/bin/python scripts/clean_daily_chunks.py --config config/political_forums_setup.yaml`
 
 ### 5) Compute reusable per-comment feature shards (recommended before event-time aggregation)
-- Script: `compute_comment_features.py`
-- Why: Computes reusable comment-level metrics once (detector, passive proxy, perplexity, hostility, emotions, and lexical/style channels), then reuses them in aggregation/validation.
-- Input layer: `data/interim/political_forums/cleaned_monthly_chunks/`
-- Output layer:
-  - `data/interim/political_forums/comment_features/<subreddit>/<YYYY-MM>.parquet`
-- Run:
-  - `.venv/bin/python scripts/compute_comment_features.py --config config/political_forums_setup.yaml`
-- Fast-run options:
-  - bounded scope: `--max_month_files_per_subreddit`, `--max_total_month_files`, `--max_days_per_month`
-  - profiling: `--profile`, `--profile_output ...json`
-  - incremental rerun controls: `--overwrite`, `--subreddits`, `--months`
-  - runtime tuning: `--batch_size`, `--device auto|mps|cpu`, `--workers`
+- **Monolithic (local / one pass):** `compute_comment_features.py`
+  - Why: Computes lexical/style/toxicity proxies plus HF-based detector, hostility, emotion, perplexity in one parquet tree.
+  - Input: `data/interim/political_forums/cleaned_monthly_chunks/`
+  - Output: `data/interim/political_forums/comment_features/<subreddit>/<YYYY-MM>.parquet`
+  - Run: `.venv/bin/python scripts/compute_comment_features.py --config config/political_forums_setup.yaml`
+  - Device: `--device auto|mps|cpu`, plus `--batch_size`, `--workers`, bounded flags, `--profile`, `--overwrite`, filters.
+- **Split Colab GPU + laptop finalize (merge + lexical):**
+  - `merge_ml_shards_into_comment_features.py`: reads `cleaned_monthly_chunks/`, merges optional **`comment_features_ml/`** shards by `id` (e.g. from Colab), computes lexical/rule fields using the same logic as `compute_comment_features.py` (shared via import), writes **`comment_features/`** for downstream steps.
+  - Colab: [`notebooks/colab_compute_comment_features_gpu.ipynb`](../notebooks/colab_compute_comment_features_gpu.ipynb) runs **standalone** (embedded YAML + inlined inference helpers; **no** clone, **no** call to repo scripts). Drive sync pulls `cleaned_monthly_chunks` in and checkpoints `comment_features_ml` back; GPU runtime + `DEVICE="cuda"` for CUDA.
+  - **Maintainers:** regenerate that notebook after edits to `config/political_forums_setup.yaml` or `src/comment_feature_models.py`: `.venv/bin/python scripts/_gen_colab_standalone_nb.py`.
+  - Laptop: copy Drive `comment_features_ml/` into interim, then `.venv/bin/python scripts/merge_ml_shards_into_comment_features.py --config config/political_forums_setup.yaml` (same bounded/filter flags).
 
 ### 6) Build event-time metric tables (required for event-time plotting)
 - Script: `prepare_event_time_metrics.py`
@@ -170,7 +169,7 @@ Configuration default:
 - `data/raw/.../daily_chunks/` -> `dedupe_daily_chunks.py` (optional) -> deduped raw chunks
 - `data/raw/.../daily_chunks/` -> `plot_data_quality_trends.py` -> quality tables/figures in `results/`
 - `data/raw/.../daily_chunks/` -> `clean_daily_chunks.py` -> `data/interim/.../cleaned_monthly_chunks/`
-- `data/interim/.../cleaned_monthly_chunks/` -> `compute_comment_features.py` -> `data/interim/.../comment_features/`
+- `data/interim/.../cleaned_monthly_chunks/` -> `compute_comment_features.py` **or** (`colab_compute_comment_features_gpu.ipynb` → `comment_features_ml/` then `merge_ml_shards_into_comment_features.py`) -> `data/interim/.../comment_features/` (optional intermediate `comment_features_ml/` when using the split path)
 - `data/interim/.../comment_features/` -> `prepare_event_time_metrics.py --prefer_comment_features` -> `results/tables/event_time/`
 - `results/tables/event_time/` -> `plot_event_time_metrics.py` -> `results/figures/event_time/`
 - `data/interim/.../cleaned_monthly_chunks/` -> overlap and sampled-detector scripts (optional) -> `results/tables/*`
