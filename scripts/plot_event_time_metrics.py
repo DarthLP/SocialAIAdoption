@@ -3,8 +3,10 @@ Script summary:
 This script reads daily event-time metric tables and creates event-time line
 plots for semicolon rate, comment length, complexity index, AI-likeness,
 AI-typical word intensity, style proxies (assistant-tone, list structure,
-repetition similarity, formality), extended lexicon rates, and toxicity-related
-proxies. It writes pooled figures, per-subreddit multi-line figures, optional
+repetition similarity, formality), extended lexicon rates, typography and
+Markdown proxy rates (em/en dash, ASCII double-hyphen, colon, parens, curly
+quotes, bold/heading), hedging/polite/signposting phrase rates,
+avg words per sentence, and toxicity-related proxies. It writes pooled figures, per-subreddit multi-line figures, optional
 per-topic (daily/weekly/rolling) multi-line figures, one combined strict-10
 word graph (pooled), and a pooled multi-panel style overview.
 
@@ -48,9 +50,21 @@ WORD_WEIGHT_COLS = [
     "assistant_tone_rate_100w",
     "formality_balance_100w",
     "passive_rate_100w",
+    "em_dash_rate_100w",
+    "en_dash_rate_100w",
+    "ascii_double_hyphen_rate_100w",
+    "colon_rate_100w",
+    "open_paren_rate_100w",
+    "curly_quote_rate_100w",
+    "markdown_bold_pair_rate_100w",
+    "markdown_heading_line_rate_100w",
+    "hedging_phrase_rate_100w",
+    "polite_closer_rate_100w",
+    "signposting_phrase_rate_100w",
 ]
 COMMENT_WEIGHT_COLS = [
     "comment_length_words",
+    "avg_words_per_sentence_mean",
     "complexity_index",
     "vader_compound_mean",
     "vader_negativity_mean",
@@ -635,6 +649,38 @@ def main() -> None:
 
     pooled_specs: list[tuple[str, str, str]] = [
         ("semicolon_rate_100w", "Event-time: Semicolon Rate (per 100 words)", "event_time_semicolon_rate.png"),
+        ("em_dash_rate_100w", "Event-time: Em Dash Rate (per 100 words)", "event_time_em_dash_rate.png"),
+        ("en_dash_rate_100w", "Event-time: En Dash Rate (per 100 words)", "event_time_en_dash_rate.png"),
+        (
+            "ascii_double_hyphen_rate_100w",
+            "Event-time: ASCII Double-hyphen (` -- `) Rate (per 100 words)",
+            "event_time_ascii_double_hyphen_rate.png",
+        ),
+        ("colon_rate_100w", "Event-time: Colon Rate (per 100 words)", "event_time_colon_rate.png"),
+        ("open_paren_rate_100w", "Event-time: Open-parenthesis Rate (per 100 words)", "event_time_open_paren_rate.png"),
+        ("curly_quote_rate_100w", "Event-time: Curly Quote Characters (per 100 words)", "event_time_curly_quote_rate.png"),
+        (
+            "markdown_bold_pair_rate_100w",
+            "Event-time: Markdown Bold Pair Rate (per 100 words)",
+            "event_time_markdown_bold_pair_rate.png",
+        ),
+        (
+            "markdown_heading_line_rate_100w",
+            "Event-time: Markdown Heading Line Rate (per 100 words)",
+            "event_time_markdown_heading_line_rate.png",
+        ),
+        ("hedging_phrase_rate_100w", "Event-time: Hedging Phrase Rate (per 100 words)", "event_time_hedging_phrase_rate.png"),
+        ("polite_closer_rate_100w", "Event-time: Polite-closer Phrase Rate (per 100 words)", "event_time_polite_closer_rate.png"),
+        (
+            "signposting_phrase_rate_100w",
+            "Event-time: Signposting Phrase Rate (per 100 words)",
+            "event_time_signposting_phrase_rate.png",
+        ),
+        (
+            "avg_words_per_sentence_mean",
+            "Event-time: Mean Words per Sentence",
+            "event_time_avg_words_per_sentence.png",
+        ),
         ("comment_length_words", "Event-time: Average Comment Length (words)", "event_time_comment_length.png"),
         ("complexity_index", "Event-time: Complexity Index", "event_time_complexity_index.png"),
         ("ai_likeness_index", "Event-time: AI-likeness Index", "event_time_ai_likeness.png"),
@@ -748,6 +794,34 @@ def main() -> None:
     if not df_by_sub.empty:
         by_sub_specs: list[tuple[str, str, str]] = [
             ("semicolon_rate_100w", "Per-subreddit: Semicolon Rate (per 100 words)", "event_time_semicolon_rate.png"),
+            ("em_dash_rate_100w", "Per-subreddit: Em Dash Rate (per 100 words)", "event_time_em_dash_rate.png"),
+            ("en_dash_rate_100w", "Per-subreddit: En Dash Rate (per 100 words)", "event_time_en_dash_rate.png"),
+            (
+                "ascii_double_hyphen_rate_100w",
+                "Per-subreddit: ASCII Double-hyphen Rate (per 100 words)",
+                "event_time_ascii_double_hyphen_rate.png",
+            ),
+            ("colon_rate_100w", "Per-subreddit: Colon Rate (per 100 words)", "event_time_colon_rate.png"),
+            ("open_paren_rate_100w", "Per-subreddit: Open-parenthesis Rate (per 100 words)", "event_time_open_paren_rate.png"),
+            ("curly_quote_rate_100w", "Per-subreddit: Curly Quote Rate (per 100 words)", "event_time_curly_quote_rate.png"),
+            (
+                "markdown_bold_pair_rate_100w",
+                "Per-subreddit: Markdown Bold Pair Rate (per 100 words)",
+                "event_time_markdown_bold_pair_rate.png",
+            ),
+            (
+                "markdown_heading_line_rate_100w",
+                "Per-subreddit: Markdown Heading Line Rate (per 100 words)",
+                "event_time_markdown_heading_line_rate.png",
+            ),
+            ("hedging_phrase_rate_100w", "Per-subreddit: Hedging Phrase Rate (per 100 words)", "event_time_hedging_phrase_rate.png"),
+            ("polite_closer_rate_100w", "Per-subreddit: Polite-closer Rate (per 100 words)", "event_time_polite_closer_rate.png"),
+            (
+                "signposting_phrase_rate_100w",
+                "Per-subreddit: Signposting Phrase Rate (per 100 words)",
+                "event_time_signposting_phrase_rate.png",
+            ),
+            ("avg_words_per_sentence_mean", "Per-subreddit: Mean Words per Sentence", "event_time_avg_words_per_sentence.png"),
             ("comment_length_words", "Per-subreddit: Average Comment Length (words)", "event_time_comment_length.png"),
             ("complexity_index", "Per-subreddit: Complexity Index", "event_time_complexity_index.png"),
             ("ai_likeness_index", "Per-subreddit: AI-likeness Index", "event_time_ai_likeness.png"),
@@ -817,6 +891,34 @@ def main() -> None:
     if args.topic_views and not df_by_sub.empty:
         topic_specs: list[tuple[str, str, str]] = [
             ("semicolon_rate_100w", "Per-topic ({view}): Semicolon Rate (per 100 words)", "event_time_semicolon_rate.png"),
+            ("em_dash_rate_100w", "Per-topic ({view}): Em Dash Rate (per 100 words)", "event_time_em_dash_rate.png"),
+            ("en_dash_rate_100w", "Per-topic ({view}): En Dash Rate (per 100 words)", "event_time_en_dash_rate.png"),
+            (
+                "ascii_double_hyphen_rate_100w",
+                "Per-topic ({view}): ASCII Double-hyphen Rate (per 100 words)",
+                "event_time_ascii_double_hyphen_rate.png",
+            ),
+            ("colon_rate_100w", "Per-topic ({view}): Colon Rate (per 100 words)", "event_time_colon_rate.png"),
+            ("open_paren_rate_100w", "Per-topic ({view}): Open-parenthesis Rate (per 100 words)", "event_time_open_paren_rate.png"),
+            ("curly_quote_rate_100w", "Per-topic ({view}): Curly Quote Rate (per 100 words)", "event_time_curly_quote_rate.png"),
+            (
+                "markdown_bold_pair_rate_100w",
+                "Per-topic ({view}): Markdown Bold Pair Rate (per 100 words)",
+                "event_time_markdown_bold_pair_rate.png",
+            ),
+            (
+                "markdown_heading_line_rate_100w",
+                "Per-topic ({view}): Markdown Heading Line Rate (per 100 words)",
+                "event_time_markdown_heading_line_rate.png",
+            ),
+            ("hedging_phrase_rate_100w", "Per-topic ({view}): Hedging Phrase Rate (per 100 words)", "event_time_hedging_phrase_rate.png"),
+            ("polite_closer_rate_100w", "Per-topic ({view}): Polite-closer Rate (per 100 words)", "event_time_polite_closer_rate.png"),
+            (
+                "signposting_phrase_rate_100w",
+                "Per-topic ({view}): Signposting Phrase Rate (per 100 words)",
+                "event_time_signposting_phrase_rate.png",
+            ),
+            ("avg_words_per_sentence_mean", "Per-topic ({view}): Mean Words per Sentence", "event_time_avg_words_per_sentence.png"),
             ("comment_length_words", "Per-topic ({view}): Average Comment Length (words)", "event_time_comment_length.png"),
             ("complexity_index", "Per-topic ({view}): Complexity Index", "event_time_complexity_index.png"),
             ("ai_likeness_index", "Per-topic ({view}): AI-likeness Index", "event_time_ai_likeness.png"),

@@ -381,7 +381,8 @@ MERGE_NOTE = """## After Colab finishes (laptop)
 
 1. Sync `comment_features_ml` from Drive → `data/interim/political_forums/comment_features_ml/` in your repo checkout.
 2. Run: `.venv/bin/python scripts/merge_ml_shards_into_comment_features.py --config config/political_forums_setup.yaml`
-3. Proceed with `prepare_event_time_metrics.py --prefer_comment_features`."""
+3. (Optional) `.venv/bin/python scripts/compute_daily_repetition_similarity.py --config config/political_forums_setup.yaml`
+4. `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml`"""
 
 
 def main() -> None:

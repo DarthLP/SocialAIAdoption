@@ -3,8 +3,9 @@ Script summary:
 Merges optional Colab-produced `comment_features_ml/` Parquet shards by comment `id` into
 feature rows computed from cleaned monthly chunks. Lexical/rule-based fields reuse the same
 implementations as `compute_comment_features.py` (loaded via importlib); ML columns come from
-the ML shards when present. Writes the combined schema under `comment_features/` so
-`prepare_event_time_metrics.py --prefer_comment_features` works unchanged.
+the ML shards when present. Output shards include `author` and `created_utc` when present in
+cleaned Parquet. Writes the combined schema under `comment_features/` for
+`prepare_event_time_metrics.py`.
 
 Typical workflow:
 1. Colab: standalone `colab_compute_comment_features_gpu.ipynb` → `interim_dir/comment_features_ml/`
@@ -143,12 +144,26 @@ def _final_column_order() -> list[str]:
         "id",
         "subreddit",
         "date_utc",
+        "author",
+        "created_utc",
         "body",
         "n_words_comment",
         "comment_length_words",
         "length_bucket",
         "detector_confidence_flag",
         "semicolon_count",
+        "em_dash_count",
+        "en_dash_count",
+        "ascii_double_hyphen_count",
+        "colon_count",
+        "open_paren_count",
+        "curly_quote_count",
+        "markdown_bold_pair_count",
+        "markdown_heading_line_count",
+        "hedging_phrase_hits",
+        "polite_closer_hits",
+        "signposting_phrase_hits",
+        "avg_words_per_sentence_comment",
         "total_word_chars_comment",
         "sentence_count_comment",
         "vader_compound",
@@ -198,16 +213,51 @@ def build_lexical_records(frame: pd.DataFrame) -> list[Dict[str, Any]]:
         full_form_hits = int(_ccf.count_full_form_occurrences(text_lc))
         passive_hits = int(len(_ccf.PASSIVE_RE.findall(text)))
         passive_rate = (float(passive_hits) / float(n_words) * 100.0) if n_words > 0 else 0.0
+        em_dash_count = int(text.count("\u2014"))
+        en_dash_count = int(text.count("\u2013"))
+        ascii_double_hyphen_count = int(_ccf.count_ascii_double_hyphen(text))
+        colon_count = int(text.count(":"))
+        open_paren_count = int(text.count("("))
+        curly_quote_count = int(_ccf.count_curly_quotes(text))
+        markdown_bold_pair_count = int(_ccf.count_markdown_bold_pairs(text))
+        markdown_heading_line_count = int(_ccf.count_markdown_heading_lines(text))
+        hedging_phrase_hits = int(_ccf.sum_phrase_hits(text_lc, _ccf.HEDGING_PATTERNS))
+        polite_closer_hits = int(_ccf.sum_phrase_hits(text_lc, _ccf.POLITE_CLOSER_PATTERNS))
+        signposting_phrase_hits = int(_ccf.sum_phrase_hits(text_lc, _ccf.SIGNPOSTING_PATTERNS))
+        avg_wps = float(_ccf.avg_words_per_sentence(n_words, sentence_count))
+        author_val = str(getattr(row, "author", "") or "")
+        created_raw = getattr(row, "created_utc", pd.NA)
+        if pd.isna(created_raw):
+            created_out: Any = pd.NA
+        else:
+            try:
+                created_out = int(created_raw)
+            except (TypeError, ValueError):
+                created_out = pd.NA
         record: Dict[str, Any] = {
             "id": str(getattr(row, "id", "") or ""),
             "subreddit": str(getattr(row, "subreddit", "") or ""),
             "date_utc": str(getattr(row, "date_utc", "") or ""),
+            "author": author_val,
+            "created_utc": created_out,
             "body": text,
             "n_words_comment": int(n_words),
             "comment_length_words": float(n_words),
             "length_bucket": _ccf.length_bucket(n_words),
             "detector_confidence_flag": _ccf.detector_confidence_flag(n_words),
             "semicolon_count": int(text.count(";")),
+            "em_dash_count": int(em_dash_count),
+            "en_dash_count": int(en_dash_count),
+            "ascii_double_hyphen_count": int(ascii_double_hyphen_count),
+            "colon_count": int(colon_count),
+            "open_paren_count": int(open_paren_count),
+            "curly_quote_count": int(curly_quote_count),
+            "markdown_bold_pair_count": int(markdown_bold_pair_count),
+            "markdown_heading_line_count": int(markdown_heading_line_count),
+            "hedging_phrase_hits": int(hedging_phrase_hits),
+            "polite_closer_hits": int(polite_closer_hits),
+            "signposting_phrase_hits": int(signposting_phrase_hits),
+            "avg_words_per_sentence_comment": float(avg_wps),
             "total_word_chars_comment": int(total_word_chars),
             "sentence_count_comment": int(sentence_count),
             "vader_compound": float(compound),
@@ -275,7 +325,7 @@ def process_month_merge(
 
     print(f"{_PROJECT_LOG} start subreddit={subreddit} month={file_path.stem}", flush=True)
     t_read = time.perf_counter()
-    frame = pd.read_parquet(file_path, columns=["id", "subreddit", "date_utc", "body"])
+    frame = _ccf.read_cleaned_month_for_features(file_path)
     stats.phase_read_s += time.perf_counter() - t_read
     frame = frame[frame["subreddit"].astype("string") == subreddit].copy()
     frame["body"] = frame["body"].astype("string").fillna("")

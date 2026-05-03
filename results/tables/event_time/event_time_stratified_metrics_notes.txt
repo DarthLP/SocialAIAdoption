@@ -1,0 +1,19 @@
+Stratified Event-Time Metrics Notes
+===================================
+
+Launch anchor (UTC): 2022-11-30
+Earliest observed history in default pipeline (event_window.start_utc): 2022-11-01
+
+User cohort (per author, per subreddit):
+- old: first observed created_utc in that subreddit is strictly before launch.
+- new: first observed created_utc is on or after launch.
+- new_first_comment: subset of rows that are the author's debut in that subreddit (min created_utc, tie-break min id) AND cohort is new.
+
+Left-censoring:
+- Cohorts use earliest appearance in comment_features only. True first posts before the corpus start can be missing,
+  so some users may be labeled new when they are not.
+
+Length buckets (from comment_features.length_bucket):
+- short: <20 words; medium: 20-49; long: >=50.
+
+Stratified tables intentionally omit repetition_template_similarity (Jaccard stream metric).

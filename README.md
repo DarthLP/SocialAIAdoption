@@ -49,17 +49,18 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
    - Writes cleaned monthly Parquet files to `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`.
    - Writes cleaning audits to `results/tables/cleaning/clean_daily_chunks_audit_by_day.csv`, `results/tables/cleaning/clean_daily_chunks_audit_by_subreddit.csv`, `results/tables/cleaning/clean_daily_chunks_notes.txt`, and schema-coercion diagnostics (`clean_daily_chunks_schema_*.csv`).
 11. Reusable per-comment feature extraction (recommended before event-time aggregation):
-   - **Single-machine (default):** `.venv/bin/python scripts/compute_comment_features.py --config config/political_forums_setup.yaml` writes `data/interim/political_forums/comment_features/<subreddit>/<YYYY-MM>.parquet` (lexical + HF models together; `--device auto|mps|cpu`).
+   - **Single-machine (default):** `.venv/bin/python scripts/compute_comment_features.py --config config/political_forums_setup.yaml` writes `data/interim/political_forums/comment_features/<subreddit>/<YYYY-MM>.parquet` (lexical + HF models together; `--device auto|mps|cpu`; includes `author` and `created_utc` when present in cleaned Parquet).
    - **Split Colab GPU + laptop CPU:** (1) On Colab upload and run only [`colab_compute_comment_features_gpu.ipynb`](notebooks/colab_compute_comment_features_gpu.ipynb): the notebook is self-contained (embedded config + inlined inference from `src/comment_feature_models.py`); sync `cleaned_monthly_chunks` from Drive → run cells with GPU runtime when `DEVICE = "cuda"` → sync `comment_features_ml/` back to Drive. No Git clone and no subprocess to repo scripts on Colab. (2) On this machine copy Drive’s `comment_features_ml/` into `data/interim/political_forums/comment_features_ml/` and run `.venv/bin/python scripts/merge_ml_shards_into_comment_features.py --config config/political_forums_setup.yaml` to merge ML shards with locally computed lexical fields into `comment_features/` (same schema as the monolithic script).
    - Fast-run controls (both ML and lexical scripts mirror the bounded flags where applicable): `--batch_size`, `--workers`, `--max_month_files_per_subreddit`, `--max_total_month_files`, `--max_days_per_month`, `--profile`, `--overwrite`, `--subreddits`, `--months`.
+11b. (Optional) Daily repetition / template similarity for event-time merge:
+   - `.venv/bin/python scripts/compute_daily_repetition_similarity.py --config config/political_forums_setup.yaml` writes `results/tables/event_time/repetition_daily_by_subreddit.csv` from cleaned monthly chunks (ordered by `created_utc` within each day).
 12. Event-time metric preparation (subreddit + pooled, lexical/structure/toxicity proxies):
-   - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml --prefer_comment_features`
+   - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml` (requires `comment_features/`; merges repetition CSV when present).
    - Writes tables to `results/tables/event_time/` and compatibility export to `results/tables/event_time_daily_metrics.csv`.
    - Writes validation associations to `results/tables/event_time/comment_feature_validation_associations.csv` when comment-features are used.
    - For fast benchmarking without full-run wait time, use bounded sampling controls:
      - `--max_month_files_per_subreddit`, `--max_total_month_files`, `--max_days_per_month`
      - optional phase profiling via `--profile` / `--profile_output ...json`
-     - optional month-level parallel processing via `--workers N`
 13. Event-time plotting:
    - `.venv/bin/python scripts/plot_event_time_metrics.py --config config/political_forums_setup.yaml`
    - Writes pooled figures to `results/figures/event_time/pooled/{daily,weekly,rolling_daily}/` (lexicon, style proxies, toxicity, strict-vs-extended overlay, style panel, z-score components).
@@ -75,6 +76,16 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
        - `politics`: `Ask_Politics`, `NeutralPolitics`, `PoliticalDiscussion`, `politics`, `moderatepolitics`
        - `career`: `cscareerquestions`, `ITCareerQuestions`, `csMajors`
        - `general_questions`: `answers`, `OutOfTheLoop`, `TooAfraidToAsk`
+13b. Optional stratified pooled event-time (old / new / new users’ debut comments; length buckets; no Jaccard repetition):
+   - `.venv/bin/python scripts/prepare_event_time_stratified_metrics.py --config config/political_forums_setup.yaml`
+   - `.venv/bin/python scripts/plot_event_time_stratified_metrics.py --config config/political_forums_setup.yaml`
+   - Tables: `results/tables/event_time/event_time_daily_metrics_pooled_by_user_cohort.csv`, `..._by_length_bucket.csv`, `event_time_length_bucket_daily_shares_pooled.csv`, notes in `event_time_stratified_metrics_notes.txt`.
+   - Figures: `results/figures/event_time/stratified_pooled/user_series/{daily,weekly,rolling_daily}/` and `stratified_pooled/length_bucket/{daily,weekly,rolling_daily}/` (length-bucket plots omit detector/perplexity/hostility/emotion/coverage metrics as nonsensical for that stratifier).
+   - Cohort definitions use earliest observed post per `(author, subreddit)` vs `launch_day_utc` (left-censoring if history starts after true first post); see notes file.
+13c. Optional within-user pre/post style shift analysis (author × ISO-week layer, parallel to event-time):
+   - `.venv/bin/python scripts/prepare_user_week_style_panel.py --config config/political_forums_setup.yaml` builds a per-author per-ISO-week style panel from `comment_features/`, persisting both display rates / weighted means and the raw hit counts / sums-of-squares needed for precision-aware pooled estimates (`data/interim/political_forums/user_week_style_panel/<YYYY-MM>.parquet`, merged at `results/tables/user_week/user_week_panel.parquet`). Author hygiene drops empty / `[deleted]` / `AutoModerator` / `bot`-substring accounts.
+   - `.venv/bin/python scripts/analyze_user_pre_post_shift.py --config config/political_forums_setup.yaml` produces per-user shift tables for two parallel comparisons: a **weekly view** (word-weighted mean and Kish-corrected SD across pre vs post weeks, std_delta with a winsorized SD floor, robust MAD variant, Welch-style across-weeks t) and a **pooled-comments view** (rate features use Poisson SE on raw hit counts, binary-mean uses binomial SE, mean features use sumsq-derived SE, composite SE via independence-approx delta method on z-scaled components). Hard pre+post requirement: pre-only / post-only / below-thresholds users surface in `shift_audit_per_user_<cohort>.csv` and the audit_* rows of `shift_summary_<cohort>.csv` instead of being silently dropped. Composite z-scales are frozen on the pre-launch user-week pool (`composite_zscale_pre_<cohort>.json`). Topic-stable sub-cohort, topic-stratified rows, inverse-variance weighted pooled effect, agreement diagnostic between weekly and pooled views, and a placebo run with the launch shifted back `--placebo_offset_weeks` weeks (default 8) all live in the summary CSV. Default cohorts: **strict** (≥4 good pre weeks AND ≥4 good post weeks, ≥100 words/week, ≥400 words/period) and **loose** (≥2/≥2, ≥30 words/week, ≥100 words/period); both are produced by default.
+   - `.venv/bin/python scripts/plot_user_pre_post_shift.py --config config/political_forums_setup.yaml` renders the figure set under `results/figures/user_week/<cohort>/`: `dist_std_delta_composite.png`, `dist_t_user_pooled_composite.png`, `weekly_vs_pooled_scatter.png`, `components_grid.png`, `spaghetti_sample.png`, `mirror_top_movers.png`. Spaghetti and mirror plots use the same red dotted release markers (`2022-11-30`, `2023-03-14`) as the event-time figures.
 14. Optional sampled LLM-detector robustness table (CPU-only default heuristic, optional HF model):
    - `.venv/bin/python scripts/run_llm_detector_sample.py --config config/political_forums_setup.yaml`
    - Optional HF detector branch: add `--use_hf_model` (requires `transformers` installed in `.venv`).
@@ -111,6 +122,8 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
   - `results/tables/user_overlap/`: Cross-forum overlap and same-day overlap analysis tables.
 - `results/tables/event_time/`: Event-time metric aggregates, lexicon trajectories, and optional sampled detector outputs.
   - `results/logs/filter_dump/`: Dump filtering run logs and resumable state files.
+- `results/tables/user_week/`: Author × ISO-week panel and within-user pre/post shift outputs (`user_week_panel.parquet`, `shift_per_user_<cohort>.csv`, `shift_summary_<cohort>.csv`, `shift_audit_per_user_<cohort>.csv`, `composite_zscale_pre_<cohort>.json`, `shift_methods_note.txt`).
+- `results/figures/user_week/<cohort>/`: Within-user shift figures (composite distribution, weekly-vs-pooled scatter, components grid, spaghetti sample, top-mover mirror plot).
 - `results/figures/data_quality_trends/`: Daily percentage trend plots with ChatGPT and GPT-4 release markers.
 - `results/figures/event_time/`: Event-time figures for linguistic, AI-style, and toxicity proxies.
 - `Projects/`, `Decisions/`: Obsidian durable memory notes.
@@ -160,7 +173,7 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
 - Interim cleaned storage is Parquet-only and month-per-forum at `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`.
 - `scripts/clean_daily_chunks.py` enforces a fixed schema for interim data and writes mismatch/coercion diagnostics under `results/tables/cleaning/clean_daily_chunks_schema_*.csv`.
 - The filter supports `--worker_mode one|two|auto`; default is `one` (sequential: every required month file runs in order, best for typical external USB throughput).
-- Use `scripts/prepare_event_time_metrics.py` to build metric-ready daily aggregates from cleaned chunks for pooled and subreddit event-time analysis. Pooled `ALL` rows aggregate across **every** forum in `subreddits.primary` (political and tech); use per-subreddit tables or stratify later if you need domain-pure pools.
+- Use `scripts/prepare_event_time_metrics.py` to build metric-ready daily aggregates from `comment_features/` for pooled and subreddit event-time analysis (optional merge of `repetition_daily_by_subreddit.csv`). Pooled `ALL` rows aggregate across **every** forum in `subreddits.primary` (political and tech); use per-subreddit tables or stratify later if you need domain-pure pools.
 - Event-time outputs include:
   - semicolon rate, comment length, complexity index
   - AI-likeness composite index and component columns

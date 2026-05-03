@@ -8,7 +8,11 @@ metrics that are less reliable on short texts.
 Functionality:
 - Reads cleaned monthly input from:
   `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`.
-- Computes lexical/style/toxicity features currently used by event-time aggregation.
+- Passes through `author` and `created_utc` when present in the cleaned schema (empty
+  author and null `created_utc` otherwise) for downstream user- and time-ordered analyses.
+- Computes lexical/style/toxicity features for event-time aggregation, including
+  dash/typography counts, markdown proxies, hedging/polite/signposting phrase hits,
+  and average words per sentence.
 - Computes additional per-comment outputs:
   - detector primary and secondary AI/human scores
   - passive voice proxy counts/rates
@@ -56,6 +60,8 @@ PASSIVE_RE = re.compile(
     r"\b(?:is|are|was|were|be|been|being|get|gets|got)\s+\w+(?:ed|en)\b",
     flags=re.IGNORECASE,
 )
+MARKDOWN_BOLD_PAIR_RE = re.compile(r"\*\*.+?\*\*", re.DOTALL)
+MARKDOWN_HEADING_LINE_RE = re.compile(r"^\s{0,3}#{1,6}\s", re.MULTILINE)
 TOXIC_LEXICON = {
     "idiot",
     "moron",
@@ -157,11 +163,99 @@ ASSISTANT_TONE_PHRASES = [
     "this underscores",
     "a testament to",
 ]
+# Disjoint from ASSISTANT_TONE_PHRASES: hedging / epistemic softeners (substring counts on lowercased text).
+HEDGING_PHRASES = [
+    "may not be",
+    "might not be",
+    "could be",
+    "possibly",
+    "perhaps",
+    "likely that",
+    "it seems",
+    "appears to",
+    "generally speaking",
+    "in many cases",
+    "to some extent",
+    "not necessarily",
+    "tends to",
+    "often the case",
+]
+# Chat-assistant style closers (disjoint from assistant_tone list above).
+POLITE_CLOSER_PHRASES = [
+    "hope this helps",
+    "let me know if",
+    "happy to help",
+    "feel free to",
+    "happy to clarify",
+    "if you have any questions",
+    "let me know if you need",
+    "glad to help",
+]
+# Signposting without overlapping assistant_tone entries (no moreover/furthermore/additionally/in conclusion/in summary).
+SIGNPOSTING_PHRASES = [
+    "firstly",
+    "secondly",
+    "thirdly",
+    "on the other hand",
+    "in other words",
+    "to recap",
+    "to summarize",
+    "short answer",
+    "long answer",
+    "my take",
+    "overall",
+    "in short",
+]
 FULL_FORM_PATTERNS = tuple(FULL_FORMS)
 ASSISTANT_TONE_PATTERNS = tuple(ASSISTANT_TONE_PHRASES)
+HEDGING_PATTERNS = tuple(HEDGING_PHRASES)
+POLITE_CLOSER_PATTERNS = tuple(POLITE_CLOSER_PHRASES)
+SIGNPOSTING_PATTERNS = tuple(SIGNPOSTING_PHRASES)
 TOXIC_PATTERNS = tuple(TOXIC_LEXICON)
 EXTENDED_AI_WORD_SET = frozenset(EXTENDED_AI_WORDS)
 CONTRACTIONS_SET = frozenset(CONTRACTIONS)
+
+REQUIRED_CLEANED_COLUMNS = ("id", "subreddit", "date_utc", "body")
+OPTIONAL_CLEANED_META_COLUMNS = ("author", "created_utc")
+
+
+def read_cleaned_month_for_features(file_path: Path) -> pd.DataFrame:
+    """Function summary: load one cleaned monthly Parquet with required columns plus optional metadata.
+
+    Parameters:
+    - file_path: path to cleaned `<subreddit>/<YYYY-MM>.parquet`.
+
+    Returns:
+    - DataFrame with id, subreddit, date_utc, body, author (string), created_utc (nullable Int64).
+    """
+    required = list(REQUIRED_CLEANED_COLUMNS)
+    optional = list(OPTIONAL_CLEANED_META_COLUMNS)
+    try:
+        import pyarrow.parquet as pq
+
+        schema_names = set(pq.read_schema(file_path).names)
+    except Exception:
+        full = pd.read_parquet(file_path)
+        schema_names = set(full.columns)
+        missing_req = set(required) - schema_names
+        if missing_req:
+            raise ValueError(f"Missing required columns {sorted(missing_req)} in {file_path}")
+        keep = [c for c in required + optional if c in full.columns]
+        frame = full[keep].copy()
+    else:
+        missing_req = set(required) - schema_names
+        if missing_req:
+            raise ValueError(f"Missing required columns {sorted(missing_req)} in {file_path}")
+        cols = required + [c for c in optional if c in schema_names]
+        frame = pd.read_parquet(file_path, columns=cols)
+    if "author" not in frame.columns:
+        frame["author"] = ""
+    frame["author"] = frame["author"].astype("string").fillna("")
+    if "created_utc" not in frame.columns:
+        frame["created_utc"] = pd.Series(pd.NA, index=frame.index, dtype="Int64")
+    else:
+        frame["created_utc"] = pd.to_numeric(frame["created_utc"], errors="coerce").astype("Int64")
+    return frame
 
 
 @dataclass
@@ -243,6 +337,39 @@ def count_full_form_occurrences(text_lc: str) -> int:
     for phrase in FULL_FORM_PATTERNS:
         total += text_lc.count(phrase)
     return total
+
+
+def count_ascii_double_hyphen(text: str) -> int:
+    """Function summary: count occurrences of spaced double hyphen token ` -- ` in raw text (ASCII dash proxy)."""
+    return (text or "").count(" -- ")
+
+
+def count_curly_quotes(text: str) -> int:
+    """Function summary: count Unicode curly single/double quote characters in one text."""
+    s = text or ""
+    return int(sum(s.count(ch) for ch in "\u201c\u201d\u2018\u2019"))
+
+
+def count_markdown_bold_pairs(text: str) -> int:
+    """Function summary: count non-greedy **...** markdown bold spans in one text."""
+    return len(MARKDOWN_BOLD_PAIR_RE.findall(text or ""))
+
+
+def count_markdown_heading_lines(text: str) -> int:
+    """Function summary: count Markdown ATX-style heading line starts (# through ######)."""
+    return len(MARKDOWN_HEADING_LINE_RE.findall(text or ""))
+
+
+def sum_phrase_hits(text_lc: str, phrases: tuple[str, ...]) -> int:
+    """Function summary: sum substring hit counts for each phrase in lowercased text."""
+    return int(sum(count_phrase_occurrences(text_lc, p) for p in phrases))
+
+
+def avg_words_per_sentence(n_words: int, sentence_count: int) -> float:
+    """Function summary: return words divided by sentence_count when both positive; else NaN."""
+    if n_words <= 0 or sentence_count <= 0:
+        return float("nan")
+    return float(n_words) / float(sentence_count)
 
 
 def length_bucket(n_words: int) -> str:
@@ -497,16 +624,51 @@ def process_month_file(
         full_form_hits = int(count_full_form_occurrences(text_lc))
         passive_hits = int(len(PASSIVE_RE.findall(text)))
         passive_rate = (float(passive_hits) / float(n_words) * 100.0) if n_words > 0 else 0.0
+        em_dash_count = int(text.count("\u2014"))
+        en_dash_count = int(text.count("\u2013"))
+        ascii_double_hyphen_count = int(count_ascii_double_hyphen(text))
+        colon_count = int(text.count(":"))
+        open_paren_count = int(text.count("("))
+        curly_quote_count = int(count_curly_quotes(text))
+        markdown_bold_pair_count = int(count_markdown_bold_pairs(text))
+        markdown_heading_line_count = int(count_markdown_heading_lines(text))
+        hedging_phrase_hits = int(sum_phrase_hits(text_lc, HEDGING_PATTERNS))
+        polite_closer_hits = int(sum_phrase_hits(text_lc, POLITE_CLOSER_PATTERNS))
+        signposting_phrase_hits = int(sum_phrase_hits(text_lc, SIGNPOSTING_PATTERNS))
+        avg_wps = avg_words_per_sentence(n_words, sentence_count)
+        author_val = str(getattr(row, "author", "") or "")
+        created_raw = getattr(row, "created_utc", pd.NA)
+        if pd.isna(created_raw):
+            created_out: Any = pd.NA
+        else:
+            try:
+                created_out = int(created_raw)
+            except (TypeError, ValueError):
+                created_out = pd.NA
         record: Dict[str, Any] = {
             "id": str(getattr(row, "id", "") or ""),
             "subreddit": str(getattr(row, "subreddit", "") or ""),
             "date_utc": str(getattr(row, "date_utc", "") or ""),
+            "author": author_val,
+            "created_utc": created_out,
             "body": text,
             "n_words_comment": int(n_words),
             "comment_length_words": float(n_words),
             "length_bucket": length_bucket(n_words),
             "detector_confidence_flag": detector_confidence_flag(n_words),
             "semicolon_count": int(text.count(";")),
+            "em_dash_count": em_dash_count,
+            "en_dash_count": en_dash_count,
+            "ascii_double_hyphen_count": ascii_double_hyphen_count,
+            "colon_count": colon_count,
+            "open_paren_count": open_paren_count,
+            "curly_quote_count": curly_quote_count,
+            "markdown_bold_pair_count": markdown_bold_pair_count,
+            "markdown_heading_line_count": markdown_heading_line_count,
+            "hedging_phrase_hits": hedging_phrase_hits,
+            "polite_closer_hits": polite_closer_hits,
+            "signposting_phrase_hits": signposting_phrase_hits,
+            "avg_words_per_sentence_comment": float(avg_wps),
             "total_word_chars_comment": int(total_word_chars),
             "sentence_count_comment": int(sentence_count),
             "vader_compound": float(compound),

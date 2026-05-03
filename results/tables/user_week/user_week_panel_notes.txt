@@ -1,0 +1,34 @@
+User-Week Style Panel Notes
+============================
+
+Unit of observation: one row per (author, iso_week_start). ISO weeks are anchored to UTC
+Monday and stored as YYYY-MM-DD date strings (the Monday's date).
+
+Author hygiene:
+- empty author, [deleted], AutoModerator, and bot-name heuristic accounts are dropped.
+
+Row inclusion:
+- Per comment: needs created_utc and n_words_comment > 0.
+- Per user-week: kept when total n_words >= --min_words_per_week_for_keep (default 0).
+
+Schema buckets:
+- counts: n_comments, n_words (precision weights downstream).
+- rate features: <feat>_rate_100w (display) AND raw integer hit counts (for pooled rates).
+- formality_balance_100w computed from full_form_count and contraction_count.
+- list_structure_intensity = list_structure_flag_sum / n_comments (mean of binary flag).
+- complexity_index from weekly totals (n_words, total_word_chars_comment, sentence_count_comment),
+  matching the ratio-of-sums formula used in prepare_event_time_metrics.py.
+- mean features: <feat>_mean (display), <feat>_sum, <feat>_sumsq, <feat>_n; n counts only
+  comments with non-NaN values so coverage stays honest.
+- subreddit mix: top_subreddit, subreddit_concentration (Herfindahl), n_subreddits, top_topic.
+
+Topic mapping (top_topic):
+- coding: AskProgramming, CodingHelp, learnprogramming
+- politics: Ask_Politics, NeutralPolitics, PoliticalDiscussion, politics, moderatepolitics
+- career: cscareerquestions, ITCareerQuestions, csMajors
+- general_questions: answers, OutOfTheLoop, TooAfraidToAsk
+- other: any subreddit not in the map (should not occur with the configured primary list).
+
+Outputs:
+- data/interim/political_forums/user_week_style_panel/<YYYY-MM>.parquet (one shard per month).
+- results/tables/user_week/user_week_panel.parquet (merged panel for downstream).

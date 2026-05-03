@@ -80,7 +80,7 @@ Configuration default:
 
 ### 5) Compute reusable per-comment feature shards (recommended before event-time aggregation)
 - **Monolithic (local / one pass):** `compute_comment_features.py`
-  - Why: Computes lexical/style/toxicity proxies plus HF-based detector, hostility, emotion, perplexity in one parquet tree.
+  - Why: Computes lexical/style/toxicity proxies plus HF-based detector, hostility, emotion, perplexity in one parquet tree; passes through `author` and `created_utc` from cleaned shards when present. Extra lexical columns (also in merge path): `em_dash_count`, `en_dash_count`, `ascii_double_hyphen_count`, `colon_count`, `open_paren_count`, `curly_quote_count`, `markdown_bold_pair_count`, `markdown_heading_line_count`, `hedging_phrase_hits`, `polite_closer_hits`, `signposting_phrase_hits`, `avg_words_per_sentence_comment` (NaN when no words).
   - Input: `data/interim/political_forums/cleaned_monthly_chunks/`
   - Output: `data/interim/political_forums/comment_features/<subreddit>/<YYYY-MM>.parquet`
   - Run: `.venv/bin/python scripts/compute_comment_features.py --config config/political_forums_setup.yaml`
@@ -91,10 +91,18 @@ Configuration default:
   - **Maintainers:** regenerate that notebook after edits to `config/political_forums_setup.yaml` or `src/comment_feature_models.py`: `.venv/bin/python scripts/_gen_colab_standalone_nb.py`.
   - Laptop: copy Drive `comment_features_ml/` into interim, then `.venv/bin/python scripts/merge_ml_shards_into_comment_features.py --config config/political_forums_setup.yaml` (same bounded/filter flags).
 
+### 5b) Daily repetition / template similarity (optional; merged into event-time tables)
+- Script: `compute_daily_repetition_similarity.py`
+- Why: Computes `repetition_template_similarity` from cleaned monthly Parquet (within-day max-Jaccard-to-recent stream, ordered by `created_utc`).
+- Input: `data/interim/political_forums/cleaned_monthly_chunks/`
+- Output: `results/tables/event_time/repetition_daily_by_subreddit.csv` (`subreddit`, `date_utc`, `repetition_template_similarity`, `n_comments`)
+- Run: `.venv/bin/python scripts/compute_daily_repetition_similarity.py --config config/political_forums_setup.yaml`
+- Flags: `--similarity_window` (default 20), `--min_words_for_similarity` (default 0), same bounded filters as other monthly scripts (`--max_month_files_per_subreddit`, `--max_total_month_files`, `--max_days_per_month`, `--subreddits`, `--months`).
+
 ### 6) Build event-time metric tables (required for event-time plotting)
 - Script: `prepare_event_time_metrics.py`
-- Why: Aggregates subreddit-level and pooled event-time metrics, preferably from reusable `comment_features` shards.
-- Input layer: `data/interim/political_forums/comment_features/` (preferred) or `data/interim/political_forums/cleaned_monthly_chunks/` (fallback)
+- Why: Aggregates subreddit-level and pooled event-time metrics **only** from `comment_features/` shards; left-merges `repetition_daily_by_subreddit.csv` when present (otherwise repetition is NaN). Emits matching `*_rate_100w` columns for the new lexical counts and `avg_words_per_sentence_mean` (see `event_time_metrics_notes.txt`).
+- Input layer: `data/interim/political_forums/comment_features/` (required); optional `results/tables/event_time/repetition_daily_by_subreddit.csv`
 - Output layer:
   - `results/tables/event_time/event_time_daily_metrics_by_subreddit.csv`
   - `results/tables/event_time/event_time_daily_metrics_pooled.csv`
@@ -103,14 +111,12 @@ Configuration default:
   - `results/tables/event_time/event_time_metrics_notes.txt`
   - `results/tables/event_time_daily_metrics.csv` (compatibility export)
 - Run:
-  - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml --prefer_comment_features`
+  - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml`
 - Performance/bounded-benchmark options:
   - Sample one month file per subreddit with phase timing:
     - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml --max_month_files_per_subreddit 1 --profile`
   - Hard cap total processed month files and days per month:
     - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml --max_total_month_files 2 --max_days_per_month 10 --profile_output results/tables/event_time/prepare_event_time_metrics_profile.json`
-  - Optional month-level parallelism on faster storage:
-    - `.venv/bin/python scripts/prepare_event_time_metrics.py --config config/political_forums_setup.yaml --workers 4`
 
 ### 7) Create event-time figures (required for visual analysis)
 - Script: `plot_event_time_metrics.py`
@@ -135,6 +141,50 @@ Configuration default:
     - `general_questions`: `answers`, `OutOfTheLoop`, `TooAfraidToAsk`
   - Pooled, per-subreddit, and optional per-topic figures are split into view folders:
     - `daily/`, `weekly/`, `rolling_daily/`
+
+### 7b) Stratified pooled event-time tables and figures (optional)
+- Scripts: `prepare_event_time_stratified_metrics.py`, `plot_event_time_stratified_metrics.py`
+- Why: Pooled daily metrics and plots split by **user series** (`old`, `new`, `new_first_comment` debut-only for post-launch entrants) and by **`length_bucket`** (`short` / `medium` / `long` from comment features). Omits repetition/Jaccard (`repetition_template_similarity`). Stratified CSVs carry the same extended lexical `*_rate_100w` columns as `prepare_event_time_metrics.py`. Requires `author` and `created_utc` on comment shards (use `merge_ml_shards_into_comment_features.py` when ML path was used).
+- Input: `data/interim/political_forums/comment_features/`
+- Output tables (`results/tables/event_time/`):
+  - `event_time_daily_metrics_pooled_by_user_cohort.csv`
+  - `event_time_daily_metrics_pooled_by_length_bucket.csv`
+  - `event_time_length_bucket_daily_shares_pooled.csv`
+  - `event_time_stratified_metrics_notes.txt`
+- Output figures: `results/figures/event_time/stratified_pooled/user_series/{daily,weekly,rolling_daily}/` and `stratified_pooled/length_bucket/{daily,weekly,rolling_daily}/` (length-bucket figures exclude ML/coverage series that do not make sense when stratifying by length).
+- Run:
+  - `.venv/bin/python scripts/prepare_event_time_stratified_metrics.py --config config/political_forums_setup.yaml`
+  - `.venv/bin/python scripts/plot_event_time_stratified_metrics.py --config config/political_forums_setup.yaml`
+- Bounded sampling (same pattern as `prepare_event_time_metrics.py`): `--max_month_files_per_subreddit`, `--max_total_month_files`, `--max_days_per_month`, `--profile`, `--profile_output`
+
+### 7c) Within-user pre/post style shift (author × ISO-week analysis layer)
+- Scripts: `prepare_user_week_style_panel.py` -> `analyze_user_pre_post_shift.py` -> `plot_user_pre_post_shift.py`
+- Why: Build a per-author per-ISO-week style panel from `comment_features/`, then compare each user's post-launch writing to their own pre-launch baseline. The panel aggregates the same extended lexical hit counts into weekly `*_rate_100w` columns plus `avg_words_per_sentence_comment_mean` (from per-comment NaN-skipped means). Two parallel comparisons are produced for every user and feature: a **weekly view** (word-weighted weekly mean / SD; std_delta with winsorized SD floor) and a **pooled-comments view** (precision-aware standard errors built from raw hit counts and sumsq fields stored in the panel). A composite `ai_likeness_user_week` mirrors the existing event-time AI-likeness index (z-scales frozen on the pre-launch user-week pool).
+- Inputs:
+  - `data/interim/political_forums/comment_features/<subreddit>/<YYYY-MM>.parquet`
+  - `config/political_forums_setup.yaml` (`event_window.launch_day_utc`, `subreddits.primary`)
+- Outputs:
+  - `data/interim/political_forums/user_week_style_panel/<YYYY-MM>.parquet` (per-month panel shards)
+  - `results/tables/user_week/user_week_panel.parquet` (merged panel)
+  - `results/tables/user_week/user_week_panel_notes.txt`
+  - `results/tables/user_week/shift_per_user_<cohort>.csv` (one row per user; weekly + pooled columns)
+  - `results/tables/user_week/shift_summary_<cohort>.csv` (one row per cohort + topic-stable + per-topic + audit categories + placebo)
+  - `results/tables/user_week/shift_audit_per_user_<cohort>.csv` (panel / pre_only / post_only / below_thresholds)
+  - `results/tables/user_week/composite_zscale_pre_<cohort>.json` (frozen z-scales for reproducibility)
+  - `results/tables/user_week/shift_methods_note.txt`
+  - `results/figures/user_week/<cohort>/{dist_std_delta_composite,dist_t_user_pooled_composite,weekly_vs_pooled_scatter,components_grid,spaghetti_sample,mirror_top_movers}.png`
+  - `results/logs/user_week/analyze_user_pre_post_shift.log`
+- Cohort defaults:
+  - **strict**: `--min_words_per_week 100`, `--min_pre_weeks 4`, `--min_post_weeks 4`, `--min_total_words_pre 400`, `--min_total_words_post 400`.
+  - **loose**: `--min_words_per_week 30`, `--min_pre_weeks 2`, `--min_post_weeks 2`, `--min_total_words_pre 100`, `--min_total_words_post 100`.
+  - Hard pre-launch + post-launch requirement: a user enters the comparison only with both pre and post coverage above thresholds; pre-only / post-only / below-thresholds users are surfaced in the side audit, not silently dropped.
+- Author hygiene matches `scripts/plot_data_quality_trends.py`: empty author, `[deleted]`, `AutoModerator`, and the `bot`-substring heuristic are dropped during panel construction.
+- Run:
+  - `.venv/bin/python scripts/prepare_user_week_style_panel.py --config config/political_forums_setup.yaml`
+  - `.venv/bin/python scripts/analyze_user_pre_post_shift.py --config config/political_forums_setup.yaml`
+  - `.venv/bin/python scripts/plot_user_pre_post_shift.py --config config/political_forums_setup.yaml`
+- Bounded benchmarks (panel script): `--max_total_month_files`, `--max_month_files_per_subreddit`, `--max_days_per_month`, `--profile`, `--profile_output`.
+- Sensitivity layers in `analyze_user_pre_post_shift.py`: topic-stable sub-cohort row (`panel_topic_stable`), per-topic stratified rows (`panel_topic=politics|coding|career|general_questions`), and a placebo run with the launch shifted back by `--placebo_offset_weeks` (default 8).
 
 ### 8) Optional sampled detector robustness check
 - Script: `run_llm_detector_sample.py`
@@ -170,8 +220,11 @@ Configuration default:
 - `data/raw/.../daily_chunks/` -> `plot_data_quality_trends.py` -> quality tables/figures in `results/`
 - `data/raw/.../daily_chunks/` -> `clean_daily_chunks.py` -> `data/interim/.../cleaned_monthly_chunks/`
 - `data/interim/.../cleaned_monthly_chunks/` -> `compute_comment_features.py` **or** (`colab_compute_comment_features_gpu.ipynb` → `comment_features_ml/` then `merge_ml_shards_into_comment_features.py`) -> `data/interim/.../comment_features/` (optional intermediate `comment_features_ml/` when using the split path)
-- `data/interim/.../comment_features/` -> `prepare_event_time_metrics.py --prefer_comment_features` -> `results/tables/event_time/`
+- `data/interim/.../cleaned_monthly_chunks/` -> `compute_daily_repetition_similarity.py` (optional) -> `results/tables/event_time/repetition_daily_by_subreddit.csv`
+- `data/interim/.../comment_features/` (+ optional repetition CSV) -> `prepare_event_time_metrics.py` -> `results/tables/event_time/`
 - `results/tables/event_time/` -> `plot_event_time_metrics.py` -> `results/figures/event_time/`
+- `data/interim/.../comment_features/` -> `prepare_event_time_stratified_metrics.py` -> `results/tables/event_time/` (stratified CSVs) -> `plot_event_time_stratified_metrics.py` -> `results/figures/event_time/stratified_pooled/user_series/` and `.../stratified_pooled/length_bucket/`
+- `data/interim/.../comment_features/` -> `prepare_user_week_style_panel.py` -> `data/interim/.../user_week_style_panel/` and `results/tables/user_week/user_week_panel.parquet` -> `analyze_user_pre_post_shift.py` -> `results/tables/user_week/` (shift CSVs + JSON scales + methods note) -> `plot_user_pre_post_shift.py` -> `results/figures/user_week/<cohort>/`
 - `data/interim/.../cleaned_monthly_chunks/` -> overlap and sampled-detector scripts (optional) -> `results/tables/*`
 
 ---
@@ -182,8 +235,11 @@ Configuration default:
 3. `plot_data_quality_trends.py`
 4. `clean_daily_chunks.py`
 5. `compute_comment_features.py`
-6. `prepare_event_time_metrics.py --prefer_comment_features`
-7. `plot_event_time_metrics.py`
+6. `compute_daily_repetition_similarity.py` (optional, for repetition column in tables)
+7. `prepare_event_time_metrics.py`
+8. `plot_event_time_metrics.py`
+9. (Optional) `prepare_event_time_stratified_metrics.py` then `plot_event_time_stratified_metrics.py`
+10. (Optional, within-user analysis) `prepare_user_week_style_panel.py` -> `analyze_user_pre_post_shift.py` -> `plot_user_pre_post_shift.py`
 
 Optional additions after step 4:
 - `run_llm_detector_sample.py`
