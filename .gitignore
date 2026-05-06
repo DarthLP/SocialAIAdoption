@@ -15,6 +15,10 @@ data/
 *.torrent
 results/logs/
 
+# User-week pipeline outputs exceeding GitHub's 100 MiB blob limit (regenerate locally; see README)
+results/tables/user_week/user_week_panel.parquet
+results/tables/user_week/shift_per_user_loose.csv
+
 # Optional local build outputs
 dist/
 build/

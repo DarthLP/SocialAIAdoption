@@ -13,7 +13,8 @@ Row inclusion:
 
 Schema buckets:
 - counts: n_comments, n_words (precision weights downstream).
-- rate features: <feat>_rate_100w (display) AND raw integer hit counts (for pooled rates).
+- rate features: <feat>_rate_100w (display) AND raw integer hit counts (for pooled rates), including em/en dash,
+  ascii double-hyphen, colon/paren/curly-quote, markdown bold/heading, hedging/polite/signposting phrase rates.
 - formality_balance_100w computed from full_form_count and contraction_count.
 - list_structure_intensity = list_structure_flag_sum / n_comments (mean of binary flag).
 - complexity_index from weekly totals (n_words, total_word_chars_comment, sentence_count_comment),

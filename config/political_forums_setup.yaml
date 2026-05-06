@@ -1,9 +1,8 @@
 project:
   name: "SocialAIAdoption"
   description: >-
-    Dump-filtered political discussion plus tech comparison (3 coding, 3 career) and
-    general-question subs (answers, TooAfraidToAsk, OutOfTheLoop) for format/topic diversity,
-    around ChatGPT launch.
+    Dump-filtered political discussion plus cross-domain comparison forums, with
+    topic-group mapping centralized in this config for one-file corpus control.
 
 event_window:
   start_utc: "2022-11-01T00:00:00Z"
@@ -12,7 +11,6 @@ event_window:
 
 subreddits:
   primary:
-    - politics
     - PoliticalDiscussion
     - NeutralPolitics
     - moderatepolitics
@@ -26,9 +24,225 @@ subreddits:
     - answers
     - TooAfraidToAsk
     - OutOfTheLoop
-  reserve:
-    - geopolitics
-    - PoliticalDebate
+    - scifiwriting
+    - fantasywriting
+    - fantasywriters
+    - writingadvice
+    - WritingHub
+    - writingcenters
+    - content_marketing
+    - digital_marketing
+    - smallbusiness
+    - CryptoMarkets
+    - ethereum
+    - algotrading
+    - Cooking
+    - AskCulinary
+    - budgetcooking
+    - GradSchool
+    - Students
+    - College
+    - UniversityOfReddit
+    - languagelearning
+    - Advice
+    - Adulting
+    - SimpleLiving
+    - Travel
+    - solotravel
+    - Houseplants
+    - GardeningIndoors
+    - IndoorGarden
+    - photography
+    - AskPhotography
+    - financialindependence
+    - HENRYfinance
+    - WhiteCoatInvestor
+    - leanfire
+    - ChubbyFIRE
+    - fatFIRE
+    - socialskills
+    - relationship_advice
+    - suggestmeabook
+    - whatsthatbook
+    - Aquariums
+    - Horses
+    - Pets
+    - learnmath
+    - pcgaming
+    - Games
+    - IndieGaming
+    - artificial
+    - singularity
+    - LocalLLaMA
+    - medicine
+    - askdocs
+    - medical
+    - CURRENTEVENTS
+    - inthenews
+    - TrueReddit
+    - technews
+    - hardware
+    - AskScienceDiscussion
+    - labrats
+    - biology
+    - ecommerce
+    - shopify
+    - dropship
+    - NewTubers
+    - PartneredYoutube
+    - youtubers
+    - freelance
+    - freelanceWriters
+    - forhire
+    - advertising
+    - copywriting
+
+topics:
+  politics:
+    subreddits:
+      - Ask_Politics
+      - NeutralPolitics
+      - PoliticalDiscussion
+      - moderatepolitics
+  coding:
+    subreddits:
+      - AskProgramming
+      - CodingHelp
+      - learnprogramming
+  career:
+    subreddits:
+      - cscareerquestions
+      - ITCareerQuestions
+      - csMajors
+  general_questions:
+    subreddits:
+      - answers
+      - OutOfTheLoop
+      - TooAfraidToAsk
+  fantasy:
+    subreddits:
+      - scifiwriting
+      - fantasywriting
+      - fantasywriters
+  writing_help:
+    subreddits:
+      - writingadvice
+      - WritingHub
+      - writingcenters
+  marketing:
+    subreddits:
+      - content_marketing
+      - digital_marketing
+      - smallbusiness
+  crypto_investing:
+    subreddits:
+      - CryptoMarkets
+      - ethereum
+      - algotrading
+  cooking:
+    subreddits:
+      - Cooking
+      - AskCulinary
+      - budgetcooking
+  student:
+    subreddits:
+      - GradSchool
+      - Students
+      - College
+  learning:
+    subreddits:
+      - UniversityOfReddit
+      - languagelearning
+      - learnmath
+  life_advice:
+    subreddits:
+      - Advice
+      - Adulting
+      - SimpleLiving
+  travel:
+    subreddits:
+      - Travel
+      - solotravel
+  indoor_gardening:
+    subreddits:
+      - Houseplants
+      - GardeningIndoors
+      - IndoorGarden
+  photography:
+    subreddits:
+      - photography
+      - AskPhotography
+  finance:
+    subreddits:
+      - financialindependence
+      - HENRYfinance
+      - WhiteCoatInvestor
+  fire_retirement:
+    subreddits:
+      - leanfire
+      - ChubbyFIRE
+      - fatFIRE
+  social:
+    subreddits:
+      - socialskills
+      - relationship_advice
+  books:
+    subreddits:
+      - suggestmeabook
+      - whatsthatbook
+  pets:
+    subreddits:
+      - Aquariums
+      - Horses
+      - Pets
+  gaming:
+    subreddits:
+      - pcgaming
+      - Games
+      - IndieGaming
+  ai:
+    subreddits:
+      - artificial
+      - singularity
+      - LocalLLaMA
+  medicine:
+    subreddits:
+      - medicine
+      - askdocs
+      - medical
+  news:
+    subreddits:
+      - CURRENTEVENTS
+      - inthenews
+      - TrueReddit
+  tech:
+    subreddits:
+      - technews
+      - hardware
+  science:
+    subreddits:
+      - AskScienceDiscussion
+      - labrats
+      - biology
+  ecommerce:
+    subreddits:
+      - ecommerce
+      - shopify
+      - dropship
+  influencer:
+    subreddits:
+      - NewTubers
+      - PartneredYoutube
+      - youtubers
+  freelancer:
+    subreddits:
+      - freelance
+      - freelanceWriters
+      - forhire
+  advertisement:
+    subreddits:
+      - advertising
+      - copywriting
 
 dataset:
   fields:
