@@ -507,12 +507,6 @@ def count_straight_quotes(text: str) -> int:
     return int(len(STRAIGHT_QUOTE_RE.findall(text or "")))
 
 
-def count_semicolon_extended(text: str) -> int:
-    """Function summary: count strict and fullwidth semicolon variants in one text."""
-    s = text or ""
-    return int(s.count(";") + s.count("；"))
-
-
 def count_em_dash_extended(text: str) -> int:
     """Function summary: count em/en dashes plus spaced ASCII double/triple-hyphen variants."""
     s = text or ""
@@ -521,11 +515,22 @@ def count_em_dash_extended(text: str) -> int:
     return int(unicode_total + ascii_total)
 
 
-def count_colon_extended(text: str) -> int:
-    """Function summary: count ASCII/fullwidth colons after removing URL/time contexts."""
+def colon_cleaned_text(text: str) -> str:
+    """Function summary: return text with URL spans and clock-like time tokens removed for honest colon counting."""
     s = text or ""
     cleaned = URL_RE.sub(" ", s)
     cleaned = TIME_EXPRESSION_RE.sub(" ", cleaned)
+    return cleaned
+
+
+def count_colon_strict(text: str) -> int:
+    """Function summary: count ASCII colons on URL/time-cleaned text (excludes URL and clock-time colons)."""
+    return int(colon_cleaned_text(text).count(":"))
+
+
+def count_colon_extended(text: str) -> int:
+    """Function summary: count ASCII and fullwidth colons on URL/time-cleaned text (superset of strict)."""
+    cleaned = colon_cleaned_text(text)
     return int(cleaned.count(":") + cleaned.count("："))
 
 
@@ -814,8 +819,7 @@ def process_month_file(
         em_dash_count = int(text.count("\u2014"))
         en_dash_count = int(text.count("\u2013"))
         ascii_double_hyphen_count = int(count_ascii_double_hyphen(text))
-        colon_count = int(text.count(":"))
-        semicolon_extended_count = int(count_semicolon_extended(text))
+        colon_count = int(count_colon_strict(text))
         em_dash_extended_count = int(count_em_dash_extended(text))
         colon_extended_count = int(count_colon_extended(text))
         open_paren_count = int(text.count("("))
@@ -853,7 +857,6 @@ def process_month_file(
             "length_bucket": length_bucket(n_words),
             "detector_confidence_flag": detector_confidence_flag(n_words),
             "semicolon_count": int(text.count(";")),
-            "semicolon_extended_count": semicolon_extended_count,
             "em_dash_count": em_dash_count,
             "em_dash_extended_count": em_dash_extended_count,
             "en_dash_count": en_dash_count,

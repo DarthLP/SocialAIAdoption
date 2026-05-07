@@ -166,7 +166,6 @@ def _final_column_order() -> list[str]:
         "length_bucket",
         "detector_confidence_flag",
         "semicolon_count",
-        "semicolon_extended_count",
         "em_dash_count",
         "em_dash_extended_count",
         "en_dash_count",
@@ -235,8 +234,7 @@ def build_lexical_records(frame: pd.DataFrame) -> list[Dict[str, Any]]:
         em_dash_count = int(text.count("\u2014"))
         en_dash_count = int(text.count("\u2013"))
         ascii_double_hyphen_count = int(_ccf.count_ascii_double_hyphen(text))
-        colon_count = int(text.count(":"))
-        semicolon_extended_count = int(_ccf.count_semicolon_extended(text))
+        colon_count = int(_ccf.count_colon_strict(text))
         em_dash_extended_count = int(_ccf.count_em_dash_extended(text))
         colon_extended_count = int(_ccf.count_colon_extended(text))
         open_paren_count = int(text.count("("))
@@ -274,7 +272,6 @@ def build_lexical_records(frame: pd.DataFrame) -> list[Dict[str, Any]]:
             "length_bucket": _ccf.length_bucket(n_words),
             "detector_confidence_flag": _ccf.detector_confidence_flag(n_words),
             "semicolon_count": int(text.count(";")),
-            "semicolon_extended_count": int(semicolon_extended_count),
             "em_dash_count": int(em_dash_count),
             "em_dash_extended_count": int(em_dash_extended_count),
             "en_dash_count": int(en_dash_count),

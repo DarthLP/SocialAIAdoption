@@ -290,7 +290,6 @@ def aggregate_daily_metrics_from_comment_features(
             strict_total_hits = int(pd.to_numeric(group["strict_ai_word_hits_total"], errors="coerce").fillna(0.0).sum())
             extended_total_hits = int(pd.to_numeric(group["extended_ai_word_hits_total"], errors="coerce").fillna(0.0).sum())
             semicolon_total = float(numeric_series("semicolon_count", default=0.0).fillna(0.0).sum())
-            semicolon_extended_total = float(numeric_series("semicolon_extended_count", default=0.0).fillna(0.0).sum())
             em_dash_total = float(numeric_series("em_dash_count", default=0.0).fillna(0.0).sum())
             em_dash_extended_total = float(numeric_series("em_dash_extended_count", default=0.0).fillna(0.0).sum())
             en_dash_total = float(numeric_series("en_dash_count", default=0.0).fillna(0.0).sum())
@@ -334,7 +333,6 @@ def aggregate_daily_metrics_from_comment_features(
                 "n_comments": n_comments,
                 "n_words": n_words,
                 "semicolon_rate_100w": safe_rate_100w(semicolon_total, n_words),
-                "semicolon_extended_rate_100w": safe_rate_100w(semicolon_extended_total, n_words),
                 "em_dash_rate_100w": safe_rate_100w(em_dash_total, n_words),
                 "em_dash_extended_rate_100w": safe_rate_100w(em_dash_extended_total, n_words),
                 "en_dash_rate_100w": safe_rate_100w(en_dash_total, n_words),
@@ -525,11 +523,6 @@ def build_pooled_daily(metrics_df: pd.DataFrame, ai_word_long_df: pd.DataFrame, 
                 "n_comments": n_comments,
                 "n_words": n_words,
                 "semicolon_rate_100w": safe_rate_100w((group["semicolon_rate_100w"] * group["n_words"] / 100.0).sum(), n_words),
-                "semicolon_extended_rate_100w": safe_rate_100w(
-                    (group["semicolon_extended_rate_100w"] * group["n_words"] / 100.0).sum(), n_words
-                )
-                if "semicolon_extended_rate_100w" in group.columns
-                else 0.0,
                 "em_dash_rate_100w": safe_rate_100w((group["em_dash_rate_100w"] * group["n_words"] / 100.0).sum(), n_words)
                 if "em_dash_rate_100w" in group.columns
                 else 0.0,
@@ -738,7 +731,8 @@ def write_notes(path: Path) -> None:
         "- passive_rate_100w: passive-construction proxy rate per 100 words.",
         "- em_dash_rate_100w / en_dash_rate_100w: Unicode U+2014 / U+2013 counts per 100 words.",
         "- ascii_double_hyphen_rate_100w: count of spaced ` -- ` tokens per 100 words.",
-        "- colon_rate_100w / open_paren_rate_100w: punctuation density (colon inflated by URLs/timestamps).",
+        "- colon_rate_100w / colon_extended_rate_100w: ASCII (strict) and ASCII+fullwidth (extended) colon density per 100 words; both metrics strip URL spans and clock-time tokens before counting, so extended is a true superset of strict.",
+        "- open_paren_rate_100w: open-parenthesis density per 100 words.",
         "- curly_quote_rate_100w: curly quote characters per 100 words.",
         "- markdown_bold_pair_rate_100w / markdown_heading_line_rate_100w: **...** spans and ATX heading lines per 100 words.",
         "- hedging_phrase_rate_100w / polite_closer_rate_100w / signposting_phrase_rate_100w: disjoint phrase-list hits per 100 words.",

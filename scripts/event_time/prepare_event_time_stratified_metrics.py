@@ -157,7 +157,6 @@ def daily_metric_row_from_group(
     strict_total_hits = int(pd.to_numeric(group["strict_ai_word_hits_total"], errors="coerce").fillna(0.0).sum())
     extended_total_hits = int(pd.to_numeric(group["extended_ai_word_hits_total"], errors="coerce").fillna(0.0).sum())
     semicolon_total = float(numeric_series("semicolon_count", default=0.0).fillna(0.0).sum())
-    semicolon_extended_total = float(numeric_series("semicolon_extended_count", default=0.0).fillna(0.0).sum())
     em_dash_total = float(numeric_series("em_dash_count", default=0.0).fillna(0.0).sum())
     em_dash_extended_total = float(numeric_series("em_dash_extended_count", default=0.0).fillna(0.0).sum())
     en_dash_total = float(numeric_series("en_dash_count", default=0.0).fillna(0.0).sum())
@@ -201,7 +200,6 @@ def daily_metric_row_from_group(
         "n_comments": n_comments,
         "n_words": n_words,
         "semicolon_rate_100w": pem.safe_rate_100w(semicolon_total, n_words),
-        "semicolon_extended_rate_100w": pem.safe_rate_100w(semicolon_extended_total, n_words),
         "em_dash_rate_100w": pem.safe_rate_100w(em_dash_total, n_words),
         "em_dash_extended_rate_100w": pem.safe_rate_100w(em_dash_extended_total, n_words),
         "en_dash_rate_100w": pem.safe_rate_100w(en_dash_total, n_words),
@@ -370,11 +368,6 @@ def pool_stratified_subreddit_days(
                 "semicolon_rate_100w": pem.safe_rate_100w(
                     (group["semicolon_rate_100w"] * group["n_words"] / 100.0).sum(), n_words
                 ),
-                "semicolon_extended_rate_100w": pem.safe_rate_100w(
-                    (group["semicolon_extended_rate_100w"] * group["n_words"] / 100.0).sum(), n_words
-                )
-                if "semicolon_extended_rate_100w" in group.columns
-                else 0.0,
                 "em_dash_rate_100w": pem.safe_rate_100w((group["em_dash_rate_100w"] * group["n_words"] / 100.0).sum(), n_words)
                 if "em_dash_rate_100w" in group.columns
                 else 0.0,

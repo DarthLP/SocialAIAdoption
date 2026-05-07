@@ -75,6 +75,10 @@ Shared helper (imported by domain scripts, not run as a step): [`scripts/_projec
   - Enforces `event_window.start_utc` to `event_window.end_utc_exclusive` during plotting-table generation.
   - Draws vertical red dotted markers at `2022-11-30` (ChatGPT release) and `2023-03-14` (GPT-4 release).
   - Uses month-start date ticks (`YYYY-MM-01`) for consistent calendar alignment across plots.
+  - Family outputs now include:
+    - `by_family_<metric>.png` (aggregate family lines),
+    - `by_subreddit_by_family/<family>/<metric>.png` (one page per family and metric with one subplot per topic and subreddit lines inside each topic panel),
+    - `by_topic_by_family/by_topic_by_family_<metric>.png` (one page per metric with one subplot per family and topic lines inside each family panel).
   - Uses explicit high-contrast palettes for multi-line subreddit overlays to keep lines visually distinguishable.
   - Prints `plot_progress` lines per metric so long runs show forward progress.
   - Uses non-interactive Matplotlib backend by default for terminal-safe figure rendering.
@@ -138,23 +142,26 @@ Shared helper (imported by domain scripts, not run as a step): [`scripts/_projec
 
 ### 7) Create event-time figures (required for visual analysis)
 - Script: `plot_event_time_metrics.py`
-- Why: Generates pooled and per-subreddit trend figures across linguistic, AI-style, and toxicity proxies.
+- Why: Generates pooled and per-family (default) trend figures across linguistic, AI-style, and toxicity proxies. Per-subreddit-by-family grids are opt-in.
 - Input layer: `results/tables/event_time/*` (or compatibility file when needed)
 - Output layer:
-  - `results/figures/event_time/pooled/{daily,weekly,rolling_daily}/*`
-  - `results/figures/event_time/by_subreddit/{daily,weekly,rolling_daily}/*`
-  - `results/figures/event_time/by_topic/{daily,weekly,rolling_daily}/*` (when `--topic_views` is enabled)
+  - `results/figures/event_time/pooled/{daily,rolling_daily}/*` by default (`weekly/*` only with `--include_weekly`)
+  - `results/figures/event_time/by_family/{daily,rolling_daily}/*` by default (disable with `--no_topic_views`; add weekly with `--include_weekly`)
+  - `results/figures/event_time/by_subreddit_by_family/{daily,rolling_daily}/<family>/*` by default (disable with `--no_by_subreddit`; add weekly with `--include_weekly`)
 - Notes:
   - Plots use calendar-date x-axes with month-start ticks (`YYYY-MM-01`), not relative day offsets.
   - Draws vertical red dotted markers at `2022-11-30` and `2023-03-14`.
-  - Applies explicit high-contrast palette assignment in multi-line subreddit figures.
+  - `rolling_daily` uses a 7-day trailing (past-only) window by default; pandas `.rolling(window="ND")` with default `center=False` includes only the current day plus the prior `N-1` days.
+  - Pooled quote signal is rendered as one combined dual-axis figure (`event_time_quote_rates_and_curly_share.png`) with curly + all-quote rates on the left axis and curly share on the right axis.
+  - Coverage metrics (`coverage_perplexity`, `coverage_detector_primary`, …) are skipped when the series is all-NaN or all-zero.
+  - Strict colon counts mirror extended colon counts: both are computed on text after URL spans and clock-time tokens are stripped, so `colon_extended_rate_100w >= colon_rate_100w` always holds.
 - Run:
-  - `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml`
-  - Topic-level daily/weekly/rolling-daily views:
-    - `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml --topic_views --topic_rolling_window 7`
-  - Topic map used in topic-level figures is loaded from `config/political_forums_setup.yaml` (`topics` section).
-  - Pooled, per-subreddit, and optional per-topic figures are split into view folders:
-    - `daily/`, `weekly/`, `rolling_daily/`
+  - Default (pooled + by-family + by-subreddit-by-family, daily + rolling_daily with rolling 7 days): `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml`
+  - Add weekly extras: `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml --include_weekly`
+  - Disable per-family outputs: `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml --no_topic_views`
+  - Disable per-subreddit-by-family grids: `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml --no_by_subreddit`
+  - Family map used in family-level figures is loaded from `config/political_forums_setup.yaml` (`topics` + `topic_families` sections).
+  - Pooled, per-family, and optional per-subreddit-by-family figures are split into `daily/` and `rolling_daily/` by default; add `--include_weekly` to also render `weekly/`.
 
 ### 7b) Stratified pooled event-time tables and figures (optional)
 - Scripts: `prepare_event_time_stratified_metrics.py`, `plot_event_time_stratified_metrics.py`
@@ -165,10 +172,11 @@ Shared helper (imported by domain scripts, not run as a step): [`scripts/_projec
   - `event_time_daily_metrics_pooled_by_length_bucket.csv`
   - `event_time_length_bucket_daily_shares_pooled.csv`
   - `event_time_stratified_metrics_notes.txt`
-- Output figures: `results/figures/event_time/stratified_pooled/user_series/{daily,weekly,rolling_daily}/` and `stratified_pooled/length_bucket/{daily,weekly,rolling_daily}/` (length-bucket figures exclude ML/coverage series that do not make sense when stratifying by length).
+- Output figures: `results/figures/event_time/stratified_pooled/user_series/{daily,rolling_daily}/` and `stratified_pooled/length_bucket/{daily,rolling_daily}/` by default (add `--include_weekly` to plotting for `weekly/`; length-bucket figures exclude ML/coverage series that do not make sense when stratifying by length).
 - Run:
   - `.venv/bin/python scripts/event_time/prepare_event_time_stratified_metrics.py --config config/political_forums_setup.yaml`
   - `.venv/bin/python scripts/event_time/plot_event_time_stratified_metrics.py --config config/political_forums_setup.yaml`
+  - Add weekly extras for stratified plots: `.venv/bin/python scripts/event_time/plot_event_time_stratified_metrics.py --config config/political_forums_setup.yaml --include_weekly`
 - Bounded sampling (same pattern as `prepare_event_time_metrics.py`): `--max_month_files_per_subreddit`, `--max_total_month_files`, `--max_days_per_month`, `--profile`, `--profile_output`
 
 ### 7c) Within-user pre/post style shift (author × ISO-week analysis layer)

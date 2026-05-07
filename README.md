@@ -27,7 +27,7 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
 4. Run filtering:
    - `.venv/bin/python scripts/filtering/filter_dump_comments.py --config config/political_forums_setup.yaml` (default: one worker, all required `RC_*.zst` files in chronological order)
    - **If you add or remove entries under `subreddits.primary` after a month is already marked complete** in worker state, delete the corresponding `results/logs/filter_dump/filter_dump_state.RC_YYYY-MM.json` files (and merged `filter_dump_state.json` if present) before re-running; otherwise completed months are skipped and new subreddits will not be extracted.
-   - Topic assignments for topic-level plots and user-week topic summaries are also config-driven via `topics` in the same config file.
+   - Topic assignments and family-level plotting groups are config-driven via `topics` + `topic_families` in the same config file.
    - Optional anchor rerun mode: `.venv/bin/python scripts/filtering/filter_dump_comments.py --config config/political_forums_setup.yaml --resume_from_anchor first_in_window`
    - Optional two-worker parallel mode: `.venv/bin/python scripts/filtering/filter_dump_comments.py --config config/political_forums_setup.yaml --worker_mode two`
    - Optional prefilter A/B mode: `.venv/bin/python scripts/filtering/filter_dump_comments.py --config config/political_forums_setup.yaml --prefilter_mode regex`
@@ -50,6 +50,7 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
 9. Pre-cleaning data-quality trend analysis (percentages, ChatGPT/GPT-4 event markers):
    - `.venv/bin/python scripts/diagnostics/plot_data_quality_trends.py --config config/political_forums_setup.yaml`
    - Writes tables to `results/tables/data_quality_trends/` and figures to `results/figures/data_quality_trends/`.
+   - Figure outputs include `overall_<metric>.png`, `by_family_<metric>.png`, `by_subreddit_by_family/<family>/<metric>.png`, and `by_topic_by_family/by_topic_by_family_<metric>.png`.
    - Uses calendar-date month-start ticks and red dotted vertical markers at `2022-11-30` and `2023-03-14`.
 10. Deterministic cleaning pass for interim analysis dataset:
    - `.venv/bin/python scripts/cleaning/clean_daily_chunks.py --config config/political_forums_setup.yaml`
@@ -69,28 +70,26 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
      - `--max_month_files_per_subreddit`, `--max_total_month_files`, `--max_days_per_month`
      - optional phase profiling via `--profile` / `--profile_output ...json`
 13. Event-time plotting:
-   - `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml`
-   - Writes pooled figures to `results/figures/event_time/pooled/{daily,weekly,rolling_daily}/` (lexicon, style proxies, toxicity, strict-vs-extended overlays, style panel, z-score components).
-   - Writes per-subreddit overlays to `results/figures/event_time/by_subreddit/{daily,weekly,rolling_daily}/`.
-   - `rolling_daily` views use trailing (past-only) windows: each day uses only that day and prior days in the selected window.
-  - Includes one figure with strict top-10 stem-aware individual rates plus strict-10 combined rate in one graph (pooled).
-  - Includes punctuation robustness overlays in the same pooled graph for strict vs extended variants:
-    - semicolon (`;` vs `;` + fullwidth `；`)
-    - dash (`—` strict vs extended family including en dash and spaced ASCII double/triple hyphen tokens)
-    - colon (`:` strict vs extended with URL/time-context exclusions and fullwidth `：`)
-    - quote style (curly-only strict vs all quote characters extended), plus `quote_curly_share`.
-  - Includes a paired pooled graph for `url_rate_100w` vs `time_expression_rate_100w` on shared axes.
+   - Default run: `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml`
+   - Default behavior writes pooled figures to `results/figures/event_time/pooled/{daily,rolling_daily}/` (lexicon, style proxies, toxicity, strict-vs-extended overlays, dual-axis quote panel, style panel, z-score components) and per-family overlays to `results/figures/event_time/by_family/{daily,rolling_daily}/` using a 7-day trailing window for `rolling_daily`.
+   - Default run writes both per-family and per-subreddit-by-family grids to `results/figures/event_time/by_subreddit_by_family/{daily,rolling_daily}/<family>/`.
+   - Weekly views are optional extras in event-time plotting: add `--include_weekly` to `plot_event_time_metrics.py` (and `plot_event_time_stratified_metrics.py`) to also write `weekly/` folders.
+   - Disable per-family outputs with `--no_topic_views`; disable per-subreddit-by-family with `--no_by_subreddit`. Adjust trailing window with `--topic_rolling_window N`.
+   - All `rolling_daily` views are past-only: pandas `.rolling(window="ND")` defaults to right-aligned/trailing, so each day uses only that day plus prior days within the window. Pooled, per-family, and per-subreddit-by-family paths share this implementation.
+   - Pooled robustness overlays:
+     - dash (`—` strict vs extended family including en dash and spaced ASCII double/triple hyphen tokens)
+     - colon (`:` strict vs extended; both rates are computed on text after URL spans and clock-time tokens are stripped, so extended is a true superset of strict that adds the fullwidth colon `：`)
+   - Pooled quote signal: a single dual-axis figure (`event_time_quote_rates_and_curly_share.png`) shows curly + all-quote rates on the left axis and curly share on the right axis (no separate `event_time_quote_curly_share.png` or `event_time_quote_strict_vs_extended.png`).
+   - Coverage shares (`coverage_perplexity`, `coverage_detector_primary`, …) are skipped when the underlying series has no signal (all-NaN or all-zero).
+   - Includes one pooled figure with strict top-10 stem-aware individual rates plus strict-10 combined rate.
    - Uses calendar-date x-axes with month-start ticks, plus red dotted release markers for ChatGPT (`2022-11-30`) and GPT-4 (`2023-03-14`).
-   - Multi-line subreddit overlays use explicit high-contrast palettes for clearer line separation.
-  - Optional topic-level views (daily, weekly, rolling-daily):
-     - `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml --topic_views --topic_rolling_window 7`
-     - Writes topic overlays to `results/figures/event_time/by_topic/{daily,weekly,rolling_daily}/`.
-     - Topic map is loaded from `config/political_forums_setup.yaml` (`topics` section).
+   - Multi-line subreddit / topic overlays use explicit high-contrast palettes for clearer line separation.
+   - Topic map is loaded from `config/political_forums_setup.yaml` (`topics` section); `semicolon_extended_*` is no longer emitted by the feature pipeline, so only `semicolon_rate_100w` is plotted.
 13b. Optional stratified pooled event-time (old / new / observed debut comments across all cohorts; length buckets; no Jaccard repetition):
    - `.venv/bin/python scripts/event_time/prepare_event_time_stratified_metrics.py --config config/political_forums_setup.yaml`
    - `.venv/bin/python scripts/event_time/plot_event_time_stratified_metrics.py --config config/political_forums_setup.yaml`
    - Tables: `results/tables/event_time/event_time_daily_metrics_pooled_by_user_cohort.csv`, `..._by_length_bucket.csv`, `event_time_length_bucket_daily_shares_pooled.csv`, notes in `event_time_stratified_metrics_notes.txt`.
-   - Figures: `results/figures/event_time/stratified_pooled/user_series/{daily,weekly,rolling_daily}/` and `stratified_pooled/length_bucket/{daily,weekly,rolling_daily}/` (length-bucket plots omit detector/perplexity/hostility/emotion/coverage metrics as nonsensical for that stratifier).
+   - Figures: `results/figures/event_time/stratified_pooled/user_series/{daily,rolling_daily}/` and `stratified_pooled/length_bucket/{daily,rolling_daily}/` by default (use `--include_weekly` on plotting to also write `weekly/`; length-bucket plots omit detector/perplexity/hostility/emotion/coverage metrics as nonsensical for that stratifier).
    - Stratified `rolling_daily` views also use trailing (past-only) windows.
    - Cohort definitions use earliest observed post per `(author, subreddit)` vs `launch_day_utc` (left-censoring if history starts after true first post); see notes file.
 13c. Optional within-user pre/post style shift analysis (author × ISO-week layer, parallel to event-time):
@@ -190,7 +189,9 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
   - semicolon rate, comment length, complexity index
   - AI-likeness composite index and component columns
   - strict top-10 stem-aware and extended AI-typical word rates
-  - strict vs extended punctuation rates (`semicolon`, `em_dash`, `colon`) plus quote-style extended metrics (`quote_all_rate_100w`, `quote_curly_share`)
+  - dash robustness pair (`em_dash_rate_100w` strict vs extended family that adds en dash and spaced ASCII double/triple-hyphen tokens)
+  - colon robustness pair (`colon_rate_100w` ASCII strict vs `colon_extended_rate_100w` ASCII + fullwidth `：`); both metrics strip URL spans and clock-time tokens before counting, so extended is a true superset
+  - quote-style metrics: `curly_quote_rate_100w`, `quote_all_rate_100w`, `quote_curly_share`
   - URL and clock-time expression rates (`url_rate_100w`, `time_expression_rate_100w`)
   - formality markers, list-structure intensity, repetition/template similarity, assistant-tone phrase rate
   - toxicity proxies: VADER negativity mean and lexical toxic incidence rate

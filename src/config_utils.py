@@ -105,3 +105,105 @@ def subreddit_topic_map(config: Dict[str, Any], include_topic_aliases: bool = Tr
         if include_topic_aliases:
             mapping[topic_name] = topic_name
     return mapping
+
+
+def topic_families(config: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Function summary: parse topic-family topic lists from config and return family-to-topics mapping.
+
+    Parameters:
+    - config: full loaded YAML config dictionary.
+
+    Returns:
+    - Dictionary mapping family name -> list of topic names.
+    """
+    raw_families = config.get("topic_families", {})
+    if not isinstance(raw_families, dict):
+        raise ValueError("Config key `topic_families` must be a mapping of family names to settings.")
+    parsed: Dict[str, List[str]] = {}
+    for family_name, family_value in raw_families.items():
+        if isinstance(family_value, dict):
+            family_topics = family_value.get("topics", [])
+        elif isinstance(family_value, list):
+            family_topics = family_value
+        else:
+            raise ValueError(
+                f"Config topic family `{family_name}` must be a list or mapping with `topics`."
+            )
+        if not isinstance(family_topics, list):
+            raise ValueError(f"Config topic family `{family_name}` field `topics` must be a list.")
+        cleaned_topics = [str(topic).strip() for topic in family_topics if str(topic).strip()]
+        parsed[str(family_name)] = cleaned_topics
+    return parsed
+
+
+def topic_family_map(config: Dict[str, Any], include_family_aliases: bool = True) -> Dict[str, str]:
+    """Function summary: validate family coverage and return topic-to-family mapping with optional family aliases.
+
+    Parameters:
+    - config: full loaded YAML config dictionary.
+    - include_family_aliases: if true, map each family name to itself for convenience.
+
+    Returns:
+    - Dictionary mapping topic (or family alias) -> family.
+    """
+    configured_topics = set(topic_groups(config).keys())
+    families = topic_families(config)
+    if not families:
+        raise ValueError("Config key `topic_families` is required and must define at least one family.")
+
+    mapping: Dict[str, str] = {}
+    unknown_topics: List[str] = []
+    for family_name, topics in families.items():
+        for topic in topics:
+            if topic not in configured_topics:
+                unknown_topics.append(topic)
+                continue
+            previous = mapping.get(topic)
+            if previous and previous != family_name:
+                raise ValueError(
+                    f"Topic `{topic}` appears in multiple families: `{previous}` and `{family_name}`."
+                )
+            mapping[topic] = family_name
+        if include_family_aliases:
+            mapping[family_name] = family_name
+
+    if unknown_topics:
+        unknown_sorted = ", ".join(sorted(set(unknown_topics)))
+        raise ValueError(f"Config `topic_families` contains unknown topics: {unknown_sorted}")
+
+    missing_topics = sorted(configured_topics - set(mapping.keys()))
+    if missing_topics:
+        raise ValueError(
+            "Every configured topic must be assigned to exactly one family. "
+            f"Missing topics: {', '.join(missing_topics)}"
+        )
+    return mapping
+
+
+def subreddit_family_map(config: Dict[str, Any], include_family_aliases: bool = False) -> Dict[str, str]:
+    """Function summary: compose subreddit-to-topic and topic-to-family mappings into subreddit-to-family mapping.
+
+    Parameters:
+    - config: full loaded YAML config dictionary.
+    - include_family_aliases: if true, map each family name to itself for convenience.
+
+    Returns:
+    - Dictionary mapping subreddit (and optional family aliases) -> family.
+    """
+    sub_to_topic = subreddit_topic_map(config, include_topic_aliases=False)
+    topic_to_family = topic_family_map(config, include_family_aliases=include_family_aliases)
+    mapping: Dict[str, str] = {}
+    for subreddit, topic in sub_to_topic.items():
+        family = topic_to_family.get(topic)
+        if family is None:
+            raise ValueError(f"Topic `{topic}` for subreddit `{subreddit}` is missing from `topic_families`.")
+        mapping[subreddit] = family
+
+    primary_subreddits = sorted(str(s) for s in config.get("subreddits", {}).get("primary", []))
+    unmapped_subreddits = [sub for sub in primary_subreddits if sub not in mapping]
+    if unmapped_subreddits:
+        raise ValueError(
+            "Every primary subreddit must map to a topic and a topic family. "
+            f"Missing subreddits: {', '.join(unmapped_subreddits)}"
+        )
+    return mapping

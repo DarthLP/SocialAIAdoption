@@ -15,7 +15,8 @@ Additional comment-feature metrics (when available):
 - passive_rate_100w: passive-construction proxy rate per 100 words.
 - em_dash_rate_100w / en_dash_rate_100w: Unicode U+2014 / U+2013 counts per 100 words.
 - ascii_double_hyphen_rate_100w: count of spaced ` -- ` tokens per 100 words.
-- colon_rate_100w / open_paren_rate_100w: punctuation density (colon inflated by URLs/timestamps).
+- colon_rate_100w / colon_extended_rate_100w: ASCII (strict) and ASCII+fullwidth (extended) colon density per 100 words; both metrics strip URL spans and clock-time tokens before counting, so extended is a true superset of strict.
+- open_paren_rate_100w: open-parenthesis density per 100 words.
 - curly_quote_rate_100w: curly quote characters per 100 words.
 - markdown_bold_pair_rate_100w / markdown_heading_line_rate_100w: **...** spans and ATX heading lines per 100 words.
 - hedging_phrase_rate_100w / polite_closer_rate_100w / signposting_phrase_rate_100w: disjoint phrase-list hits per 100 words.

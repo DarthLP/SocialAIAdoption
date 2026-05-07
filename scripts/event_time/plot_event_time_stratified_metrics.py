@@ -6,8 +6,9 @@ event_time_length_bucket_daily_shares_pooled.csv) and writes calendar-date figur
 multiple hues: old vs new vs debut_observed users; short vs medium vs long length buckets;
 comment volume; length-bucket share mix; and the same style/toxicity/detector metric suite as
 plot_event_time_metrics.py except repetition_template_similarity (Jaccard) is omitted. Writes two
-topic trees: results/figures/event_time/stratified_pooled/user_series/{daily,weekly,rolling_daily}/
-and stratified_pooled/length_bucket/{daily,weekly,rolling_daily}/ (length_bucket omits detector,
+topic trees: results/figures/event_time/stratified_pooled/user_series/{daily,rolling_daily}/
+by default (`weekly/` with `--include_weekly`) and
+stratified_pooled/length_bucket/{daily,rolling_daily}/ by default (`weekly/` with `--include_weekly`) (length_bucket omits detector,
 perplexity, hostility, emotion, and coverage metrics—those are not meaningful when the stratifier
 is itself length). Length-bucket daily share mix lives under length_bucket/daily/.
 
@@ -88,6 +89,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=7,
         help="Trailing rolling window size (days) for rolling_daily views.",
+    )
+    parser.add_argument(
+        "--include_weekly",
+        action="store_true",
+        help="Include weekly view plots in addition to default daily and rolling_daily views.",
     )
     return parser.parse_args()
 
@@ -408,7 +414,8 @@ def main() -> None:
         "weekly": length_bucket_root / "weekly",
         "rolling_daily": length_bucket_root / "rolling_daily",
     }
-    for p in list(user_view_dirs.values()) + list(len_view_dirs.values()):
+    enabled_views = pet.active_view_names(bool(args.include_weekly))
+    for p in [*[user_view_dirs[name] for name in enabled_views], *[len_view_dirs[name] for name in enabled_views]]:
         p.mkdir(parents=True, exist_ok=True)
 
     user_daily = aggregate_daily_weighted_stratified(df_user, "user_series", launch_pd, alias_col="user_series")
@@ -422,8 +429,10 @@ def main() -> None:
         len_daily, "length_bucket", int(max(1, args.rolling_window)), launch_pd
     )
 
-    user_views = [("daily", user_daily), ("weekly", user_weekly), ("rolling_daily", user_roll)]
-    len_views = [("daily", len_daily), ("weekly", len_weekly), ("rolling_daily", len_roll)]
+    user_views_all: dict[str, pd.DataFrame] = {"daily": user_daily, "weekly": user_weekly, "rolling_daily": user_roll}
+    len_views_all: dict[str, pd.DataFrame] = {"daily": len_daily, "weekly": len_weekly, "rolling_daily": len_roll}
+    user_views = [(name, user_views_all[name]) for name in enabled_views]
+    len_views = [(name, len_views_all[name]) for name in enabled_views]
     user_order = ["old", "new", "debut_observed"]
     len_order = ["short", "medium", "long"]
 
@@ -445,6 +454,12 @@ def main() -> None:
         )
         for y_col, title, fname in pooled_stratified_metric_specs():
             if y_col in view_df.columns:
+                if y_col in pet.COVERAGE_METRICS_REQUIRE_SIGNAL and not pet.metric_has_plotworthy_signal(view_df, y_col):
+                    print(
+                        f"[plot_event_time_stratified_metrics] user_series_skip_no_signal view={view_name} metric={y_col}",
+                        flush=True,
+                    )
+                    continue
                 plot_multi_hue_lines(
                     view_df,
                     y_col,
@@ -488,6 +503,12 @@ def main() -> None:
         )
         for y_col, title, fname in pooled_stratified_metric_specs_for_length():
             if y_col in view_df.columns:
+                if y_col in pet.COVERAGE_METRICS_REQUIRE_SIGNAL and not pet.metric_has_plotworthy_signal(view_df, y_col):
+                    print(
+                        f"[plot_event_time_stratified_metrics] length_bucket_skip_no_signal view={view_name} metric={y_col}",
+                        flush=True,
+                    )
+                    continue
                 plot_multi_hue_lines(
                     view_df,
                     y_col,

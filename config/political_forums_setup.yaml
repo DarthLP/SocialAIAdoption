@@ -244,6 +244,50 @@ topics:
       - advertising
       - copywriting
 
+topic_families:
+  economics_news:
+    topics:
+      - politics
+      - news
+      - finance
+      - fire_retirement
+      - crypto_investing
+  tech_science:
+    topics:
+      - coding
+      - tech
+      - ai
+      - science
+      - gaming
+  marketing:
+    topics:
+      - freelancer
+      - ecommerce
+      - marketing
+      - advertisement
+      - influencer
+  social_questions:
+    topics:
+      - general_questions
+      - life_advice
+      - social
+      - career
+      - medicine
+  writing_learning:
+    topics:
+      - writing_help
+      - fantasy
+      - books
+      - learning
+      - student
+  lifestyle:
+    topics:
+      - cooking
+      - travel
+      - indoor_gardening
+      - pets
+      - photography
+
 dataset:
   fields:
     - id
