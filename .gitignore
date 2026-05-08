@@ -7,13 +7,14 @@ __pycache__/
 .ruff_cache/
 *.pyc
 
+
 # OS noise
 .DS_Store
 
 # Large or generated artifacts
 data/
 *.torrent
-results/logs/
+results/
 
 # User-week pipeline outputs exceeding GitHub's 100 MiB blob limit (regenerate locally; see README)
 results/tables/user_week/user_week_panel.parquet
