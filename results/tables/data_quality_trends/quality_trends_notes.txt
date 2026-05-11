@@ -6,6 +6,10 @@ Near-equivalence check documented from prior audit:
 - automod_author_count and moderator_distinguished_count differ by 1 row.
 - Exception row: author == 'AutoModerator' with distinguished == null.
 
-Computed author == 'AutoModerator' total from this run: 140114
-Figure captions for automod series use this same total for the current event window.
+Computed author == 'AutoModerator' row total from this run: 607023
+Figure captions for automod row-rate and author-share series use this row total for the current event window.
+
+Author-share columns count distinct trimmed non-empty `author` strings per day; pooled
+ALL/family/topic rows union authors across subreddits (not a sum of per-sub distinct counts).
+
 The bot-name heuristic metric is exploratory and not a cleaning rule.

@@ -12,6 +12,6 @@ Keep policy reminders:
 - URL-only text is kept.
 - author == [deleted] is kept.
 
-Run totals: drop_author_automoderator=131501, drop_distinguished_moderator=153532, overlap=131482
-Unique counts after overlap split: automod_only=19, distinguished_only=22050
+Run totals: drop_author_automoderator=607023, drop_distinguished_moderator=693746, overlap=606906
+Unique counts after overlap split: automod_only=117, distinguished_only=86840
 Interpretation: on this full event window, distinguished moderator rows are not equivalent to AutoModerator rows and include additional non-AutoModerator moderator content.

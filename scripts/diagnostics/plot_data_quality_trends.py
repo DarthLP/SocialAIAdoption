@@ -10,16 +10,19 @@ Functionality:
 - Computes counts for removed/deleted placeholders, deleted authors, AutoModerator,
   stickied comments, and an exploratory bot-name heuristic.
 - Enforces configured event window bounds before writing trend tables and figures.
-- Computes percentage rates relative to daily `rows_total`.
+- Computes percentage rates relative to daily `rows_total` and, separately,
+  author-share rates: distinct authors with a signal (e.g. body `[removed]`) divided
+  by distinct non-empty authors that day (per subreddit-day; pooled ALL/family/topic
+  use set unions across subreddits so cross-sub activity is not double-counted).
 - Aggregates per-subreddit daily counts into per-family daily series using
   `topics` + `topic_families` in config (subreddits not assigned to a family
   are skipped from family plots and surfaced via a warning).
 - Writes tidy outputs to `results/tables/data_quality_trends/`:
-  per-subreddit (granular audit), per-family, and pooled overall tables.
+  per-subreddit (granular audit), per-family, pooled overall, topic-by-family, and validation tables.
 - Generates percentage trend plots in `results/figures/data_quality_trends/`:
   one `overall_<metric>.png`, one `by_family_<metric>.png`, one
   `by_subreddit_by_family/<family>/<metric>.png`, and one
-  `by_topic_by_family/by_topic_by_family_<metric>.png`.
+  `by_topic_by_family/by_topic_by_family_<metric>.png` (row-rate and author-share metrics).
 - Uses a non-interactive plotting backend by default for terminal-safe rendering.
 - Logs per-metric `plot_progress` markers so long plotting runs show progress.
 - Annotates AutoModerator plots with the AutoModerator row total summed for the current window.
@@ -39,7 +42,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 import importlib.util
 import sys
-from typing import Any, Dict, Iterable
+from collections import defaultdict
+from typing import Any, DefaultDict, Dict, Iterable, Tuple
 
 import matplotlib
 if "MPLBACKEND" not in os.environ:
@@ -87,24 +91,6 @@ BASE_COUNT_METRICS = [
     "bot_name_heuristic_count",
 ]
 
-RATE_METRICS = [
-    "body_removed_rate_pct",
-    "body_deleted_rate_pct",
-    "author_deleted_rate_pct",
-    "automod_author_rate_pct",
-    "stickied_rate_pct",
-    "bot_name_heuristic_rate_pct",
-]
-
-PLOT_RATE_METRICS = [
-    "body_removed_rate_pct",
-    "body_deleted_rate_pct",
-    "author_deleted_rate_pct",
-    "automod_author_rate_pct",
-    "stickied_rate_pct",
-    "bot_name_heuristic_rate_pct",
-]
-
 METRIC_LABELS = {
     "body_removed_rate_pct": "Body == [removed] (% of daily rows)",
     "body_deleted_rate_pct": "Body == [deleted] (% of daily rows)",
@@ -112,7 +98,42 @@ METRIC_LABELS = {
     "automod_author_rate_pct": "Author == AutoModerator (% of daily rows)",
     "stickied_rate_pct": "Stickied == true (% of daily rows)",
     "bot_name_heuristic_rate_pct": "Bot-name heuristic (% of daily rows, exploratory)",
+    "body_removed_rate_by_authors_pct": "Authors with ≥1 body [removed] (% of distinct daily authors)",
+    "body_deleted_rate_by_authors_pct": "Authors with ≥1 body [deleted] (% of distinct daily authors)",
+    "author_deleted_rate_by_authors_pct": "Author string [deleted] in distinct-author set (% of distinct daily authors)",
+    "automod_author_rate_by_authors_pct": "Author == AutoModerator (% of distinct daily authors)",
+    "bot_name_heuristic_rate_by_authors_pct": "Bot-name heuristic authors (% of distinct daily authors, exploratory)",
 }
+
+AUTHOR_COUNT_METRICS = [
+    "authors_distinct_count",
+    "authors_body_removed_count",
+    "authors_body_deleted_count",
+    "authors_author_deleted_count",
+    "authors_automod_count",
+    "authors_bot_name_heuristic_count",
+]
+
+AUTHOR_SHARE_RATE_METRICS = [
+    "body_removed_rate_by_authors_pct",
+    "body_deleted_rate_by_authors_pct",
+    "author_deleted_rate_by_authors_pct",
+    "automod_author_rate_by_authors_pct",
+    "bot_name_heuristic_rate_by_authors_pct",
+]
+
+PLOT_ROW_RATE_METRICS = [
+    "body_removed_rate_pct",
+    "body_deleted_rate_pct",
+    "author_deleted_rate_pct",
+    "automod_author_rate_pct",
+    "stickied_rate_pct",
+    "bot_name_heuristic_rate_pct",
+]
+
+PLOT_RATE_METRICS = PLOT_ROW_RATE_METRICS + AUTHOR_SHARE_RATE_METRICS
+
+RATE_METRICS = PLOT_RATE_METRICS
 
 
 @dataclass
@@ -174,12 +195,79 @@ def iter_daily_files(raw_daily_chunks_dir: Path, subreddits: Iterable[str]) -> I
             yield subreddit, ndjson_path
 
 
-def compute_daily_metrics(raw_daily_chunks_dir: Path, subreddits: list[str]) -> pd.DataFrame:
-    """Function summary: scan daily files and compute configured per-day count metrics."""
+def _empty_author_bucket() -> Dict[str, set[str]]:
+    """Function summary: return fresh empty named sets for one scan bucket (distinct author strings)."""
+    return {
+        "all": set(),
+        "body_removed": set(),
+        "body_deleted": set(),
+        "author_deleted": set(),
+        "automod": set(),
+        "bot_heuristic": set(),
+    }
+
+
+def _merge_author_bucket(dst: Dict[str, set[str]], src: Dict[str, set[str]]) -> None:
+    """Function summary: union each named author set from src into dst in place."""
+    for key in dst:
+        dst[key].update(src[key])
+
+
+def _author_counts_from_bucket(bucket: Dict[str, set[str]]) -> Dict[str, int]:
+    """Function summary: map author-set bucket to integer count columns matching AUTHOR_COUNT_METRICS."""
+    return {
+        "authors_distinct_count": len(bucket["all"]),
+        "authors_body_removed_count": len(bucket["body_removed"]),
+        "authors_body_deleted_count": len(bucket["body_deleted"]),
+        "authors_author_deleted_count": len(bucket["author_deleted"]),
+        "authors_automod_count": len(bucket["automod"]),
+        "authors_bot_name_heuristic_count": len(bucket["bot_heuristic"]),
+    }
+
+
+def _date_utc_in_event_window(date_utc: str, start_ts: int, end_ts_exclusive: int) -> bool:
+    """Function summary: return True if calendar day date_utc falls in [start_ts, end_ts_exclusive) in UTC."""
+    day = pd.to_datetime(date_utc, utc=True)
+    start = pd.Timestamp(start_ts, unit="s", tz="UTC")
+    end_exclusive = pd.Timestamp(end_ts_exclusive, unit="s", tz="UTC")
+    return bool((day >= start) & (day < end_exclusive))
+
+
+def compute_daily_metrics(
+    raw_daily_chunks_dir: Path,
+    subreddits: list[str],
+    sub_to_family: Dict[str, str],
+    sub_to_topic: Dict[str, str],
+    topic_to_family: Dict[str, str],
+) -> Tuple[
+    pd.DataFrame,
+    DefaultDict[str, Dict[str, set[str]]],
+    DefaultDict[Tuple[str, str], Dict[str, set[str]]],
+    DefaultDict[Tuple[str, str, str], Dict[str, set[str]]],
+]:
+    """Function summary: scan daily NDJSON files for row counts, per-subreddit distinct-author counts,
+    and merge author sets into ALL-daily, family-daily, and topic-within-family pools.
+
+    Parameters:
+    - raw_daily_chunks_dir: root `daily_chunks` directory.
+    - subreddits: configured subreddit names to scan.
+    - sub_to_family: subreddit to topic_family for family-level pool keys.
+    - sub_to_topic: subreddit to topic_group label.
+    - topic_to_family: topic_group to topic_family for valid topic-family keys.
+
+    Returns:
+    - Tuple of (per-subreddit-day row + author count DataFrame, accum_all by date_utc,
+      accum_family by (date_utc, topic_family), accum_topic by (date_utc, topic_family, topic_group)).
+    """
     rows: list[Dict[str, Any]] = []
+    accum_all: DefaultDict[str, Dict[str, set[str]]] = defaultdict(_empty_author_bucket)
+    accum_family: DefaultDict[Tuple[str, str], Dict[str, set[str]]] = defaultdict(_empty_author_bucket)
+    accum_topic: DefaultDict[Tuple[str, str, str], Dict[str, set[str]]] = defaultdict(_empty_author_bucket)
+
     for subreddit, file_path in iter_daily_files(raw_daily_chunks_dir, subreddits):
         date_utc = file_path.stem
         counter = {metric: 0 for metric in BASE_COUNT_METRICS}
+        local = _empty_author_bucket()
         with file_path.open("r", encoding="utf-8") as handle:
             for line in handle:
                 line = line.strip()
@@ -201,11 +289,105 @@ def compute_daily_metrics(raw_daily_chunks_dir: Path, subreddits: list[str]) -> 
                     counter["stickied_count"] += 1
                 if is_bot_name_heuristic(author):
                     counter["bot_name_heuristic_count"] += 1
-        rows.append({"subreddit": subreddit, "date_utc": date_utc, **counter})
+
+                if author:
+                    local["all"].add(author)
+                    if body == "[removed]":
+                        local["body_removed"].add(author)
+                    if body == "[deleted]":
+                        local["body_deleted"].add(author)
+                    if author == "[deleted]":
+                        local["author_deleted"].add(author)
+                    if author == "AutoModerator":
+                        local["automod"].add(author)
+                    if is_bot_name_heuristic(author):
+                        local["bot_heuristic"].add(author)
+
+        count_auth = _author_counts_from_bucket(local)
+        rows.append({"subreddit": subreddit, "date_utc": date_utc, **counter, **count_auth})
+
+        _merge_author_bucket(accum_all[date_utc], local)
+        fam = sub_to_family.get(subreddit)
+        if fam:
+            _merge_author_bucket(accum_family[(date_utc, fam)], local)
+        topic_g = sub_to_topic.get(subreddit)
+        if topic_g:
+            fam_t = topic_to_family.get(topic_g)
+            if fam_t:
+                _merge_author_bucket(accum_topic[(date_utc, fam_t, topic_g)], local)
+
+    base_cols = ["subreddit", "date_utc", *BASE_COUNT_METRICS, *AUTHOR_COUNT_METRICS]
     if not rows:
-        return pd.DataFrame(columns=["subreddit", "date_utc", *BASE_COUNT_METRICS])
+        return (
+            pd.DataFrame(columns=base_cols),
+            accum_all,
+            accum_family,
+            accum_topic,
+        )
     df = pd.DataFrame(rows).sort_values(["subreddit", "date_utc"]).reset_index(drop=True)
-    return df
+    return df, accum_all, accum_family, accum_topic
+
+
+def materialize_author_pool_overall(
+    accum_all: DefaultDict[str, Dict[str, set[str]]],
+    start_ts: int,
+    end_ts_exclusive: int,
+) -> pd.DataFrame:
+    """Function summary: convert ALL-daily author accumulators to a tidy count-only DataFrame filtered to the event window."""
+    out_rows: list[Dict[str, Any]] = []
+    for date_utc, bucket in sorted(accum_all.items()):
+        if not _date_utc_in_event_window(date_utc, start_ts, end_ts_exclusive):
+            continue
+        row: Dict[str, Any] = {"date_utc": date_utc, **_author_counts_from_bucket(bucket)}
+        out_rows.append(row)
+    if not out_rows:
+        return pd.DataFrame(columns=["date_utc", *AUTHOR_COUNT_METRICS])
+    return pd.DataFrame(out_rows).sort_values("date_utc").reset_index(drop=True)
+
+
+def materialize_author_pool_family(
+    accum_family: DefaultDict[Tuple[str, str], Dict[str, set[str]]],
+    start_ts: int,
+    end_ts_exclusive: int,
+) -> pd.DataFrame:
+    """Function summary: convert per-family daily author accumulators to a tidy count-only DataFrame (event window)."""
+    out_rows: list[Dict[str, Any]] = []
+    for (date_utc, topic_family), bucket in sorted(accum_family.items(), key=lambda x: (x[0][0], x[0][1])):
+        if not _date_utc_in_event_window(date_utc, start_ts, end_ts_exclusive):
+            continue
+        row: Dict[str, Any] = {
+            "topic_family": topic_family,
+            "date_utc": date_utc,
+            **_author_counts_from_bucket(bucket),
+        }
+        out_rows.append(row)
+    if not out_rows:
+        return pd.DataFrame(columns=["topic_family", "date_utc", *AUTHOR_COUNT_METRICS])
+    return pd.DataFrame(out_rows).sort_values(["topic_family", "date_utc"]).reset_index(drop=True)
+
+
+def materialize_author_pool_topic_family(
+    accum_topic: DefaultDict[Tuple[str, str, str], Dict[str, set[str]]],
+    start_ts: int,
+    end_ts_exclusive: int,
+) -> pd.DataFrame:
+    """Function summary: convert topic-within-family daily author accumulators to a tidy count-only DataFrame (event window)."""
+    out_rows: list[Dict[str, Any]] = []
+    for (date_utc, topic_family, topic_group), bucket in sorted(
+        accum_topic.items(), key=lambda x: (x[0][0], x[0][1], x[0][2])
+    ):
+        if not _date_utc_in_event_window(date_utc, start_ts, end_ts_exclusive):
+            continue
+        row: Dict[str, Any] = {
+            "topic_family": topic_family,
+            "topic_group": topic_group,
+            "date_utc": date_utc,
+            **_author_counts_from_bucket(bucket),
+        }
+        out_rows.append(row)
+    if not out_rows:
+        return pd.DataFrame(columns=["topic_family", "topic_group", "date_utc", *AUTHOR_COUNT_METRICS])
+    return pd.DataFrame(out_rows).sort_values(["topic_family", "topic_group", "date_utc"]).reset_index(drop=True)
 
 
 def filter_to_event_window(df: pd.DataFrame, start_ts: int, end_ts_exclusive: int) -> pd.DataFrame:
@@ -222,7 +404,7 @@ def filter_to_event_window(df: pd.DataFrame, start_ts: int, end_ts_exclusive: in
 
 
 def add_time_and_rate_columns(df: pd.DataFrame, event_ts: int) -> pd.DataFrame:
-    """Function summary: add UTC date columns, event-day offsets, and percentage rate metrics."""
+    """Function summary: add UTC date columns, event-day offsets, and percentage rate metrics (row-based)."""
     out = df.copy()
     out["date"] = pd.to_datetime(out["date_utc"], utc=True).dt.tz_convert(None)
     event_date = datetime.fromtimestamp(event_ts, tz=timezone.utc).date()
@@ -239,8 +421,35 @@ def add_time_and_rate_columns(df: pd.DataFrame, event_ts: int) -> pd.DataFrame:
     return out
 
 
-def build_overall_daily(df: pd.DataFrame, event_ts: int) -> pd.DataFrame:
-    """Function summary: aggregate per-subreddit daily metrics into one overall daily series."""
+def add_author_share_rate_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Function summary: add author-share percentage columns using distinct-author denominators.
+
+    Parameters:
+    - df: rows must include `authors_distinct_count` and the six `authors_*_count` columns when present.
+
+    Returns:
+    - Same frame with `*_rate_by_authors_pct` columns; if author count columns are absent, returns a copy unchanged.
+    """
+    out = df.copy()
+    if "authors_distinct_count" not in out.columns:
+        return out
+    denom = out["authors_distinct_count"].replace(0, pd.NA)
+    out["body_removed_rate_by_authors_pct"] = (out["authors_body_removed_count"] / denom) * 100.0
+    out["body_deleted_rate_by_authors_pct"] = (out["authors_body_deleted_count"] / denom) * 100.0
+    out["author_deleted_rate_by_authors_pct"] = (out["authors_author_deleted_count"] / denom) * 100.0
+    out["automod_author_rate_by_authors_pct"] = (out["authors_automod_count"] / denom) * 100.0
+    out["bot_name_heuristic_rate_by_authors_pct"] = (out["authors_bot_name_heuristic_count"] / denom) * 100.0
+    return out
+
+
+def build_overall_daily(
+    df: pd.DataFrame,
+    event_ts: int,
+    author_by_date_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Function summary: aggregate per-subreddit daily row counts into one overall daily series and merge pooled distinct-author counts."""
+    if df.empty:
+        return pd.DataFrame()
     grouped = (
         df.groupby("date_utc", as_index=False)[BASE_COUNT_METRICS]
         .sum()
@@ -249,24 +458,36 @@ def build_overall_daily(df: pd.DataFrame, event_ts: int) -> pd.DataFrame:
     )
     grouped["subreddit"] = "ALL"
     grouped = grouped[["subreddit", "date_utc", *BASE_COUNT_METRICS]]
-    return add_time_and_rate_columns(grouped, event_ts)
+    if not author_by_date_df.empty:
+        grouped = grouped.merge(author_by_date_df, on="date_utc", how="left")
+    else:
+        for c in AUTHOR_COUNT_METRICS:
+            grouped[c] = pd.NA
+    for c in AUTHOR_COUNT_METRICS:
+        if c in grouped.columns:
+            grouped[c] = grouped[c].fillna(0).astype(int)
+    grouped = grouped.sort_values("date_utc").reset_index(drop=True)
+    grouped = grouped[["subreddit", "date_utc", *BASE_COUNT_METRICS, *AUTHOR_COUNT_METRICS]]
+    out = add_time_and_rate_columns(grouped, event_ts)
+    return add_author_share_rate_columns(out)
 
 
 def build_family_daily(
     df: pd.DataFrame,
     event_ts: int,
     sub_to_family: Dict[str, str],
+    author_family_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Function summary: aggregate per-subreddit daily counts into per-family daily series using config-driven mapping.
+    """Function summary: aggregate per-subreddit daily row counts into per-family daily series and merge pooled author sets.
 
     Parameters:
-    - df: per-subreddit daily counts (BASE_COUNT_METRICS columns) within the event window.
+    - df: per-subreddit daily counts (BASE_COUNT_METRICS) within the event window.
     - event_ts: launch-day UTC timestamp used to compute days_from_event.
     - sub_to_family: mapping from subreddit name to family name.
+    - author_family_df: distinct-author pool counts per (topic_family, date_utc).
 
     Returns:
-    - DataFrame with one row per (topic_family, date_utc), summed counts, and recomputed rate
-      columns. Subreddits not assigned to a family are dropped and surfaced via a printed warning.
+    - DataFrame with one row per (topic_family, date_utc), summed row counts, merged author counts, and rate columns.
     """
     if df.empty:
         return df.copy()
@@ -277,14 +498,27 @@ def build_family_daily(
         print(f"warning unmapped_subreddits_in_family_view={','.join(unmapped)}")
     d = d.dropna(subset=["topic_family"])
     if d.empty:
-        return pd.DataFrame(columns=["topic_family", "date_utc", *BASE_COUNT_METRICS])
+        return pd.DataFrame(columns=["topic_family", "date_utc", *BASE_COUNT_METRICS, *AUTHOR_COUNT_METRICS])
     grouped = (
         d.groupby(["topic_family", "date_utc"], as_index=False)[BASE_COUNT_METRICS]
         .sum()
         .sort_values(["topic_family", "date_utc"])
         .reset_index(drop=True)
     )
-    return add_time_and_rate_columns(grouped, event_ts)
+    if not author_family_df.empty:
+        grouped = grouped.merge(author_family_df, on=["topic_family", "date_utc"], how="left")
+    else:
+        for c in AUTHOR_COUNT_METRICS:
+            grouped[c] = pd.NA
+    for c in BASE_COUNT_METRICS:
+        grouped[c] = grouped[c].fillna(0).astype(int)
+    for c in AUTHOR_COUNT_METRICS:
+        if c in grouped.columns:
+            grouped[c] = grouped[c].fillna(0).astype(int)
+    grouped = grouped.sort_values(["topic_family", "date_utc"]).reset_index(drop=True)
+    grouped = grouped[["topic_family", "date_utc", *BASE_COUNT_METRICS, *AUTHOR_COUNT_METRICS]]
+    out = add_time_and_rate_columns(grouped, event_ts)
+    return add_author_share_rate_columns(out)
 
 
 def build_topic_family_daily(
@@ -292,8 +526,9 @@ def build_topic_family_daily(
     event_ts: int,
     sub_to_topic: Dict[str, str],
     topic_to_family: Dict[str, str],
+    author_topic_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Function summary: aggregate per-subreddit daily counts into per-topic-per-family daily series."""
+    """Function summary: aggregate per-subreddit daily row counts into per-topic-per-family daily series and merge author pools."""
     if df.empty:
         return df.copy()
     d = df.copy()
@@ -302,14 +537,31 @@ def build_topic_family_daily(
     d["topic_family"] = d["topic_group"].map(topic_to_family)
     d = d.dropna(subset=["topic_family"])
     if d.empty:
-        return pd.DataFrame(columns=["topic_family", "topic_group", "date_utc", *BASE_COUNT_METRICS])
+        return pd.DataFrame(columns=["topic_family", "topic_group", "date_utc", *BASE_COUNT_METRICS, *AUTHOR_COUNT_METRICS])
     grouped = (
         d.groupby(["topic_family", "topic_group", "date_utc"], as_index=False)[BASE_COUNT_METRICS]
         .sum()
         .sort_values(["topic_family", "topic_group", "date_utc"])
         .reset_index(drop=True)
     )
-    return add_time_and_rate_columns(grouped, event_ts)
+    if not author_topic_df.empty:
+        grouped = grouped.merge(
+            author_topic_df,
+            on=["topic_family", "topic_group", "date_utc"],
+            how="left",
+        )
+    else:
+        for c in AUTHOR_COUNT_METRICS:
+            grouped[c] = pd.NA
+    for c in BASE_COUNT_METRICS:
+        grouped[c] = grouped[c].fillna(0).astype(int)
+    for c in AUTHOR_COUNT_METRICS:
+        if c in grouped.columns:
+            grouped[c] = grouped[c].fillna(0).astype(int)
+    grouped = grouped.sort_values(["topic_family", "topic_group", "date_utc"]).reset_index(drop=True)
+    grouped = grouped[["topic_family", "topic_group", "date_utc", *BASE_COUNT_METRICS, *AUTHOR_COUNT_METRICS]]
+    out = add_time_and_rate_columns(grouped, event_ts)
+    return add_author_share_rate_columns(out)
 
 
 def validate_against_baseline(df: pd.DataFrame, baseline_counts_path: Path) -> pd.DataFrame:
@@ -331,17 +583,19 @@ def write_tables(
     per_subreddit_df: pd.DataFrame,
     per_family_df: pd.DataFrame,
     overall_df: pd.DataFrame,
+    per_topic_family_df: pd.DataFrame,
     validation_df: pd.DataFrame,
     tables_subdir: Path,
 ) -> None:
     """Function summary: write trend and validation tables to the dedicated output subfolder.
 
-    The per-subreddit table is preserved as the granular audit; the per-family and overall
-    tables drive the figures and are written alongside.
+    The per-subreddit table is preserved as the granular audit; the per-family, overall,
+    and topic-by-family tables drive extended figures and are written alongside.
     """
     per_subreddit_df.to_csv(tables_subdir / "daily_quality_metrics_by_subreddit.csv", index=False)
     per_family_df.to_csv(tables_subdir / "daily_quality_metrics_by_family.csv", index=False)
     overall_df.to_csv(tables_subdir / "daily_quality_metrics_overall.csv", index=False)
+    per_topic_family_df.to_csv(tables_subdir / "daily_quality_metrics_by_topic_and_family.csv", index=False)
     validation_df.to_csv(tables_subdir / "daily_quality_metrics_validation_vs_filter_counts.csv", index=False)
 
 
@@ -630,8 +884,12 @@ def write_metadata_note(
         "- automod_author_count and moderator_distinguished_count differ by 1 row.",
         "- Exception row: author == 'AutoModerator' with distinguished == null.",
         "",
-        f"Computed author == 'AutoModerator' total from this run: {automod_total}",
-        "Figure captions for automod series use this same total for the current event window.",
+        f"Computed author == 'AutoModerator' row total from this run: {automod_total}",
+        "Figure captions for automod row-rate and author-share series use this row total for the current event window.",
+        "",
+        "Author-share columns count distinct trimmed non-empty `author` strings per day; pooled",
+        "ALL/family/topic rows union authors across subreddits (not a sum of per-sub distinct counts).",
+        "",
         "The bot-name heuristic metric is exploratory and not a cleaning rule.",
     ]
     note_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -656,13 +914,6 @@ def main() -> None:
         missing_joined = ",".join(missing_subreddits)
         print(f"warning missing_subreddit_dirs={missing_joined}")
 
-    per_subreddit_counts = compute_daily_metrics(paths.raw_daily_chunks_dir, subreddits)
-    per_subreddit_counts = filter_to_event_window(
-        per_subreddit_counts,
-        start_ts=start_ts,
-        end_ts_exclusive=end_ts_exclusive,
-    )
-    print(f"rows_after_event_window_filter={len(per_subreddit_counts)}")
     sub_to_topic = subreddit_topic_map(config, include_topic_aliases=False)
     sub_to_family = subreddit_family_map(config, include_family_aliases=False)
     family_topics = topic_families(config)
@@ -671,18 +922,38 @@ def main() -> None:
         for family_name, topic_names in family_topics.items()
         for topic_name in topic_names
     }
+
+    per_subreddit_counts, accum_all, accum_family, accum_topic = compute_daily_metrics(
+        paths.raw_daily_chunks_dir,
+        subreddits,
+        sub_to_family,
+        sub_to_topic,
+        topic_to_family,
+    )
+    per_subreddit_counts = filter_to_event_window(
+        per_subreddit_counts,
+        start_ts=start_ts,
+        end_ts_exclusive=end_ts_exclusive,
+    )
+    print(f"rows_after_event_window_filter={len(per_subreddit_counts)}")
+    author_overall = materialize_author_pool_overall(accum_all, start_ts, end_ts_exclusive)
+    author_family = materialize_author_pool_family(accum_family, start_ts, end_ts_exclusive)
+    author_topic = materialize_author_pool_topic_family(accum_topic, start_ts, end_ts_exclusive)
+
     per_subreddit_df = add_time_and_rate_columns(per_subreddit_counts, event_ts)
-    per_family_df = build_family_daily(per_subreddit_counts, event_ts, sub_to_family)
+    per_subreddit_df = add_author_share_rate_columns(per_subreddit_df)
+    per_family_df = build_family_daily(per_subreddit_counts, event_ts, sub_to_family, author_family)
     per_topic_family_df = build_topic_family_daily(
         per_subreddit_counts,
         event_ts,
         sub_to_topic=sub_to_topic,
         topic_to_family=topic_to_family,
+        author_topic_df=author_topic,
     )
-    overall_df = build_overall_daily(per_subreddit_counts, event_ts)
+    overall_df = build_overall_daily(per_subreddit_counts, event_ts, author_overall)
     validation_df = validate_against_baseline(per_subreddit_counts, paths.baseline_counts_path)
 
-    write_tables(per_subreddit_df, per_family_df, overall_df, validation_df, paths.tables_subdir)
+    write_tables(per_subreddit_df, per_family_df, overall_df, per_topic_family_df, validation_df, paths.tables_subdir)
     write_metadata_note(per_subreddit_df, paths.tables_subdir)
     automod_total = int(per_subreddit_df["automod_author_count"].sum())
     span_days = date_span_days(overall_df)

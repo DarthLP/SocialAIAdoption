@@ -64,12 +64,12 @@ Shared helper (imported by domain scripts, not run as a step): [`scripts/_projec
 
 ### 3) Inspect pre-cleaning quality trends (recommended diagnostics)
 - Script: `plot_data_quality_trends.py`
-- Why: Shows day-level quality indicators (e.g., removed/deleted/AutoModerator/stickied rates) before cleaning decisions.
+- Why: Shows day-level quality indicators (e.g., removed/deleted/AutoModerator/stickied rates) before cleaning decisions, plus **author-share** rates (distinct authors with a signal ÷ distinct non-empty authors that day; pooled ALL/family/topic rows union authors across subreddits).
 - Input layer:
   - `data/raw/political_forums/daily_chunks/`
   - `results/tables/filtering/dump_filter_counts_by_day.csv` (validation baseline)
 - Output layer:
-  - `results/tables/data_quality_trends/*`
+  - `results/tables/data_quality_trends/*` (including `daily_quality_metrics_by_topic_and_family.csv`)
   - `results/figures/data_quality_trends/*`
 - Notes:
   - Enforces `event_window.start_utc` to `event_window.end_utc_exclusive` during plotting-table generation.
@@ -84,6 +84,21 @@ Shared helper (imported by domain scripts, not run as a step): [`scripts/_projec
   - Uses non-interactive Matplotlib backend by default for terminal-safe figure rendering.
 - Run:
   - `.venv/bin/python scripts/diagnostics/plot_data_quality_trends.py --config config/political_forums_setup.yaml`
+
+### 3b) Colab ML-export zip — pooled primary-detector trend (optional)
+- Script: `describe_ml_zip_time_trends.py`
+- Why: Quick sanity check that `detector_primary_ai_prob` from a Drive-style `production_run/...` Parquet zip looks sensible over calendar time before merging into `comment_features/`.
+- Input layer: A zip archive (default `data/interim/production_run-20260511T145305Z-3-001.zip`) with `*.parquet` members under `--internal-prefix` (default `production_run/`).
+- Output layer:
+  - `results/tables/ml_zip_time_trends/pooled_daily_primary_ai_prob.csv` (mean, median, tail counts/shares, volume-weighted rolling columns, `event_time_t_days`)
+  - `results/tables/ml_zip_time_trends/pooled_monthly_primary_ai_prob.csv`
+  - `results/tables/ml_zip_time_trends/launch_window_summary.csv` (pre/post windows vs `launch_day_utc`)
+  - `results/tables/ml_zip_time_trends/ml_zip_time_trends_notes.txt` (interpretation caveats)
+  - `results/figures/ml_zip_time_trends/pooled_daily_primary_ai_prob_mean_median.png` (launch + GPT-4 markers; rolling tail overlay)
+- Run:
+  - `.venv/bin/python scripts/diagnostics/describe_ml_zip_time_trends.py`
+  - Custom paths: add `--zip-path`, `--internal-prefix`, `--tables-dir`, and `--figures-dir` as needed.
+  - Custom cutoffs: `--thresholds 0.5,0.95`. Omit GPT-4 vertical: `--no-gpt4-marker`.
 
 ### 4) Apply deterministic cleaning policy (required for downstream metrics)
 - Script: `clean_daily_chunks.py`
@@ -248,6 +263,7 @@ Shared helper (imported by domain scripts, not run as a step): [`scripts/_projec
 - `data/interim/.../comment_features/` -> `prepare_event_time_stratified_metrics.py` -> `results/tables/event_time/` (stratified CSVs) -> `plot_event_time_stratified_metrics.py` -> `results/figures/event_time/stratified_pooled/user_series/` and `.../stratified_pooled/length_bucket/`
 - `data/interim/.../comment_features/` -> `prepare_user_week_style_panel.py` -> `data/interim/.../user_week_style_panel/` and `results/tables/user_week/user_week_panel.parquet` -> `analyze_user_pre_post_shift.py` -> `results/tables/user_week/` (shift CSVs + JSON scales + methods note) -> `plot_user_pre_post_shift.py` -> `results/figures/user_week/<cohort>/`
 - `data/interim/.../cleaned_monthly_chunks/` -> overlap and sampled-detector scripts (optional) -> `results/tables/*`
+- Colab ML-export zip (optional) -> `describe_ml_zip_time_trends.py` -> `results/tables/ml_zip_time_trends/` and `results/figures/ml_zip_time_trends/`
 
 ---
 
@@ -265,5 +281,6 @@ Shared helper (imported by domain scripts, not run as a step): [`scripts/_projec
 
 Optional additions after step 4:
 - `run_llm_detector_sample.py`
+- `describe_ml_zip_time_trends.py` (Colab ML Parquet zip export; no YAML)
 - `user_overlap_across_forums.py`
 - `user_same_day_cross_forum.py`

@@ -310,7 +310,7 @@ toxicity:
   note: "Set enabled true and provide Perspective API key if needed."
 
 comment_features:
-  detector_primary_model: "fakespot-ai/roberta-base-ai-text-detection-v1"
+  detector_primary_model: ""
   detector_secondary_model: ""
   hostility_model: ""
   emotion_model: ""

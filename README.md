@@ -49,8 +49,8 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
    - Writes `results/tables/user_overlap/user_same_day_cross_forum_summary.csv`, `user_same_day_cross_forum_distribution.csv`, and `user_same_day_cross_forum_pairwise.csv`.
 9. Pre-cleaning data-quality trend analysis (percentages, ChatGPT/GPT-4 event markers):
    - `.venv/bin/python scripts/diagnostics/plot_data_quality_trends.py --config config/political_forums_setup.yaml`
-   - Writes tables to `results/tables/data_quality_trends/` and figures to `results/figures/data_quality_trends/`.
-   - Figure outputs include `overall_<metric>.png`, `by_family_<metric>.png`, `by_subreddit_by_family/<family>/<metric>.png`, and `by_topic_by_family/by_topic_by_family_<metric>.png`.
+   - Writes tables to `results/tables/data_quality_trends/` (including `daily_quality_metrics_by_topic_and_family.csv`) and figures to `results/figures/data_quality_trends/`.
+   - Figure outputs include `overall_<metric>.png`, `by_family_<metric>.png`, `by_subreddit_by_family/<family>/<metric>.png`, and `by_topic_by_family/by_topic_by_family_<metric>.png` for each row-rate and author-share metric (`*_rate_pct` and `*_rate_by_authors_pct`).
    - Uses calendar-date month-start ticks and red dotted vertical markers at `2022-11-30` and `2023-03-14`.
 10. Deterministic cleaning pass for interim analysis dataset:
    - `.venv/bin/python scripts/cleaning/clean_daily_chunks.py --config config/political_forums_setup.yaml`
@@ -101,6 +101,10 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
    - `.venv/bin/python scripts/diagnostics/run_llm_detector_sample.py --config config/political_forums_setup.yaml`
    - Optional HF detector branch: add `--use_hf_model` (requires `transformers` installed in `.venv`).
    - Writes `results/tables/event_time/llm_detector_sample_scores_daily.csv`.
+14b. Optional Colab ML-export zip — pooled `detector_primary_ai_prob` over UTC days/months (no config file):
+   - `.venv/bin/python scripts/diagnostics/describe_ml_zip_time_trends.py`
+   - Default reads `data/interim/production_run-20260511T145305Z-3-001.zip`; override with `--zip-path` / `--internal-prefix` if your export layout differs.
+   - Writes daily/monthly CSVs, `launch_window_summary.csv`, `ml_zip_time_trends_notes.txt`, and the two-panel figure (launch + GPT-4 markers, volume-weighted rolling tail). Override cutoffs with `--thresholds`; omit GPT-4 line with `--no-gpt4-marker`.
 
 ## External Resource
 - Academic Torrents Reddit dataset page:
@@ -129,13 +133,15 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
   - Policy: generated outputs are grouped in subfolders under each artifact root.
   - `results/tables/filtering/`: Filtering audit outputs and dedupe reports.
   - `results/tables/cleaning/`: Cleaning audit tables and cleaning run notes.
-  - `results/tables/data_quality_trends/`: Daily pre-cleaning quality metrics and validation tables.
+  - `results/tables/data_quality_trends/`: Daily pre-cleaning quality metrics (row counts, distinct-author pool counts, row-rate and author-share percentages), validation tables, and `quality_trends_notes.txt`.
   - `results/tables/user_overlap/`: Cross-forum overlap and same-day overlap analysis tables.
+  - `results/tables/ml_zip_time_trends/`: Optional pooled daily/monthly summaries of `detector_primary_ai_prob` read directly from a Colab ML Parquet zip export.
 - `results/tables/event_time/`: Event-time metric aggregates, lexicon trajectories, and optional sampled detector outputs.
   - `results/logs/filter_dump/`: Dump filtering run logs and resumable state files.
 - `results/tables/user_week/`: Author × ISO-week panel and within-user pre/post shift outputs (`user_week_panel.parquet`, `shift_per_user_<cohort>.csv`, `shift_summary_<cohort>.csv`, `shift_audit_per_user_<cohort>.csv`, `composite_zscale_pre_<cohort>.json`, `shift_methods_note.txt`).
 - `results/figures/user_week/<cohort>/`: Within-user shift figures (composite distribution, weekly-vs-pooled scatter, components grid, spaghetti sample, top-mover mirror plot).
-- `results/figures/data_quality_trends/`: Daily percentage trend plots with ChatGPT and GPT-4 release markers.
+- `results/figures/ml_zip_time_trends/`: Optional mean/median trend plot for primary AI detector scores from a Colab-export zip (see `describe_ml_zip_time_trends.py`).
+- `results/figures/data_quality_trends/`: Daily percentage trend plots (row-rate and author-share metrics) with ChatGPT and GPT-4 release markers.
 - `results/figures/event_time/`: Event-time figures for linguistic, AI-style, and toxicity proxies.
 - `Projects/`, `Decisions/`: Obsidian durable memory notes.
 - `Templates/`: Standardized lightweight note templates.
@@ -169,7 +175,7 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
 - Trend metrics include: `rows_total`, `body_removed_count`, `body_deleted_count`, `author_deleted_count`, `automod_author_count`, `stickied_count`, and exploratory `bot_name_heuristic_count` plus daily percent rates.
 - Trend figures are percentage-based for comparability across variable daily volume; absolute counts remain available in the output tables.
 - For moderation automation, use `author == "AutoModerator"` as the canonical plotted series. A documented near-equivalence check on an earlier narrow window found only one mismatch row versus `distinguished == "moderator"` (AutoModerator with null distinguished).
-- Quality-trend figures annotate AutoModerator plots with the **sum of `automod_author_count` over the current event window** (see `results/tables/data_quality_trends/quality_trends_notes.txt`).
+- Quality-trend figures annotate AutoModerator row-rate and author-share plots with the **sum of `automod_author_count` over the current event window** (see `results/tables/data_quality_trends/quality_trends_notes.txt`). Pooled author-share denominators **union** distinct authors across subreddits per calendar day (not a sum of per-subreddit distinct counts).
 - Use `scripts/cleaning/clean_daily_chunks.py` to build the interim cleaned corpus with the current policy:
   - Drop rows where `body == "[removed]"` or `body == "[deleted]"`.
   - Drop rows where `author == "AutoModerator"`.
@@ -202,6 +208,7 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
   - deterministic stratified sampling by subreddit x day
   - default free heuristic LLM-style score
   - optional pinned Hugging Face classifier branch (CPU-compatible; slower)
+- Use `scripts/diagnostics/describe_ml_zip_time_trends.py` for a quick pooled mean/median of `detector_primary_ai_prob` by UTC day and month from a Colab-export Parquet zip (defaults under `data/interim/`; outputs `results/tables/ml_zip_time_trends/` and `results/figures/ml_zip_time_trends/`).
 - Use `--worker_mode two` if your storage can sustain parallel reads (e.g. fast internal disk).
 - The filter supports `--prefilter_mode tokens|regex`; default is `tokens` and `regex` is intended for A/B benchmarking.
 - Checkpointing remains at `1_000_000` scanned lines by default.
