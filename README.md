@@ -16,6 +16,23 @@ The default `subreddits.primary` list is:
 
 The pipeline is dump-first: download monthly Reddit dumps to external storage, then filter locally into a compact project dataset for reproducible analysis.
 
+### Italy ChatGPT ban (exploratory corpus)
+
+Parallel config for Italian subreddits plus matched English/global counterparts around **March–April 2023** (UTC window ends `2023-05-01` exclusive). Uses the same scripts as the main pipeline but **isolated paths** so it does not touch `political_forums` data or default filter state.
+
+- **Config:** [`config/italy_chatgpt_ban_setup.yaml`](config/italy_chatgpt_ban_setup.yaml) — `paths.*` under `data/raw/italy_chatgpt_ban`, `data/interim/italy_chatgpt_ban`, `results/tables/italy_chatgpt_ban`, `results/figures/italy_chatgpt_ban`. Topic families `italian` / `english` drive pooled-by-arm and per-subreddit-by-family plots. Optional YAML list `plot_reference_dates_utc` sets red dotted vertical markers on **data-quality** and **event-time** calendar figures (defaults remain ChatGPT / GPT-4 when omitted).
+- **Dumps:** `RC_2023-03.zst` and `RC_2023-04.zst` on your `--source_dir`.
+- **Filter (use dedicated state/log so resume never collides with the main corpus):**
+  - `.venv/bin/python scripts/filtering/filter_dump_comments.py --config config/italy_chatgpt_ban_setup.yaml --state_file results/logs/filter_dump/italy_chatgpt_ban_state.json --log_file results/logs/filter_dump/italy_chatgpt_ban.log`
+- **Clean:** `.venv/bin/python scripts/cleaning/clean_daily_chunks.py --config config/italy_chatgpt_ban_setup.yaml`
+- **Data-quality trends:** `.venv/bin/python scripts/diagnostics/plot_data_quality_trends.py --config config/italy_chatgpt_ban_setup.yaml` → tables and figures under `results/tables/italy_chatgpt_ban/data_quality_trends/` and `results/figures/italy_chatgpt_ban/data_quality_trends/`.
+- **Comment features** (after cleaning): `.venv/bin/python scripts/features/compute_comment_features.py --config config/italy_chatgpt_ban_setup.yaml` → `data/interim/italy_chatgpt_ban/comment_features/`. With blank `comment_features.*_model` fields in the YAML, HF detectors stay off (lexical + VADER-style fields only; ML columns are low-signal).
+- **Optional repetition merge:** `.venv/bin/python scripts/features/compute_daily_repetition_similarity.py --config config/italy_chatgpt_ban_setup.yaml` → `results/tables/italy_chatgpt_ban/event_time/repetition_daily_by_subreddit.csv` (merged by `prepare_event_time_metrics` when present).
+- **Event-time tables:** `.venv/bin/python scripts/event_time/prepare_event_time_metrics.py --config config/italy_chatgpt_ban_setup.yaml` → `results/tables/italy_chatgpt_ban/event_time/`.
+- **Event-time figures:** `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/italy_chatgpt_ban_setup.yaml` → `results/figures/italy_chatgpt_ban/event_time/` (pooled, by-family, by-subreddit-by-family, etc.).
+- **Interpretation:** Lexical AI proxies, phrase lists, and default HF models are **English-oriented**; word counts in features use ASCII letters only (`[A-Za-z']+`), so Italian accented text is under-counted for per-100-word rates. Prefer **within-Italian** time comparisons and **by_family** / per-subreddit views over raw Italian-vs-English level contrasts on those metrics.
+- **Teardown:** remove the YAML file, `data/raw/italy_chatgpt_ban/`, `data/interim/italy_chatgpt_ban/`, `results/tables/italy_chatgpt_ban/`, `results/figures/italy_chatgpt_ban/`, and the dedicated `italy_chatgpt_ban_state.json` / `italy_chatgpt_ban.log` (and any `filter_dump_state.RC_*.json` siblings created next to that state file).
+
 ## Quick Start
 1. Create and activate the local environment:
    - `python3 -m venv .venv`
@@ -47,11 +64,11 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
    - `.venv/bin/python scripts/diagnostics/user_same_day_cross_forum.py --config config/political_forums_setup.yaml`
    - Uses cleaned input: `data/interim/political_forums/cleaned_monthly_chunks/`
    - Writes `results/tables/user_overlap/user_same_day_cross_forum_summary.csv`, `user_same_day_cross_forum_distribution.csv`, and `user_same_day_cross_forum_pairwise.csv`.
-9. Pre-cleaning data-quality trend analysis (percentages, ChatGPT/GPT-4 event markers):
+9. Pre-cleaning data-quality trend analysis (percentages; vertical markers from config or defaults):
    - `.venv/bin/python scripts/diagnostics/plot_data_quality_trends.py --config config/political_forums_setup.yaml`
    - Writes tables to `results/tables/data_quality_trends/` (including `daily_quality_metrics_by_topic_and_family.csv`) and figures to `results/figures/data_quality_trends/`.
    - Figure outputs include `overall_<metric>.png`, `by_family_<metric>.png`, `by_subreddit_by_family/<family>/<metric>.png`, and `by_topic_by_family/by_topic_by_family_<metric>.png` for each row-rate and author-share metric (`*_rate_pct` and `*_rate_by_authors_pct`).
-   - Uses calendar-date month-start ticks and red dotted vertical markers at `2022-11-30` and `2023-03-14`.
+   - Uses calendar-date month-start ticks and red dotted vertical markers: default `2022-11-30` and `2023-03-14`; override with optional YAML list `plot_reference_dates_utc` (see Italy config for an example).
 10. Deterministic cleaning pass for interim analysis dataset:
    - `.venv/bin/python scripts/cleaning/clean_daily_chunks.py --config config/political_forums_setup.yaml`
    - Writes cleaned monthly Parquet files to `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`.
@@ -126,23 +143,24 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
 - `src/`: Reusable Python modules.
 - `scripts/`: Reproducible CLI entrypoints grouped by domain (`filtering/`, `cleaning/`, `diagnostics/`, `features/`, `event_time/`, `user_week/`, `devtools/`); see `scripts/README.md`.
 - `notebooks/`: Self-contained Colab notebook(s) (e.g. ML comment features + Drive sync; source kept in repo via `scripts/devtools/_gen_colab_standalone_nb.py` when YAML or inference code changes).
-- `config/`: Run configuration files.
-- `data/raw/political_forums/daily_chunks/`: Filtered per-subreddit per-day comments.
+- `config/`: Run configuration files (primary `political_forums_setup.yaml`; optional `italy_chatgpt_ban_setup.yaml` for the Italy ban exploratory corpus).
+- `data/raw/political_forums/daily_chunks/`: Filtered per-subreddit per-day comments (main study).
+- `data/raw/italy_chatgpt_ban/daily_chunks/`: Filtered day chunks for the Italy ban exploratory config (when built).
 - `data/interim/`, `data/processed/`: Intermediate and model-ready data layers.
 - `results/figures/`, `results/tables/`, `results/logs/`: Generated artifacts.
   - Policy: generated outputs are grouped in subfolders under each artifact root.
   - `results/tables/filtering/`: Filtering audit outputs and dedupe reports.
   - `results/tables/cleaning/`: Cleaning audit tables and cleaning run notes.
-  - `results/tables/data_quality_trends/`: Daily pre-cleaning quality metrics (row counts, distinct-author pool counts, row-rate and author-share percentages), validation tables, and `quality_trends_notes.txt`.
+  - `results/tables/data_quality_trends/`: Daily pre-cleaning quality metrics (row counts, distinct-author pool counts, row-rate and author-share percentages), validation tables, and `quality_trends_notes.txt` (main config). Italy exploratory outputs live under `results/tables/italy_chatgpt_ban/data_quality_trends/` when using `italy_chatgpt_ban_setup.yaml`.
   - `results/tables/user_overlap/`: Cross-forum overlap and same-day overlap analysis tables.
   - `results/tables/ml_zip_time_trends/`: Optional pooled daily/monthly summaries of `detector_primary_ai_prob` read directly from a Colab ML Parquet zip export.
-- `results/tables/event_time/`: Event-time metric aggregates, lexicon trajectories, and optional sampled detector outputs.
+- `results/tables/event_time/`: Event-time metric aggregates, lexicon trajectories, and optional sampled detector outputs. Italy exploratory tables: `results/tables/italy_chatgpt_ban/event_time/`.
   - `results/logs/filter_dump/`: Dump filtering run logs and resumable state files.
 - `results/tables/user_week/`: Author × ISO-week panel and within-user pre/post shift outputs (`user_week_panel.parquet`, `shift_per_user_<cohort>.csv`, `shift_summary_<cohort>.csv`, `shift_audit_per_user_<cohort>.csv`, `composite_zscale_pre_<cohort>.json`, `shift_methods_note.txt`).
 - `results/figures/user_week/<cohort>/`: Within-user shift figures (composite distribution, weekly-vs-pooled scatter, components grid, spaghetti sample, top-mover mirror plot).
 - `results/figures/ml_zip_time_trends/`: Optional mean/median trend plot for primary AI detector scores from a Colab-export zip (see `describe_ml_zip_time_trends.py`).
-- `results/figures/data_quality_trends/`: Daily percentage trend plots (row-rate and author-share metrics) with ChatGPT and GPT-4 release markers.
-- `results/figures/event_time/`: Event-time figures for linguistic, AI-style, and toxicity proxies.
+- `results/figures/data_quality_trends/`: Daily percentage trend plots (row-rate and author-share metrics); default vertical markers ChatGPT + GPT-4 unless `plot_reference_dates_utc` is set in YAML. Italy exploratory figures: `results/figures/italy_chatgpt_ban/data_quality_trends/`.
+- `results/figures/event_time/`: Event-time figures for linguistic, AI-style, and toxicity proxies. Italy exploratory figures: `results/figures/italy_chatgpt_ban/event_time/`.
 - `Projects/`, `Decisions/`: Obsidian durable memory notes.
 - `Templates/`: Standardized lightweight note templates.
 - `MasterSystemPrompt.md`: Stable project-level context and execution policy.
@@ -171,7 +189,7 @@ The pipeline is dump-first: download monthly Reddit dumps to external storage, t
 - Use `scripts/cleaning/dedupe_daily_chunks.py` when needed to remove duplicate comment ids introduced by interrupted/restarted filtering.
 - Use `scripts/diagnostics/user_overlap_across_forums.py` to check how many users post in more than one target subreddit (exact match on Reddit's globally-unique `author` field; `[deleted]` and known bots excluded by default).
 - Use `scripts/diagnostics/user_same_day_cross_forum.py` for a stricter, temporally-aligned overlap check: same user posting in >=2 different subreddits on the same UTC day.
-- Use `scripts/diagnostics/plot_data_quality_trends.py` before cleaning decisions to inspect indicator behavior over time around key release dates (`2022-11-30` and `2023-03-14`) with month-start tick alignment.
+- Use `scripts/diagnostics/plot_data_quality_trends.py` before cleaning decisions to inspect indicator behavior over time; default vertical markers are `2022-11-30` and `2023-03-14` unless the config defines `plot_reference_dates_utc`.
 - Trend metrics include: `rows_total`, `body_removed_count`, `body_deleted_count`, `author_deleted_count`, `automod_author_count`, `stickied_count`, and exploratory `bot_name_heuristic_count` plus daily percent rates.
 - Trend figures are percentage-based for comparability across variable daily volume; absolute counts remain available in the output tables.
 - For moderation automation, use `author == "AutoModerator"` as the canonical plotted series. A documented near-equivalence check on an earlier narrow window found only one mismatch row versus `distinguished == "moderator"` (AutoModerator with null distinguished).

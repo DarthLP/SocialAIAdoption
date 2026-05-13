@@ -73,7 +73,7 @@ Shared helper (imported by domain scripts, not run as a step): [`scripts/_projec
   - `results/figures/data_quality_trends/*`
 - Notes:
   - Enforces `event_window.start_utc` to `event_window.end_utc_exclusive` during plotting-table generation.
-  - Draws vertical red dotted markers at `2022-11-30` (ChatGPT release) and `2023-03-14` (GPT-4 release).
+  - Draws vertical red dotted markers from optional YAML `plot_reference_dates_utc` (list of ISO UTC strings); when omitted, defaults to `2022-11-30` (ChatGPT) and `2023-03-14` (GPT-4).
   - Uses month-start date ticks (`YYYY-MM-01`) for consistent calendar alignment across plots.
   - Family outputs now include:
     - `by_family_<metric>.png` (aggregate family lines),
@@ -84,6 +84,7 @@ Shared helper (imported by domain scripts, not run as a step): [`scripts/_projec
   - Uses non-interactive Matplotlib backend by default for terminal-safe figure rendering.
 - Run:
   - `.venv/bin/python scripts/diagnostics/plot_data_quality_trends.py --config config/political_forums_setup.yaml`
+  - Italy ban exploratory corpus: `--config config/italy_chatgpt_ban_setup.yaml` (outputs under `results/tables/italy_chatgpt_ban/` and `results/figures/italy_chatgpt_ban/` per that YAML’s `paths`).
 
 ### 3b) Colab ML-export zip — pooled primary-detector trend (optional)
 - Script: `describe_ml_zip_time_trends.py`
@@ -121,6 +122,7 @@ Shared helper (imported by domain scripts, not run as a step): [`scripts/_projec
   - Input: `data/interim/political_forums/cleaned_monthly_chunks/`
   - Output: `data/interim/political_forums/comment_features/<subreddit>/<YYYY-MM>.parquet`
   - Run: `.venv/bin/python scripts/features/compute_comment_features.py --config config/political_forums_setup.yaml`
+  - Italy ban corpus (same script; outputs under `data/interim/italy_chatgpt_ban/comment_features/`): `--config config/italy_chatgpt_ban_setup.yaml`
   - Device: `--device auto|mps|cpu`, plus `--batch_size`, `--workers`, bounded flags, `--profile`, `--overwrite`, filters.
 - **Split Colab GPU + laptop finalize (merge + lexical):**
   - `merge_ml_shards_into_comment_features.py`: reads `cleaned_monthly_chunks/`, merges optional **`comment_features_ml/`** shards by `id` (e.g. from Colab), computes lexical/rule fields using the same logic as `compute_comment_features.py` (shared via import), writes **`comment_features/`** for downstream steps.
@@ -149,6 +151,7 @@ Shared helper (imported by domain scripts, not run as a step): [`scripts/_projec
   - `results/tables/event_time_daily_metrics.csv` (compatibility export)
 - Run:
   - `.venv/bin/python scripts/event_time/prepare_event_time_metrics.py --config config/political_forums_setup.yaml`
+  - Italy: same command with `--config config/italy_chatgpt_ban_setup.yaml` (writes under `results/tables/italy_chatgpt_ban/event_time/`).
 - Performance/bounded-benchmark options:
   - Sample one month file per subreddit with phase timing:
     - `.venv/bin/python scripts/event_time/prepare_event_time_metrics.py --config config/political_forums_setup.yaml --max_month_files_per_subreddit 1 --profile`
@@ -165,13 +168,14 @@ Shared helper (imported by domain scripts, not run as a step): [`scripts/_projec
   - `results/figures/event_time/by_subreddit_by_family/{daily,rolling_daily}/<family>/*` by default (disable with `--no_by_subreddit`; add weekly with `--include_weekly`)
 - Notes:
   - Plots use calendar-date x-axes with month-start ticks (`YYYY-MM-01`), not relative day offsets.
-  - Draws vertical red dotted markers at `2022-11-30` and `2023-03-14`.
+  - Red dotted vertical markers come from optional YAML `plot_reference_dates_utc` (parsed by `src.config_utils.plot_reference_dates_calendar_utc`); when omitted, defaults to `2022-11-30` and `2023-03-14`. `plot_event_time_metrics.main` registers these before plotting; `plot_event_time_stratified_metrics` does the same so imported helpers stay aligned.
   - `rolling_daily` uses a 7-day trailing (past-only) window by default; pandas `.rolling(window="ND")` with default `center=False` includes only the current day plus the prior `N-1` days.
   - Pooled quote signal is rendered as one combined dual-axis figure (`event_time_quote_rates_and_curly_share.png`) with curly + all-quote rates on the left axis and curly share on the right axis.
   - Coverage metrics (`coverage_perplexity`, `coverage_detector_primary`, …) are skipped when the series is all-NaN or all-zero.
   - Strict colon counts mirror extended colon counts: both are computed on text after URL spans and clock-time tokens are stripped, so `colon_extended_rate_100w >= colon_rate_100w` always holds.
 - Run:
   - Default (pooled + by-family + by-subreddit-by-family, daily + rolling_daily with rolling 7 days): `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml`
+  - Italy: same with `--config config/italy_chatgpt_ban_setup.yaml` (figures under `results/figures/italy_chatgpt_ban/event_time/`).
   - Add weekly extras: `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml --include_weekly`
   - Disable per-family outputs: `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml --no_topic_views`
   - Disable per-subreddit-by-family grids: `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml --no_by_subreddit`

@@ -1,8 +1,8 @@
 """
 Script summary:
 Shared configuration helpers for the dump-first data pipeline.
-This module provides minimal utilities for loading YAML config and converting
-UTC ISO timestamps to unix seconds.
+This module provides minimal utilities for loading YAML config, converting
+UTC ISO timestamps to unix seconds, and parsing optional calendar reference dates for plots.
 """
 
 from __future__ import annotations
@@ -23,6 +23,32 @@ def load_config(config_path: str | Path) -> Dict[str, Any]:
 def utc_ts(iso_utc: str) -> int:
     """Function summary: convert an ISO UTC timestamp string to unix epoch seconds."""
     return int(datetime.fromisoformat(iso_utc.replace("Z", "+00:00")).timestamp())
+
+
+def plot_reference_dates_calendar_utc(config: Dict[str, Any]) -> List[datetime]:
+    """Function summary: build naive UTC datetimes for vertical plot markers from optional YAML or defaults.
+
+    Parameters:
+    - config: loaded YAML; may contain `plot_reference_dates_utc` as a list of ISO strings (Z or offset).
+
+    Returns:
+    - Non-empty list of naive UTC datetimes. If the key is missing, not a list, empty, or parsing yields nothing,
+      returns ChatGPT (`2022-11-30`) and GPT-4 (`2023-03-14`) calendar dates for the main launch study.
+    """
+    default = [datetime(2022, 11, 30), datetime(2023, 3, 14)]
+    raw = config.get("plot_reference_dates_utc")
+    if not isinstance(raw, list) or not raw:
+        return default
+    out: List[datetime] = []
+    for item in raw:
+        s = str(item).strip()
+        if not s:
+            continue
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        out.append(dt)
+    return out if out else default
 
 
 def comment_dump_filenames(start_utc_iso: str, end_utc_exclusive_iso: str) -> List[str]:

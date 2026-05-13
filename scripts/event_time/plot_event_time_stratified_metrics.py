@@ -16,6 +16,7 @@ How to apply/run:
 - After prepare_event_time_stratified_metrics.py:
   `.venv/bin/python scripts/event_time/plot_event_time_stratified_metrics.py --config config/political_forums_setup.yaml`
 - Rolling window (days) matches plot_event_time_metrics default pattern via --rolling_window.
+- Stratified plotting reuses `plot_event_time_metrics.add_release_markers`; `main` applies the same `plot_reference_dates_utc` marker set as the non-stratified event-time plotter.
 """
 
 from __future__ import annotations
@@ -50,7 +51,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import plot_event_time_metrics as pet
 
-from src.config_utils import load_config, utc_ts
+from src.config_utils import load_config, plot_reference_dates_calendar_utc, utc_ts
 
 USER_SERIES_LABELS = {
     "old": "Old users (pre-launch first post in forum)",
@@ -385,6 +386,7 @@ def main() -> None:
     """Function summary: load stratified tables, build daily/weekly/rolling views, and save all stratified figures."""
     args = parse_args()
     config = load_config(args.config)
+    pet.set_calendar_release_dates_for_plotting(plot_reference_dates_calendar_utc(config))
     xt = pet.event_time_xlabel(config)
     launch_pd = launch_timestamp_pd(config)
     tables_dir = Path(config["paths"]["tables_dir"])

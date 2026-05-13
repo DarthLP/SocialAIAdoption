@@ -1,0 +1,114 @@
+project:
+  name: "SocialAIAdoption_ItalyChatGPTBan"
+  description: >-
+    Exploratory parallel corpus: Italian subreddits plus size-matched English/global
+    counterparts around Italy's ChatGPT access restriction (Mar–Apr 2023). Isolated
+    paths and filter state so this arm does not touch the main political_forums pipeline.
+
+event_window:
+  start_utc: "2023-03-01T00:00:00Z"
+  end_utc_exclusive: "2023-05-01T00:00:00Z"
+  # Anchor for `days_from_event` in data-quality CSVs (ban onset in UTC; adjust if your legal timeline differs).
+  launch_day_utc: "2023-03-31T00:00:00Z"
+
+# Vertical reference lines on data-quality and event-time calendar plots (naive UTC calendar instants).
+plot_reference_dates_utc:
+  - "2023-03-31T00:00:00Z"
+  - "2023-04-28T23:59:59Z"
+
+subreddits:
+  primary:
+    - askitaly
+    - AskEurope
+    - CasualIT
+    - casualconversation
+    - ITAGLIA
+    - europeMeme
+    - Italia
+    - europe
+    - politicaITA
+    - europePolitics
+
+topics:
+  italian_askitaly:
+    subreddits:
+      - askitaly
+  english_askeurope:
+    subreddits:
+      - AskEurope
+  italian_casualit:
+    subreddits:
+      - CasualIT
+  english_casualconversation:
+    subreddits:
+      - casualconversation
+  italian_itaglia:
+    subreddits:
+      - ITAGLIA
+  english_europememe:
+    subreddits:
+      - europeMeme
+  italian_italia:
+    subreddits:
+      - Italia
+  english_europe:
+    subreddits:
+      - europe
+  italian_politicaita:
+    subreddits:
+      - politicaITA
+  english_europepolitics:
+    subreddits:
+      - europePolitics
+
+topic_families:
+  italian:
+    topics:
+      - italian_askitaly
+      - italian_casualit
+      - italian_itaglia
+      - italian_italia
+      - italian_politicaita
+  english:
+    topics:
+      - english_askeurope
+      - english_casualconversation
+      - english_europememe
+      - english_europe
+      - english_europepolitics
+
+dataset:
+  fields:
+    - id
+    - author
+    - subreddit
+    - created_utc
+    - body
+    - score
+    - parent_id
+    - link_id
+    - permalink
+    - edited
+    - controversiality
+    - distinguished
+    - stickied
+
+toxicity:
+  enabled: false
+  method: "vader_compound_proxy"
+  note: "Set enabled true and provide Perspective API key if needed."
+
+comment_features:
+  detector_primary_model: ""
+  detector_secondary_model: ""
+  hostility_model: ""
+  emotion_model: ""
+  perplexity_model: ""
+
+paths:
+  raw_dir: "data/raw/italy_chatgpt_ban"
+  interim_dir: "data/interim/italy_chatgpt_ban"
+  processed_dir: "data/processed/italy_chatgpt_ban"
+  logs_dir: "results/logs"
+  tables_dir: "results/tables/italy_chatgpt_ban"
+  figures_dir: "results/figures/italy_chatgpt_ban"

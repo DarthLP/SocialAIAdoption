@@ -6,7 +6,7 @@ and family (config-driven), validates totals against existing filtering audits,
 and saves trend plots around the ChatGPT launch anchor.
 
 Functionality:
-- Reads `data/raw/political_forums/daily_chunks/<subreddit>/<YYYY-MM-DD>.ndjson`.
+- Reads daily Reddit NDJSON chunks under `paths.raw_dir` (for example `data/raw/political_forums/daily_chunks/`).
 - Computes counts for removed/deleted placeholders, deleted authors, AutoModerator,
   stickied comments, and an exploratory bot-name heuristic.
 - Enforces configured event window bounds before writing trend tables and figures.
@@ -17,19 +17,22 @@ Functionality:
 - Aggregates per-subreddit daily counts into per-family daily series using
   `topics` + `topic_families` in config (subreddits not assigned to a family
   are skipped from family plots and surfaced via a warning).
-- Writes tidy outputs to `results/tables/data_quality_trends/`:
+- Writes tidy outputs to `paths.tables_dir/data_quality_trends/`:
   per-subreddit (granular audit), per-family, pooled overall, topic-by-family, and validation tables.
-- Generates percentage trend plots in `results/figures/data_quality_trends/`:
+- Generates percentage trend plots in `paths.figures_dir/data_quality_trends/`:
   one `overall_<metric>.png`, one `by_family_<metric>.png`, one
   `by_subreddit_by_family/<family>/<metric>.png`, and one
   `by_topic_by_family/by_topic_by_family_<metric>.png` (row-rate and author-share metrics).
 - Uses a non-interactive plotting backend by default for terminal-safe rendering.
 - Logs per-metric `plot_progress` markers so long plotting runs show progress.
 - Annotates AutoModerator plots with the AutoModerator row total summed for the current window.
-- Validates `rows_total` against `results/tables/filtering/dump_filter_counts_by_day.csv`.
+- Validates `rows_total` against `paths.tables_dir/filtering/dump_filter_counts_by_day.csv`.
+- Optional YAML key `plot_reference_dates_utc` (list of ISO-8601 UTC strings): vertical reference lines on all
+  trend plots. When omitted or empty, defaults to ChatGPT (`2022-11-30`) and GPT-4 (`2023-03-14`) calendar markers.
 
 How to apply/run:
 - `.venv/bin/python scripts/diagnostics/plot_data_quality_trends.py --config config/political_forums_setup.yaml`
+- Italy ban exploratory corpus: `--config config/italy_chatgpt_ban_setup.yaml` (after filtering raw chunks for that config).
 """
 
 from __future__ import annotations
@@ -43,7 +46,7 @@ from pathlib import Path
 import importlib.util
 import sys
 from collections import defaultdict
-from typing import Any, DefaultDict, Dict, Iterable, Tuple
+from typing import Any, DefaultDict, Dict, Iterable, List, Tuple
 
 import matplotlib
 if "MPLBACKEND" not in os.environ:
@@ -73,6 +76,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.config_utils import (
     load_config,
+    plot_reference_dates_calendar_utc,
     subreddit_family_map,
     subreddit_topic_map,
     topic_groups,
@@ -747,6 +751,7 @@ def make_plots(
     figures_subdir: Path,
     event_ts: int,
     *,
+    release_dates: List[datetime],
     automod_total: int,
     span_days: int,
     family_topics: Dict[str, list[str]],
@@ -755,10 +760,6 @@ def make_plots(
 ) -> None:
     """Function summary: generate percentage-only plot sets for overall, by-family, and family-faceted subreddit/topic views."""
     _ = event_ts
-    release_dates = [
-        datetime(2022, 11, 30),
-        datetime(2023, 3, 14),
-    ]
     total_metrics = len(PLOT_RATE_METRICS)
     for idx, metric in enumerate(PLOT_RATE_METRICS, start=1):
         print(f"plot_progress metric={idx}/{total_metrics} name={metric} stage=overall")
@@ -957,6 +958,7 @@ def main() -> None:
     write_metadata_note(per_subreddit_df, paths.tables_subdir)
     automod_total = int(per_subreddit_df["automod_author_count"].sum())
     span_days = date_span_days(overall_df)
+    release_dates = plot_reference_dates_calendar_utc(config)
     make_plots(
         per_family_df,
         per_subreddit_df,
@@ -964,6 +966,7 @@ def main() -> None:
         overall_df,
         paths.figures_subdir,
         event_ts,
+        release_dates=release_dates,
         automod_total=automod_total,
         span_days=span_days,
         family_topics=family_topics,

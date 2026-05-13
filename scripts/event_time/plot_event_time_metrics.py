@@ -19,11 +19,12 @@ How to apply/run:
   `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml --no_topic_views`
 - Disable per-subreddit-by-family outputs:
   `.venv/bin/python scripts/event_time/plot_event_time_metrics.py --config config/political_forums_setup.yaml --no_by_subreddit`
-- Figures are saved in view-specific folders:
-  - pooled: `results/figures/event_time/pooled/{daily,rolling_daily}/` by default (`weekly/` with `--include_weekly`)
-  - by family (default): `results/figures/event_time/by_family/{daily,rolling_daily}/` by default (`weekly/` with `--include_weekly`)
-  - by subreddit by family (default): `results/figures/event_time/by_subreddit_by_family/{daily,rolling_daily}/<family>/` by default (`weekly/` with `--include_weekly`)
+- Figures are saved in view-specific folders under `paths.figures_dir/event_time/` (defaults below use `results/figures/event_time/`):
+  - pooled: `.../event_time/pooled/{daily,rolling_daily}/` by default (`weekly/` with `--include_weekly`)
+  - by family (default): `.../event_time/by_family/{daily,rolling_daily}/` by default (`weekly/` with `--include_weekly`)
+  - by subreddit by family (default): `.../event_time/by_subreddit_by_family/{daily,rolling_daily}/<family>/` by default (`weekly/` with `--include_weekly`)
     with one page per metric and one subplot per topic.
+- Calendar plots draw red dotted vertical markers from optional YAML `plot_reference_dates_utc` (see `src.config_utils.plot_reference_dates_calendar_utc`); defaults match ChatGPT / GPT-4 launch dates when the key is omitted.
 """
 
 from __future__ import annotations
@@ -57,7 +58,44 @@ PROJECT_ROOT = _resolve_project_root()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.config_utils import load_config, subreddit_family_map, subreddit_topic_map, topic_families, utc_ts
+from src.config_utils import (
+    load_config,
+    plot_reference_dates_calendar_utc,
+    subreddit_family_map,
+    subreddit_topic_map,
+    topic_families,
+    utc_ts,
+)
+
+DEFAULT_CALENDAR_RELEASE_DATES = [datetime(2022, 11, 30), datetime(2023, 3, 14)]
+_calendar_release_dates_for_plotting: list[datetime] | None = None
+
+
+def set_calendar_release_dates_for_plotting(dates: list[datetime]) -> None:
+    """Function summary: set naive UTC calendar instants for red dotted vertical markers on date-based event-time figures.
+
+    Parameters:
+    - dates: one or more datetime values (naive UTC preferred); copied to module state for this interpreter run.
+
+    Returns:
+    - None.
+    """
+    global _calendar_release_dates_for_plotting
+    _calendar_release_dates_for_plotting = list(dates)
+
+
+def calendar_release_dates_for_plotting() -> list[datetime]:
+    """Function summary: return marker datetimes for the current run, or ChatGPT/GPT-4 defaults if unset.
+
+    Parameters:
+    - None.
+
+    Returns:
+    - List of naive UTC datetimes used by `add_release_markers`.
+    """
+    if _calendar_release_dates_for_plotting is not None:
+        return _calendar_release_dates_for_plotting
+    return list(DEFAULT_CALENDAR_RELEASE_DATES)
 
 LAUNCH_DATE_UTC = pd.Timestamp(datetime(2022, 11, 30))
 WORD_WEIGHT_COLS = [
@@ -595,14 +633,9 @@ def write_metric_coverage_table(rows: list[dict[str, float | str]], tables_dir: 
     cov_df.to_csv(out_path, index=False)
 
 
-def release_dates() -> list[datetime]:
-    """Function summary: return the configured ChatGPT and GPT-4 public release dates used as visual anchors."""
-    return [datetime(2022, 11, 30), datetime(2023, 3, 14)]
-
-
 def add_release_markers(ax: plt.Axes) -> None:
-    """Function summary: draw red vertical dotted reference lines at ChatGPT and GPT-4 release dates."""
-    for release_date in release_dates():
+    """Function summary: draw red vertical dotted reference lines at calendar dates from config or defaults."""
+    for release_date in calendar_release_dates_for_plotting():
         ax.axvline(x=release_date, color="red", linestyle=":", linewidth=1.2)
 
 
@@ -1080,6 +1113,7 @@ def main() -> None:
     """Function summary: load daily data and write pooled and per-subreddit event-time figures."""
     args = parse_args()
     config = load_config(args.config)
+    set_calendar_release_dates_for_plotting(plot_reference_dates_calendar_utc(config))
     config_family_map = subreddit_family_map(config, include_family_aliases=False)
     config_topic_map = subreddit_topic_map(config, include_topic_aliases=False)
     family_topic_map = topic_families(config)
