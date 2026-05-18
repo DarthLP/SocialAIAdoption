@@ -64,7 +64,7 @@ PROJECT_ROOT = _resolve_project_root()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.config_utils import load_config
+from src.config_utils import load_config, resolve_primary_subreddits
 
 URL_ONLY_PATTERN = re.compile(r"^\s*https?://\S+\s*$", re.IGNORECASE)
 SCHEMA_SAMPLE_LIMIT = 200
@@ -438,7 +438,7 @@ def main() -> None:
     raw_daily_dir = Path(config["paths"]["raw_dir"]) / "daily_chunks"
     interim_dir = Path(config["paths"]["interim_dir"])
     tables_dir = Path(config["paths"]["tables_dir"])
-    subreddits = list(config["subreddits"]["primary"])
+    subreddits = list(resolve_primary_subreddits(config))
 
     files = list_daily_chunk_files(raw_daily_dir, subreddits)
     if not files:

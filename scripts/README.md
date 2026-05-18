@@ -10,8 +10,19 @@ This guide explains the end-to-end script pipeline in execution order, including
 All commands below use the project-local virtual environment:
 - `.venv/bin/python ...`
 
-Configuration default:
-- `--config config/political_forums_setup.yaml`
+Configuration default (active study):
+- `--config config/italy_polarization_setup.yaml`
+
+Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.yaml`
+
+---
+
+## Italy polarization — extraction order (active)
+
+0. **Required backup** — `rsync -a data/raw/ $ARCHIVE/data/raw/` and `rsync -a results/ $ARCHIVE/results/` (see README).
+1. **Discovery** — `scripts/discovery/profile_subreddits_in_dump.py` (first 3 UTC days of `RC_2023-03` only).
+2. **Apply** — `scripts/discovery/apply_discovery_to_config.py` after reviewing `extraction_size_preview.csv`.
+3. **Filter** — `scripts/filtering/filter_dump_comments.py` with `italy_polarization_state.json` / log paths.
 
 ---
 
@@ -21,6 +32,7 @@ Runnable entrypoints live under **`scripts/<domain>/<script>.py`** (exactly one 
 
 | Domain | Role |
 |--------|------|
+| [`scripts/discovery/`](discovery/) | 3-day dump profiling; apply Italian subs to config |
 | [`scripts/filtering/`](filtering/) | Monthly dump → per-day NDJSON chunks |
 | [`scripts/cleaning/`](cleaning/) | Dedupe raw chunks; build cleaned monthly Parquet |
 | [`scripts/diagnostics/`](diagnostics/) | Pre-clean QC plots; cross-forum overlap; optional sampled detector |

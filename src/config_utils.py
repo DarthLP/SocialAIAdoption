@@ -233,3 +233,105 @@ def subreddit_family_map(config: Dict[str, Any], include_family_aliases: bool = 
             f"Missing subreddits: {', '.join(unmapped_subreddits)}"
         )
     return mapping
+
+
+def subreddit_control_lists(config: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Function summary: return named control/discovery subreddit lists from config `subreddits` section.
+
+    Parameters:
+    - config: full loaded YAML config dictionary.
+
+    Returns:
+    - Mapping of list name (e.g. controls_english_political) -> subreddit names.
+    """
+    raw = config.get("subreddits", {})
+    if not isinstance(raw, dict):
+        return {}
+    list_keys = (
+        "controls_english_political",
+        "controls_europe_hub",
+        "controls_europe_political",
+        "discovery_seeds_italian",
+        "discovered_italian",
+    )
+    out: Dict[str, List[str]] = {}
+    for key in list_keys:
+        value = raw.get(key, [])
+        if isinstance(value, list):
+            out[key] = [str(item).strip() for item in value if str(item).strip()]
+    return out
+
+
+def resolve_primary_subreddits(config: Dict[str, Any]) -> List[str]:
+    """Function summary: build deduplicated primary subreddit list for filtering and cleaning.
+
+    Uses explicit `subreddits.primary` when non-empty; otherwise unions control lists,
+    discovery seeds, and discovered Italian subreddits.
+
+    Parameters:
+    - config: full loaded YAML config dictionary.
+
+    Returns:
+    - Sorted list of unique subreddit names.
+    """
+    raw = config.get("subreddits", {})
+    if not isinstance(raw, dict):
+        raise ValueError("Config key `subreddits` must be a mapping.")
+    explicit = raw.get("primary", [])
+    if isinstance(explicit, list) and explicit:
+        return sorted({str(item).strip() for item in explicit if str(item).strip()})
+
+    lists = subreddit_control_lists(config)
+    combined: set[str] = set()
+    for key in (
+        "controls_english_political",
+        "controls_europe_hub",
+        "controls_europe_political",
+        "discovery_seeds_italian",
+        "discovered_italian",
+    ):
+        combined.update(lists.get(key, []))
+    if not combined:
+        raise ValueError(
+            "No subreddits to extract: set `subreddits.primary` or populate control/discovered lists."
+        )
+    return sorted(combined)
+
+
+def subreddit_arm_map(config: Dict[str, Any]) -> Dict[str, str]:
+    """Function summary: map subreddit name to comparison arm label for discovery preview tables.
+
+    Parameters:
+    - config: full loaded YAML config dictionary.
+
+    Returns:
+    - Dictionary subreddit -> arm name (last list wins on duplicate).
+    """
+    arm_labels = {
+        "controls_english_political": "control_english_political",
+        "controls_europe_hub": "control_europe_hub",
+        "controls_europe_political": "control_europe_political",
+        "discovery_seeds_italian": "discovery_seed_italian",
+        "discovered_italian": "discovered_italian",
+    }
+    mapping: Dict[str, str] = {}
+    for list_key, arm in arm_labels.items():
+        for subreddit in subreddit_control_lists(config).get(list_key, []):
+            mapping[subreddit] = arm
+    return mapping
+
+
+def control_subreddits_for_discovery(config: Dict[str, Any]) -> set[str]:
+    """Function summary: subreddits fixed by config that skip Italian langid sampling but stay in census.
+
+    Parameters:
+    - config: full loaded YAML config dictionary.
+
+    Returns:
+    - Set of subreddit names in any controls_* list.
+    """
+    lists = subreddit_control_lists(config)
+    out: set[str] = set()
+    for key in ("controls_english_political", "controls_europe_hub", "controls_europe_political"):
+        out.update(lists.get(key, []))
+    return out

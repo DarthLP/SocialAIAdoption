@@ -64,7 +64,7 @@ PROJECT_ROOT = _resolve_project_root()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.config_utils import comment_dump_filenames, load_config, utc_ts
+from src.config_utils import comment_dump_filenames, load_config, resolve_primary_subreddits, utc_ts
 
 try:
     import orjson
@@ -596,7 +596,7 @@ def main() -> None:
         raise FileNotFoundError(f"Missing required dump files: {missing}")
 
     fields = list(config["dataset"]["fields"])
-    subreddits = set(config["subreddits"]["primary"])
+    subreddits = set(resolve_primary_subreddits(config))
     start_ts = utc_ts(config["event_window"]["start_utc"])
     end_ts = utc_ts(config["event_window"]["end_utc_exclusive"])
     subreddits_sorted = sorted(subreddits)

@@ -9,6 +9,7 @@ tqdm
 PyYAML
 zstandard
 orjson
+langid
 transformers
 torch
 sentencepiece

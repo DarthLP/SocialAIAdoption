@@ -1,0 +1,325 @@
+project:
+  name: "SocialAIAdoption"
+  description: >-
+    Dump-filtered political discussion plus cross-domain comparison forums, with
+    topic-group mapping centralized in this config for one-file corpus control.
+
+event_window:
+  start_utc: "2022-11-01T00:00:00Z"
+  end_utc_exclusive: "2023-05-01T00:00:00Z"
+  launch_day_utc: "2022-11-30T00:00:00Z"
+
+subreddits:
+  primary:
+    - PoliticalDiscussion
+    - NeutralPolitics
+    - moderatepolitics
+    - Ask_Politics
+    - learnprogramming
+    - AskProgramming
+    - CodingHelp
+    - cscareerquestions
+    - ITCareerQuestions
+    - csMajors
+    - answers
+    - TooAfraidToAsk
+    - OutOfTheLoop
+    - scifiwriting
+    - fantasywriting
+    - fantasywriters
+    - writingadvice
+    - WritingHub
+    - writingcenters
+    - content_marketing
+    - digital_marketing
+    - smallbusiness
+    - CryptoMarkets
+    - ethereum
+    - algotrading
+    - Cooking
+    - AskCulinary
+    - budgetcooking
+    - GradSchool
+    - Students
+    - College
+    - UniversityOfReddit
+    - languagelearning
+    - Advice
+    - Adulting
+    - SimpleLiving
+    - Travel
+    - solotravel
+    - Houseplants
+    - GardeningIndoors
+    - IndoorGarden
+    - photography
+    - AskPhotography
+    - financialindependence
+    - HENRYfinance
+    - WhiteCoatInvestor
+    - leanfire
+    - ChubbyFIRE
+    - fatFIRE
+    - socialskills
+    - relationship_advice
+    - suggestmeabook
+    - whatsthatbook
+    - Aquariums
+    - Horses
+    - Pets
+    - learnmath
+    - pcgaming
+    - Games
+    - IndieGaming
+    - artificial
+    - singularity
+    - LocalLLaMA
+    - medicine
+    - askdocs
+    - medical
+    - CURRENTEVENTS
+    - inthenews
+    - TrueReddit
+    - technews
+    - hardware
+    - AskScienceDiscussion
+    - labrats
+    - biology
+    - ecommerce
+    - shopify
+    - dropship
+    - NewTubers
+    - PartneredYoutube
+    - youtubers
+    - freelance
+    - freelanceWriters
+    - forhire
+    - advertising
+    - copywriting
+
+topics:
+  politics:
+    subreddits:
+      - Ask_Politics
+      - NeutralPolitics
+      - PoliticalDiscussion
+      - moderatepolitics
+  coding:
+    subreddits:
+      - AskProgramming
+      - CodingHelp
+      - learnprogramming
+  career:
+    subreddits:
+      - cscareerquestions
+      - ITCareerQuestions
+      - csMajors
+  general_questions:
+    subreddits:
+      - answers
+      - OutOfTheLoop
+      - TooAfraidToAsk
+  fantasy:
+    subreddits:
+      - scifiwriting
+      - fantasywriting
+      - fantasywriters
+  writing_help:
+    subreddits:
+      - writingadvice
+      - WritingHub
+      - writingcenters
+  marketing:
+    subreddits:
+      - content_marketing
+      - digital_marketing
+      - smallbusiness
+  crypto_investing:
+    subreddits:
+      - CryptoMarkets
+      - ethereum
+      - algotrading
+  cooking:
+    subreddits:
+      - Cooking
+      - AskCulinary
+      - budgetcooking
+  student:
+    subreddits:
+      - GradSchool
+      - Students
+      - College
+  learning:
+    subreddits:
+      - UniversityOfReddit
+      - languagelearning
+      - learnmath
+  life_advice:
+    subreddits:
+      - Advice
+      - Adulting
+      - SimpleLiving
+  travel:
+    subreddits:
+      - Travel
+      - solotravel
+  indoor_gardening:
+    subreddits:
+      - Houseplants
+      - GardeningIndoors
+      - IndoorGarden
+  photography:
+    subreddits:
+      - photography
+      - AskPhotography
+  finance:
+    subreddits:
+      - financialindependence
+      - HENRYfinance
+      - WhiteCoatInvestor
+  fire_retirement:
+    subreddits:
+      - leanfire
+      - ChubbyFIRE
+      - fatFIRE
+  social:
+    subreddits:
+      - socialskills
+      - relationship_advice
+  books:
+    subreddits:
+      - suggestmeabook
+      - whatsthatbook
+  pets:
+    subreddits:
+      - Aquariums
+      - Horses
+      - Pets
+  gaming:
+    subreddits:
+      - pcgaming
+      - Games
+      - IndieGaming
+  ai:
+    subreddits:
+      - artificial
+      - singularity
+      - LocalLLaMA
+  medicine:
+    subreddits:
+      - medicine
+      - askdocs
+      - medical
+  news:
+    subreddits:
+      - CURRENTEVENTS
+      - inthenews
+      - TrueReddit
+  tech:
+    subreddits:
+      - technews
+      - hardware
+  science:
+    subreddits:
+      - AskScienceDiscussion
+      - labrats
+      - biology
+  ecommerce:
+    subreddits:
+      - ecommerce
+      - shopify
+      - dropship
+  influencer:
+    subreddits:
+      - NewTubers
+      - PartneredYoutube
+      - youtubers
+  freelancer:
+    subreddits:
+      - freelance
+      - freelanceWriters
+      - forhire
+  advertisement:
+    subreddits:
+      - advertising
+      - copywriting
+
+topic_families:
+  economics_news:
+    topics:
+      - politics
+      - news
+      - finance
+      - fire_retirement
+      - crypto_investing
+  tech_science:
+    topics:
+      - coding
+      - tech
+      - ai
+      - science
+      - gaming
+  marketing:
+    topics:
+      - freelancer
+      - ecommerce
+      - marketing
+      - advertisement
+      - influencer
+  social_questions:
+    topics:
+      - general_questions
+      - life_advice
+      - social
+      - career
+      - medicine
+  writing_learning:
+    topics:
+      - writing_help
+      - fantasy
+      - books
+      - learning
+      - student
+  lifestyle:
+    topics:
+      - cooking
+      - travel
+      - indoor_gardening
+      - pets
+      - photography
+
+dataset:
+  fields:
+    - id
+    - author
+    - subreddit
+    - created_utc
+    - body
+    - score
+    - parent_id
+    - link_id
+    - permalink
+    - edited
+    - controversiality
+    - distinguished
+    - stickied
+
+toxicity:
+  enabled: false
+  method: "vader_compound_proxy"
+  note: "Set enabled true and provide Perspective API key if needed."
+
+comment_features:
+  detector_primary_model: ""
+  detector_secondary_model: ""
+  hostility_model: ""
+  emotion_model: ""
+  perplexity_model: ""
+
+paths:
+  raw_dir: "data/raw/political_forums"
+  interim_dir: "data/interim/political_forums"
+  processed_dir: "data/processed/political_forums"
+  logs_dir: "results/logs"
+  tables_dir: "results/tables"
+  figures_dir: "results/figures"
