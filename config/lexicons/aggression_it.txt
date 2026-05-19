@@ -1,0 +1,32 @@
+# Italian aggression / incivility (disjoint from ideology buckets)
+aggression:idiota
+aggression:idioti
+aggression:cretino
+aggression:cretini
+aggression:stupido
+aggression:stupidi
+aggression:imbecille
+aggression:imbecilli
+aggression:deficiente
+aggression:deficienti
+aggression:merda
+aggression:stronzo
+aggression:stronzi
+aggression:vaffanculo
+aggression:fanculo
+aggression:pezzo di merda
+aggression:muori
+aggression:ammazzati
+aggression:sparati
+aggression:odio
+aggression:odiano
+aggression:odiate
+aggression:razzista
+aggression:razzisti
+aggression:fascista di merda
+aggression:porco
+aggression:porci
+aggression:bastardo
+aggression:bastardi
+aggression:minchione
+aggression:minchioni

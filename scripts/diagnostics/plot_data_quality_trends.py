@@ -32,7 +32,10 @@ Functionality:
 
 How to apply/run:
 - `.venv/bin/python scripts/diagnostics/plot_data_quality_trends.py --config config/political_forums_setup.yaml`
-- Italy ban exploratory corpus: `--config config/italy_chatgpt_ban_setup.yaml` (after filtering raw chunks for that config).
+- Italy polarization (Stage 0, raw only): `--config config/italy_polarization_setup.yaml`
+
+Important: This script does NOT drop or filter rows — it only counts signals on raw NDJSON.
+Row removal happens in Stage 1 (`clean_daily_chunks.py`). Author `[deleted]` rows are counted, not removed.
 """
 
 from __future__ import annotations
@@ -900,6 +903,7 @@ def main() -> None:
     """Function summary: execute full trend-table, validation, and plotting workflow."""
     sns.set_theme(style="whitegrid")
     args = parse_args()
+    print("[plot_data_quality_trends] mode=raw_count_only (no rows dropped)", flush=True)
     config = load_config(args.config)
     paths = build_paths(config)
     subreddits = list(config["subreddits"]["primary"])

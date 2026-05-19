@@ -23,6 +23,83 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
 1. **Discovery** — `scripts/discovery/profile_subreddits_in_dump.py` (first 3 UTC days of `RC_2023-03` only).
 2. **Apply** — `scripts/discovery/apply_discovery_to_config.py` after reviewing `extraction_size_preview.csv`.
 3. **Filter** — `scripts/filtering/filter_dump_comments.py` with `italy_polarization_state.json` / log paths.
+4. **Clean** — `scripts/cleaning/clean_daily_chunks.py` (row drops, URL-only removal).
+5. **Screen** — `scripts/cleaning/screen_subreddits.py` (forum exclusions, pooled Italian langid).
+6. **Enrich** — `scripts/cleaning/enrich_cleaned_chunks.py` (taxonomy + political lexicon scores; canonical interim = subreddit shards only).
+7. **Lexicon audit** — `scripts/diagnostics/audit_political_lexicon.py`.
+8. **Pipeline plots** — `scripts/diagnostics/plot_cleaning_pipeline_trends.py` (family/topic tables and figures).
+9. **Raw QA (optional)** — `scripts/diagnostics/plot_data_quality_trends.py` (Stage 0; **no row drops**).
+
+---
+
+## Italy polarization — cleaning pipeline (active)
+
+### 4a) Stage-1 row cleaning
+- Script: `clean_daily_chunks.py`
+- Why: Drops moderation placeholders, stickied/distinguished moderator rows, URL-only spam; keeps `[deleted]` authors.
+- Input: `data/raw/italy_polarization/daily_chunks/`
+- Output: `data/interim/italy_polarization/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`
+- Audits: `results/tables/italy_polarization/cleaning/clean_daily_chunks_audit_*.csv`
+- Run: `.venv/bin/python scripts/cleaning/clean_daily_chunks.py --config config/italy_polarization_setup.yaml`
+
+### 4b) Stage-2 forum screening
+- Script: `screen_subreddits.py`
+- Why: Applies `PROFILE_USER`, `HIGH_URL_ONLY_SHARE`, `LOW_VOLUME_WINDOW`, `LOW_ITALIAN_POOLED` gates (thresholds in config `screening`).
+- Input: cleaned monthly Parquet + Stage-1 audits
+- Output: `results/tables/italy_polarization/screening/subreddit_screening_*.csv`, `subreddit_exclusions.csv`, `subreddit_exclusion_summary.csv`, `exclusion_summary_by_code.csv`, `screening_run_notes.txt`
+- Volume bands: `large_volume` (≥100 kept), `low_volume` (<100), `excluded` (hard gates)
+- Run: `.venv/bin/python scripts/cleaning/screen_subreddits.py --config config/italy_polarization_setup.yaml`
+
+### 4c) Stage-3 enrichment
+- Script: `enrich_cleaned_chunks.py`
+- Why: Adds `topic`, `topic_family`, `volume_band`, `arm`, political lexicon hits/rates (IT/EN/DE/ES), `thread_id` roll-ups; topic assignment with `assignment_source`; political mismatch audit.
+- Lexicons: `config/lexicons/political_{it,en,de,es}.txt`
+- Output: enriched Parquet in `cleaned_monthly_chunks/` (canonical); `subreddit_topic_assignment.csv`, `subreddit_forum_political_profile.csv`, `subreddit_topic_political_audit.csv`
+- Run: `.venv/bin/python scripts/cleaning/enrich_cleaned_chunks.py --config config/italy_polarization_setup.yaml`
+- Deprecated: `--write-by-family` (prefer `groupby('topic_family')` on shards)
+
+### 4d) Lexicon audit
+- Script: `audit_political_lexicon.py`
+- Output: `results/tables/italy_polarization/cleaning_pipeline/lexicon_audit_*.csv`
+- Run: `.venv/bin/python scripts/diagnostics/audit_political_lexicon.py --config config/italy_polarization_setup.yaml`
+
+### 4e) Cleaning pipeline diagnostics
+- Script: `plot_cleaning_pipeline_trends.py`
+- Why: Stage-1 drop time-series, volume-band window summaries, langid by topic, word-weighted political metrics.
+- Output: `results/tables/italy_polarization/cleaning_pipeline/`, `results/figures/italy_polarization/cleaning_pipeline/`
+
+### 4f) AI-use features (first stage)
+- Script: `compute_ai_use_features.py`
+- Why: Language-matched `ai_style_{lang}.txt` rates and style proxies; separate from polarization outcomes.
+- Input/output: enriched `cleaned_monthly_chunks/*.parquet` (in place)
+- Run: `.venv/bin/python scripts/features/compute_ai_use_features.py --config config/italy_polarization_setup.yaml`
+
+### 4g) Polarization features
+- Script: `compute_polarization_features.py`
+- Why: Ideology L/C/R, affect, other-side salience, aggression, issue rates, thread roll-ups; no AI columns.
+- Lexicons: `config/lexicons/ideology_{it,en,de,es}.txt`, `other_side_*.txt`, `aggression_*.txt`, `affect_*.txt`, `issue_*.txt`
+- Run: `.venv/bin/python scripts/features/compute_polarization_features.py --config config/italy_polarization_setup.yaml`
+
+### 4h) Polarization lexicon audit
+- Script: `audit_polarization_lexicons.py`
+- Output: `results/tables/italy_polarization/descriptives/lexicon_audit_*.csv`, optional `lexicon_validation_pr.csv`
+- Run: `.venv/bin/python scripts/diagnostics/audit_polarization_lexicons.py --config config/italy_polarization_setup.yaml`
+
+### 4i) Polarization descriptives tables
+- Script: `prepare_polarization_descriptives.py`
+- Output: `results/tables/italy_polarization/descriptives/` (daily, family, country panel, author retention, balanced panel, attrition)
+- Run: `.venv/bin/python scripts/diagnostics/prepare_polarization_descriptives.py --config config/italy_polarization_setup.yaml`
+
+### 4j) Polarization descriptives plots
+- Script: `plot_polarization_descriptives.py`
+- Output: `results/figures/italy_polarization/descriptives/`
+- Run: `.venv/bin/python scripts/diagnostics/plot_polarization_descriptives.py --config config/italy_polarization_setup.yaml`
+- Run: `.venv/bin/python scripts/diagnostics/plot_cleaning_pipeline_trends.py --config config/italy_polarization_setup.yaml`
+
+### Stage 0 — raw data quality (no cleaning)
+- Script: `plot_data_quality_trends.py`
+- Why: Pre-cleaning QA on **raw** NDJSON; counts every line — does **not** remove `[removed]`/`[deleted]` bodies or deleted authors.
+- Run: `.venv/bin/python scripts/diagnostics/plot_data_quality_trends.py --config config/italy_polarization_setup.yaml`
 
 ---
 
@@ -115,7 +192,7 @@ Shared helper (imported by domain scripts, not run as a step): [`scripts/_projec
 
 ### 4) Apply deterministic cleaning policy (required for downstream metrics)
 - Script: `clean_daily_chunks.py`
-- Why: Produces interim cleaned corpus by dropping moderation/deletion placeholders and adding analysis flags.
+- Why: Produces interim cleaned corpus by dropping moderation/deletion placeholders, URL-only spam (when `screening.url_only_drop` is true), and adding analysis flags.
 - Input layer: `data/raw/political_forums/daily_chunks/`
 - Output layer:
   - `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`

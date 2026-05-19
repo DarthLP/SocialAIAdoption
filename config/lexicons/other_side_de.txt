@@ -1,0 +1,10 @@
+other_side:linksradikal
+other_side:rechtsradikal
+other_side:afd wähler
+other_side:grüne
+other_side:spd
+other_side:cdu
+other_side:idiot
+other_side:idioten
+other_side:dumm
+other_side:verräter

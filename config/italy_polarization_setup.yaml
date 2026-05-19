@@ -269,6 +269,91 @@ discovery:
   discovery_window_days: 3
   extract_window_days: 61
   max_projected_comments: null
+metadata_config_path: config/italy_polarization_subreddit_metadata.yaml
+screening:
+  url_only_drop: true
+  forum_url_only_share_exclude: 0.80
+  min_kept_per_month_soft: 50
+  min_kept_window_large_volume: 100
+  langid_sample_per_month: 500
+  langid_italian_threshold_pooled: 0.70
+  langid_min_body_chars: 15
+  langid_rng_seed: 20260318
+  thread_political_rate_threshold: 0.35
+  thread_political_min_hits: 2
+  forum_political_rate_multiplier_vs_politicaita: 0.25
+topics:
+  it_political:
+    subreddits:
+      - politicaITA
+      - litigi
+      - news_and_talk
+      - oknotizie
+      - LeAlternative
+  it_general:
+    subreddits:
+      - Italia
+      - ITAGLIA
+      - DomandeDaReddit
+      - Universitaly
+  it_meme_humor:
+    subreddits:
+      - BancaDelMeme
+      - MemeItaliani
+      - memesITA
+      - Doesntmatterpod
+  it_creator_celebrity:
+    subreddits: []
+  it_nsfw_sensitivity:
+    subreddits: []
+  en_us_political:
+    subreddits:
+      - Ask_Politics
+      - NeutralPolitics
+      - PoliticalDiscussion
+      - moderatepolitics
+  de_hub:
+    subreddits:
+      - de
+  es_hub:
+    subreddits:
+      - spain
+  uk_hub:
+    subreddits:
+      - unitedkingdom
+  uk_political:
+    subreddits:
+      - ukpolitics
+  europe_hub:
+    subreddits:
+      - europe
+topic_families:
+  italian:
+    topics:
+      - it_political
+      - it_general
+      - it_meme_humor
+      - it_creator_celebrity
+      - it_nsfw_sensitivity
+  english_us_political:
+    topics:
+      - en_us_political
+  german_hub:
+    topics:
+      - de_hub
+  spanish_hub:
+    topics:
+      - es_hub
+  uk_hub:
+    topics:
+      - uk_hub
+  uk_political:
+    topics:
+      - uk_political
+  europe_hub_english:
+    topics:
+      - europe_hub
+exclusions: []
 dataset:
   fields:
   - id
@@ -294,6 +379,15 @@ comment_features:
   hostility_model: ''
   emotion_model: ''
   perplexity_model: ''
+polarization:
+  eps: 1.0e-6
+  negation_window_tokens: 3
+  lang_match_filter: false
+  dip_min_n: 30
+  er_alpha: 1.6
+ai_use:
+  lang_match_filter: false
+  validation_sample_n: 200
 paths:
   raw_dir: data/raw/italy_polarization
   interim_dir: data/interim/italy_polarization

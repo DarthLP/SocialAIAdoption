@@ -1,0 +1,8 @@
+ai_discourse:zusammenfassend
+ai_discourse:im zusammenhang
+ai_discourse:darüber hinaus
+ai_discourse:andererseits
+ai_discourse:insgesamt
+ai_discourse:wichtig zu beachten
+ai_discourse:signifikant
+ai_discourse:entscheidend

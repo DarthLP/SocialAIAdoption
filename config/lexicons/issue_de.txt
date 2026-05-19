@@ -1,0 +1,13 @@
+eu:eu
+eu:europäische union
+eu:brüssel
+migration:immigration
+migration:flüchtling
+migration:flüchtlinge
+migration:migration
+economy:wirtschaft
+economy:inflation
+economy:steuern
+culture:abtreibung
+culture:lgbt
+culture:rasismus

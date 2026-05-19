@@ -1,0 +1,19 @@
+aggression:idiot
+aggression:idiots
+aggression:moron
+aggression:morons
+aggression:stupid
+aggression:dumb
+aggression:shut up
+aggression:kill yourself
+aggression:go die
+aggression:hate you
+aggression:pathetic
+aggression:loser
+aggression:losers
+aggression:trash
+aggression:garbage
+aggression:asshole
+aggression:assholes
+aggression:bastard
+aggression:bastards

@@ -1,0 +1,22 @@
+# English other-side salience
+other_side:libtard
+other_side:libtards
+other_side:snowflake
+other_side:snowflakes
+other_side:woke
+other_side:magat
+other_side:magats
+other_side:trumptard
+other_side:democrat
+other_side:republican
+other_side:conservative
+other_side:liberal
+other_side:commie
+other_side:commies
+other_side:fascist
+other_side:fascists
+other_side:idiot
+other_side:idiots
+other_side:stupid
+other_side:traitor
+other_side:traitors

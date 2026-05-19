@@ -7,11 +7,15 @@ UTC ISO timestamps to unix seconds, and parsing optional calendar reference date
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
+
+PROFILE_USER_PATTERN = re.compile(r"^u_", re.IGNORECASE)
+CREATOR_NAME_SUFFIXES = ("Submissions", "Official")
 
 
 def load_config(config_path: str | Path) -> Dict[str, Any]:
@@ -106,6 +110,282 @@ def topic_groups(config: Dict[str, Any]) -> Dict[str, List[str]]:
     return groups
 
 
+def metadata_config_path(config: Dict[str, Any], project_root: Optional[Path] = None) -> Path:
+    """Function summary: resolve path to optional subreddit metadata YAML from study config.
+
+    Parameters:
+    - config: loaded study YAML.
+    - project_root: repository root for relative paths; defaults to config file parent parent.
+
+    Returns:
+    - Path to metadata YAML file.
+    """
+    raw = str(config.get("metadata_config_path", "config/italy_polarization_subreddit_metadata.yaml")).strip()
+    path = Path(raw)
+    if path.is_absolute():
+        return path
+    if project_root is not None:
+        return project_root / path
+    return path
+
+
+def load_subreddit_metadata(config: Dict[str, Any], project_root: Optional[Path] = None) -> Dict[str, Any]:
+    """Function summary: load subreddit metadata overrides YAML referenced by the study config.
+
+    Parameters:
+    - config: loaded study YAML.
+    - project_root: repository root for relative metadata path resolution.
+
+    Returns:
+    - Metadata dictionary (empty dict if file missing).
+    """
+    path = metadata_config_path(config, project_root=project_root)
+    if not path.is_file():
+        return {}
+    with path.open("r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle)
+    return data if isinstance(data, dict) else {}
+
+
+def load_screening_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Function summary: return screening thresholds with documented defaults for Italy pipeline.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - Screening settings dictionary.
+    """
+    defaults: Dict[str, Any] = {
+        "url_only_drop": True,
+        "forum_url_only_share_exclude": 0.80,
+        "min_kept_per_month_soft": 50,
+        "min_kept_window_large_volume": 100,
+        "langid_sample_per_month": 500,
+        "langid_italian_threshold_pooled": 0.70,
+        "langid_min_body_chars": 15,
+        "langid_rng_seed": 20260318,
+        "thread_political_rate_threshold": 0.35,
+        "thread_political_min_hits": 2,
+        "forum_political_rate_multiplier_vs_politicaita": 0.25,
+    }
+    raw = config.get("screening", {})
+    if isinstance(raw, dict):
+        merged = dict(raw)
+        if "min_kept_window_large_volume" not in merged and "min_kept_window_tier_a" in merged:
+            merged["min_kept_window_large_volume"] = merged.pop("min_kept_window_tier_a")
+        defaults.update(merged)
+    return defaults
+
+
+def load_polarization_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Function summary: return polarization feature settings with defaults.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - Polarization settings dictionary.
+    """
+    defaults: Dict[str, Any] = {
+        "eps": 1.0e-6,
+        "negation_window_tokens": 3,
+        "lang_match_filter": False,
+        "dip_min_n": 30,
+        "er_alpha": 1.6,
+    }
+    raw = config.get("polarization", {})
+    if isinstance(raw, dict):
+        defaults.update(raw)
+    return defaults
+
+
+def load_ai_use_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Function summary: return AI-use feature settings with defaults.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - AI-use settings dictionary.
+    """
+    defaults: Dict[str, Any] = {
+        "lang_match_filter": False,
+        "validation_sample_n": 200,
+    }
+    raw = config.get("ai_use", {})
+    if isinstance(raw, dict):
+        defaults.update(raw)
+    return defaults
+
+
+def italian_arms_for_langid(config: Dict[str, Any]) -> set[str]:
+    """Function summary: return arm labels subject to pooled Italian langid validation.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - Set of arm names requiring Italian langid pass.
+    """
+    return {"discovered_italian", "discovery_seed_italian"}
+
+
+def infer_subreddit_topic(config: Dict[str, Any], subreddit: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    """Function summary: infer topic label for a subreddit using arms, metadata lists, and name heuristics.
+
+    Parameters:
+    - config: loaded study YAML.
+    - subreddit: subreddit name.
+    - metadata: optional pre-loaded metadata dict.
+
+    Returns:
+    - Topic name string.
+    """
+    meta = metadata if metadata is not None else load_subreddit_metadata(config)
+    overrides = meta.get("topic_overrides", {})
+    if isinstance(overrides, dict) and subreddit in overrides:
+        return str(overrides[subreddit])
+
+    arm = subreddit_arm_map(config).get(subreddit, "")
+    if arm == "control_english_political":
+        return "en_us_political"
+    if arm == "control_europe_political":
+        return "uk_political"
+    if subreddit == "de":
+        return "de_hub"
+    if subreddit == "spain":
+        return "es_hub"
+    if subreddit == "unitedkingdom":
+        return "uk_hub"
+    if subreddit == "europe":
+        return "europe_hub"
+
+    nsfw = set(meta.get("nsfw_subreddits", []) or [])
+    memes = set(meta.get("meme_humor_subreddits", []) or [])
+    creators = set(meta.get("creator_celebrity_subreddits", []) or [])
+    if subreddit in nsfw:
+        return "it_nsfw_sensitivity"
+    if subreddit in memes:
+        return "it_meme_humor"
+    if subreddit in creators or any(subreddit.endswith(sfx) for sfx in CREATOR_NAME_SUFFIXES):
+        return "it_creator_celebrity"
+    if PROFILE_USER_PATTERN.match(subreddit):
+        return "it_general"
+    return "it_general"
+
+
+def infer_subreddit_forum_type(config: Dict[str, Any], subreddit: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    """Function summary: infer forum_type for a subreddit (dedicated_political, general_hub, etc.).
+
+    Parameters:
+    - config: loaded study YAML.
+    - subreddit: subreddit name.
+    - metadata: optional pre-loaded metadata dict.
+
+    Returns:
+    - Forum type string.
+    """
+    meta = metadata if metadata is not None else load_subreddit_metadata(config)
+    overrides = meta.get("forum_type_overrides", {})
+    if isinstance(overrides, dict) and subreddit in overrides:
+        return str(overrides[subreddit])
+
+    topic = infer_subreddit_topic(config, subreddit, metadata=meta)
+    if topic in {"en_us_political", "uk_political", "it_political"}:
+        return "dedicated_political"
+    if topic in {"de_hub", "es_hub", "uk_hub", "europe_hub"}:
+        return "general_hub"
+    if topic == "it_creator_celebrity":
+        return "creator_celebrity"
+    if topic == "it_nsfw_sensitivity":
+        return "nsfw_sensitivity"
+    if PROFILE_USER_PATTERN.match(subreddit):
+        return "profile_user"
+    return "general_hub"
+
+
+def infer_subreddit_primary_lexicon(
+    config: Dict[str, Any], subreddit: str, metadata: Optional[Dict[str, Any]] = None
+) -> str:
+    """Function summary: infer primary political lexicon language code (it, en, de, es).
+
+    Parameters:
+    - config: loaded study YAML.
+    - subreddit: subreddit name.
+    - metadata: optional pre-loaded metadata dict.
+
+    Returns:
+    - Lexicon language code.
+    """
+    meta = metadata if metadata is not None else load_subreddit_metadata(config)
+    overrides = meta.get("primary_lexicon_overrides", {})
+    if isinstance(overrides, dict) and subreddit in overrides:
+        return str(overrides[subreddit])
+
+    topic = infer_subreddit_topic(config, subreddit, metadata=meta)
+    if topic in {"en_us_political", "uk_political", "europe_hub", "uk_hub"}:
+        return "en"
+    if topic == "de_hub":
+        return "de"
+    if topic == "es_hub":
+        return "es"
+    return "it"
+
+
+def subreddit_forum_type(config: Dict[str, Any], subreddit: str, project_root: Optional[Path] = None) -> str:
+    """Function summary: return forum_type for a subreddit using metadata overrides and inference.
+
+    Parameters:
+    - config: loaded study YAML.
+    - subreddit: subreddit name.
+    - project_root: optional repo root for metadata path.
+
+    Returns:
+    - Forum type string.
+    """
+    meta = load_subreddit_metadata(config, project_root=project_root)
+    return infer_subreddit_forum_type(config, subreddit, metadata=meta)
+
+
+def subreddit_primary_lexicon(config: Dict[str, Any], subreddit: str, project_root: Optional[Path] = None) -> str:
+    """Function summary: return primary lexicon language code for a subreddit.
+
+    Parameters:
+    - config: loaded study YAML.
+    - subreddit: subreddit name.
+    - project_root: optional repo root for metadata path.
+
+    Returns:
+    - Lexicon language code (`it`, `en`, `de`, `es`).
+    """
+    meta = load_subreddit_metadata(config, project_root=project_root)
+    return infer_subreddit_primary_lexicon(config, subreddit, metadata=meta)
+
+
+def build_subreddit_metadata_table(config: Dict[str, Any], project_root: Optional[Path] = None) -> Dict[str, Dict[str, str]]:
+    """Function summary: build per-subreddit metadata records for all primary subreddits.
+
+    Parameters:
+    - config: loaded study YAML.
+    - project_root: optional repo root.
+
+    Returns:
+    - Mapping subreddit -> {arm, forum_type, primary_lexicon, topic}.
+    """
+    meta = load_subreddit_metadata(config, project_root=project_root)
+    arms = subreddit_arm_map(config)
+    out: Dict[str, Dict[str, str]] = {}
+    for subreddit in resolve_primary_subreddits(config):
+        out[subreddit] = {
+            "arm": arms.get(subreddit, "discovered_italian"),
+            "forum_type": infer_subreddit_forum_type(config, subreddit, metadata=meta),
+            "primary_lexicon": infer_subreddit_primary_lexicon(config, subreddit, metadata=meta),
+            "topic": infer_subreddit_topic(config, subreddit, metadata=meta),
+        }
+    return out
+
+
 def subreddit_topic_map(config: Dict[str, Any], include_topic_aliases: bool = True) -> Dict[str, str]:
     """Function summary: build subreddit-to-topic mapping from config topic groups with optional topic aliases.
 
@@ -118,6 +398,7 @@ def subreddit_topic_map(config: Dict[str, Any], include_topic_aliases: bool = Tr
     """
     mapping: Dict[str, str] = {}
     primary_subreddits = {str(s) for s in config.get("subreddits", {}).get("primary", [])}
+    meta = load_subreddit_metadata(config)
     for topic_name, subreddits in topic_groups(config).items():
         for subreddit in subreddits:
             if subreddit not in primary_subreddits:
@@ -130,6 +411,9 @@ def subreddit_topic_map(config: Dict[str, Any], include_topic_aliases: bool = Tr
             mapping[subreddit] = topic_name
         if include_topic_aliases:
             mapping[topic_name] = topic_name
+    for subreddit in primary_subreddits:
+        if subreddit not in mapping:
+            mapping[subreddit] = infer_subreddit_topic(config, subreddit, metadata=meta)
     return mapping
 
 

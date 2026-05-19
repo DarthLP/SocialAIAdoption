@@ -1,0 +1,30 @@
+# Italian other-side salience (partisan labels, derogatory nicknames)
+other_side:grillini
+other_side:grillino
+other_side:leghisti
+other_side:leghista
+other_side:fascisti
+other_side:fascista
+other_side:comunisti
+other_side:comunista
+other_side:terroni
+other_side:terrone
+other_side:burini
+other_side:burino
+other_side:salvini
+other_side:meloni
+other_side:schlein
+other_side:berlusconi
+other_side:pd
+other_side:m5s
+other_side:partito democratico
+other_side:fratelli d'italia
+other_side:sinistra radical chic
+other_side:radical chic
+other_side:parassiti
+other_side:parassita
+other_side:ignoranti
+other_side:idioti
+other_side:cretini
+other_side:venduti
+other_side:venduto

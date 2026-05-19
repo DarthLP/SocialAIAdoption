@@ -81,13 +81,59 @@ Optional after interrupt: `.venv/bin/python scripts/cleaning/dedupe_daily_chunks
 
 ---
 
-## Next steps (not part of extraction milestone)
+## Cleaning and taxonomy pipeline (after extract)
 
-1. `clean_daily_chunks.py` → `data/interim/italy_polarization/cleaned_monthly_chunks/`
-2. Per-comment and author-level language tagging on cleaned Parquet
-3. Political lexicons (IT/EN/DE/ES) and subreddit political/social classification
-4. Comparable Mar–Apr descriptives and polarization metrics
-5. Event-study / DiD around ban dates (`2023-03-31`, lift `2023-04-28`)
+Run in order (`.venv` active):
+
+```bash
+# Stage 1 — row drops (moderation placeholders, URL-only spam); keeps [deleted] authors
+.venv/bin/python scripts/cleaning/clean_daily_chunks.py --config config/italy_polarization_setup.yaml
+
+# Stage 2 — forum gates (profile subs, URL-only forums, pooled Italian langid ≥70%, volume bands)
+.venv/bin/python scripts/cleaning/screen_subreddits.py --config config/italy_polarization_setup.yaml
+
+# Stage 3 — taxonomy columns, language-matched political lexicon, thread roll-ups
+.venv/bin/python scripts/cleaning/enrich_cleaned_chunks.py --config config/italy_polarization_setup.yaml
+
+# Lexicon QA + pipeline diagnostics
+.venv/bin/python scripts/diagnostics/audit_political_lexicon.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/diagnostics/plot_cleaning_pipeline_trends.py --config config/italy_polarization_setup.yaml
+
+# Stage 4 — polarization + AI features (after enrich)
+.venv/bin/python scripts/features/compute_ai_use_features.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/features/compute_polarization_features.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/diagnostics/audit_polarization_lexicons.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/diagnostics/prepare_polarization_descriptives.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/diagnostics/plot_polarization_descriptives.py --config config/italy_polarization_setup.yaml
+```
+
+**Pre-registered thresholds** (`config/italy_polarization_setup.yaml` → `screening`):
+
+- URL-only rows dropped at Stage 1; forums with ≥80% URL-only input rows excluded.
+- Italian arms: pooled Mar–Apr langid ≥ **70%** (up to 500 comments/month sampled).
+- **large_volume**: ≥ **100** kept comments over the window; **low_volume** if only `LOW_VOLUME_WINDOW`; soft monthly floor **50** for sparse-month flags.
+- `r/europe` treated as **general English** (`primary_lexicon: en`).
+
+**Topic assignment priority** (first match wins): metadata `topic_overrides` → non-Italian control topics → explicit `topics` lists → NSFW/meme/creator lists → Italian lexicon auto (`politicaITA`-calibrated median threshold). Review mismatches in `subreddit_topic_political_audit.csv`.
+
+**Outputs:**
+
+| Stage | Interim | Tables / figures |
+|-------|---------|------------------|
+| 1 | `data/interim/italy_polarization/cleaned_monthly_chunks/` | `results/tables/italy_polarization/cleaning/` |
+| 2 | — | `screening/subreddit_screening_*.csv`, `subreddit_exclusion_summary.csv` |
+| 3 | enriched parquet in place (canonical) | `subreddit_topic_assignment.csv`, `subreddit_forum_political_profile.csv`, `subreddit_topic_political_audit.csv` |
+| plots | — | `results/tables/italy_polarization/cleaning_pipeline/`, `results/figures/italy_polarization/cleaning_pipeline/` |
+| 4 | enriched parquet + feature columns | `results/tables/italy_polarization/descriptives/`, `results/figures/italy_polarization/descriptives/` |
+
+**Stage 0 (raw only):** `plot_data_quality_trends.py` counts all NDJSON rows — it does **not** drop comments.
+
+**Polarization lexicons:** `config/lexicons/ideology_{lang}.txt`, `other_side_{lang}.txt`, etc. Methods: `results/tables/italy_polarization/descriptives/polarization_metrics_notes.txt`.
+
+## Next steps (after descriptives)
+
+1. Hand-label comments in `lexicon_validation_labels.csv` and re-run `audit_polarization_lexicons.py` for P/R
+2. Event-study / DiD around ban dates (`2023-03-31`, lift `2023-04-28`)
 
 ---
 
@@ -100,6 +146,13 @@ Optional after interrupt: `.venv/bin/python scripts/cleaning/dedupe_daily_chunks
 | `scripts/discovery/` | 3-day dump profiling and config apply |
 | `scripts/filtering/` | Monthly dump → daily NDJSON |
 | `data/raw/italy_polarization/daily_chunks/` | Filtered comments |
+| `data/interim/italy_polarization/cleaned_monthly_chunks/` | Stage-1 cleaned Parquet |
+| `data/interim/italy_polarization/cleaned_monthly_by_family/` | Deprecated optional copies (`--write-by-family`) |
+| `results/tables/italy_polarization/cleaning/` | Stage-1 audits |
+| `results/tables/italy_polarization/screening/` | Stage-2/3 screening and topic assignment |
+| `results/tables/italy_polarization/cleaning_pipeline/` | Pipeline diagnostic tables |
+| `results/figures/italy_polarization/cleaning_pipeline/` | Family/topic QA figures |
+| `config/lexicons/` | Political lexicons (IT/EN/DE/ES) |
 | `results/tables/italy_polarization/discovery/` | Discovery CSVs |
 | `results/logs/filter_dump/italy_polarization_*` | Filter resume state |
 

@@ -1,0 +1,90 @@
+# Per-subreddit overrides and classification rules for Italy polarization study.
+# Unlisted primary subreddits receive defaults from infer_subreddit_metadata() in config_utils.
+
+topic_overrides:
+  politicaITA: it_political
+  litigi: it_political
+  news_and_talk: it_political
+  oknotizie: it_political
+  LeAlternative: it_political
+  Italia: it_general
+  ITAGLIA: it_general
+  Ask_Politics: en_us_political
+  NeutralPolitics: en_us_political
+  PoliticalDiscussion: en_us_political
+  moderatepolitics: en_us_political
+  ukpolitics: uk_political
+  de: de_hub
+  spain: es_hub
+  unitedkingdom: uk_hub
+  europe: europe_hub
+
+forum_type_overrides:
+  politicaITA: dedicated_political
+  litigi: dedicated_political
+  news_and_talk: dedicated_political
+  oknotizie: dedicated_political
+  LeAlternative: dedicated_political
+  Ask_Politics: dedicated_political
+  NeutralPolitics: dedicated_political
+  PoliticalDiscussion: dedicated_political
+  moderatepolitics: dedicated_political
+  ukpolitics: dedicated_political
+  Italia: general_hub
+  ITAGLIA: general_hub
+  de: general_hub
+  spain: general_hub
+  unitedkingdom: general_hub
+  europe: general_hub
+
+primary_lexicon_overrides:
+  europe: en
+
+# Subreddits assigned to it_creator_celebrity by name (forum_type creator_celebrity).
+creator_celebrity_subreddits:
+  - Alessia_Lanza
+  - Cecilia_Rodriguez
+  - Giorgia_Palmas
+  - Valentina_Vignali
+  - catiabraccio
+  - alexagaytanonly
+  - giuliasalemihot
+  - Gabby16bitSubmissions
+  - RichardHTTSubmissions
+  - EdoardoFaReddit
+  - MonkeySimonOfficial
+  - MicheleEiRettili
+  - FabioNicolini
+  - PatatinaVipForum
+  - europeanroyalwomen
+  - KateMiddleton
+  - mariasharapova
+  - Tits_middleton
+
+# NSFW / adult forums (sensitivity tier; kept when Italian + volume pass).
+nsfw_subreddits:
+  - DonneItalianeNSFW
+  - ItalyGW
+  - onlyfansitaliane
+  - sexitaly
+  - RealGirlsItaly
+  - TroieDiTikTok_ITA
+  - figapelosa
+  - italian_girl_feet
+  - italiasissy
+  - SeduzioneItalia
+  - ItalianDicks
+
+# Meme / humor forums.
+meme_humor_subreddits:
+  - BancaDelMeme
+  - MemeItaliani
+  - memesITA
+  - Memolandia
+  - copypastaitalia
+  - ilCanileDiPoggo
+  - Doesntmatterpod
+  - iNoobChannel
+  - Ratorix
+  - proverbi_chad
+  - scurrillo

@@ -1,0 +1,10 @@
+aggression:idiota
+aggression:idiotas
+aggression:estúpido
+aggression:estúpidos
+aggression:imbécil
+aggression:imbéciles
+aggression:odio
+aggression:mierda
+aggression:cabron
+aggression:cabrones

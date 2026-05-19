@@ -1,0 +1,22 @@
+eu:eu
+eu:european union
+eu:brexit
+eu:brussels
+migration:immigration
+migration:immigrant
+migration:immigrants
+migration:migrant
+migration:migrants
+migration:border
+economy:economy
+economy:inflation
+economy:tax
+economy:taxes
+economy:welfare
+economy:debt
+culture:abortion
+culture:lgbt
+culture:racism
+culture:feminism
+culture:transgender
+culture:woke

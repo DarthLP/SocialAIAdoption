@@ -1,0 +1,9 @@
+negative:traurig
+negative:schrecklich
+negative:angst
+negative:hass
+negative:schande
+anger:wütend
+anger:wut
+anger:zornig
+anger:empört

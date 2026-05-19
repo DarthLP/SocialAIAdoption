@@ -1,0 +1,48 @@
+# Italian ideology lexicon — category:term (Mar–Apr 2023)
+left:sinistra
+left:sinistre
+left:progressista
+left:progressisti
+left:comunista
+left:comunisti
+left:socialista
+left:socialisti
+left:pd
+left:partito democratico
+left:schlein
+left:letta
+left:renzi
+left:cgil
+left:sindacato
+left:sindacati
+left:antifascista
+left:antifascisti
+left:ecologista
+left:ecologisti
+center:centro
+center:centrista
+center:centristi
+center:moderato
+center:moderati
+center:tecnocratico
+center:tecnocratici
+center:governo di unità
+center:unità nazionale
+right:destra
+right:destre
+right:conservatore
+right:conservatori
+right:sovranista
+right:sovranisti
+right:fdi
+right:fratelli d'italia
+right:fratelli
+right:meloni
+right:lega
+right:salvini
+right:forza italia
+right:berlusconi
+right:centrodestra
+right:estremista di destra
+right:nazionalista
+right:nazionalisti

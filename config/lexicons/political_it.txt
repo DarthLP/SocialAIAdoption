@@ -1,0 +1,264 @@
+# Italian political lexicon — parties, institutions, policy (2023-relevant)
+governo
+governi
+parlamento
+parlamenti
+senato
+camera
+presidente
+premier
+ministro
+ministri
+maggioranza
+opposizione
+elezioni
+elettorale
+voto
+votare
+referendum
+costituzione
+legge
+leggi
+decreto
+decretolegge
+senatore
+senatori
+deputato
+deputati
+parlamentare
+parlamentari
+partito
+partiti
+coalizione
+meloni
+fratelli d'italia
+fratelli
+italia
+fdi
+lega
+salvini
+forza italia
+berlusconi
+pd
+partito democratico
+democratici
+schlein
+m5s
+movimento 5 stelle
+contestazione
+contestazioni
+immigrazione
+migranti
+migrante
+schengen
+unione europea
+europa
+europarlamento
+nato
+guerra
+ucraina
+russia
+inflazione
+crisi
+economia
+bilancio
+debito
+pensioni
+sanità
+scuola
+università
+ambiente
+clima
+energia
+lavoro
+salario
+tasse
+fisco
+giustizia
+polizia
+carabinieri
+corruzione
+mafia
+antimafia
+sicurezza
+terrorismo
+diritti
+cittadinanza
+ius soli
+aborto
+lgbt
+femminismo
+femminicidio
+razzismo
+fascismo
+antifascismo
+comunismo
+sinistra
+destra
+centro
+estremismo
+populismo
+sovranismo
+politica
+politico
+politici
+politiche
+manovra
+pnrr
+recovery
+decreto salva
+giorgia
+matteo
+giuseppe
+conte
+salvini
+schlein
+calenda
+renzi
+berlusconi
+draghi
+presidente repubblica
+quirinale
+palazzo chigi
+montecitorio
+palazzo madama
+commissione
+emendamento
+fiducia
+sfiducia
+governo ombra
+ministro interno
+ministro esteri
+difesa
+esteri
+interni
+giustizia riforma
+riforma
+costituzionale
+elezioni politiche
+elezioni regionali
+ballottaggio
+scrutinio
+liste
+candidato
+candidati
+programma elettorale
+sondaggio
+sondaggi
+exit poll
+affluenza
+astensione
+voto utile
+voto di scambio
+par condicio
+legge elettorale
+rosatellum
+italicum
+proporzionale
+maggioritario
+camera deputati
+senato repubblica
+regioni
+autonomia
+decreto legge
+dl ponte
+milleproroghe
+spesa pubblica
+tagli
+austerity
+spread
+bce
+eurozona
+banche
+risparmio
+statalizzazione
+privatizzazione
+confindustria
+sindacato
+sciopero
+ccnl
+reddito cittadinanza
+quota 100
+superbonus
+bonus
+transizione ecologica
+gas
+bolletta
+caro vita
+povertà
+disoccupazione
+occupazione
+giovani
+precariato
+welfare
+assistenza
+ospedale
+medici
+infermieri
+covid
+pandemia
+vaccino
+green pass
+lockdown
+migranti soccorso
+accoglienza
+centri identificazione
+hotspot
+frontex
+mediterraneo
+libia
+tunisia
+albania
+accordo migranti
+decreto sicurezza
+salvini decreto
+ong
+navi
+soccorso
+clandestini
+permesso soggiorno
+cittadinanza italiana
+naturalizzazione
+ius culturae
+matrimonio
+divorzio
+famiglia
+gender
+ideologia
+propaganda
+disinformazione
+fake news
+giornalismo
+giornalista
+editoriale
+intervista
+dibattito
+talk show
+inchiostro
+inchiesta
+corruzione politica
+tangente
+mazzette
+concussione
+abuso ufficio
+antimafia
+ndrangheta
+camorra
+cosa nostra
+mafia capitale
+racket
+estorsione
+ndrangheta
+terrorismo islamico
+estremismo islamico
+separatismo
+indipendentismo
+padania
+autonomia differenziata
+federalismo
+riforma costituzione
+presidenzialismo
+parlamentarismo
+bicameralismo
+senato elettivo
+abolizione senato

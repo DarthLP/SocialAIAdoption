@@ -1,0 +1,16 @@
+ai_discourse:it is important to note
+ai_discourse:it is worth noting
+ai_discourse:in conclusion
+ai_discourse:in summary
+ai_discourse:moreover
+ai_discourse:furthermore
+ai_discourse:additionally
+ai_discourse:on the other hand
+ai_discourse:overall
+ai_discourse:significant
+ai_discourse:crucial
+ai_discourse:landscape
+ai_discourse:delve
+ai_discourse:underscore
+ai_discourse:my take
+ai_discourse:in short

@@ -1,0 +1,26 @@
+# Italian LLM / formal discourse markers (not English AI lexicon)
+ai_discourse:è importante notare
+ai_discourse:in sintesi
+ai_discourse:in conclusione
+ai_discourse:tuttavia
+ai_discourse:inoltre
+ai_discourse:d'altra parte
+ai_discourse:daltronde
+ai_discourse:nel complesso
+ai_discourse:in generale
+ai_discourse:significativo
+ai_discourse:significativa
+ai_discourse:cruciale
+ai_discourse:fondamentale
+ai_discourse:panoramica
+ai_discourse:contesto
+ai_discourse:approfondire
+ai_discourse:mettere in evidenza
+ai_discourse:risulta evidente
+ai_discourse:è fondamentale
+ai_discourse:è cruciale
+ai_discourse:vale la pena
+ai_discourse:in altre parole
+ai_discourse:per riassumere
+ai_discourse:breve risposta
+ai_discourse:risposta lunga

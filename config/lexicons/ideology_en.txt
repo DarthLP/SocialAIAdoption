@@ -1,0 +1,31 @@
+# English ideology lexicon
+left:liberal
+left:liberals
+left:progressive
+left:progressives
+left:democrat
+left:democrats
+left:labour
+left:socialist
+left:socialists
+left:left wing
+left:leftist
+left:leftists
+center:centrist
+center:centrists
+center:moderate
+center:moderates
+center:bipartisan
+center:technocrat
+center:technocrats
+right:conservative
+right:conservatives
+right:republican
+right:republicans
+right:gop
+right:right wing
+right:rightist
+right:nationalist
+right:nationalists
+right:tory
+right:tories

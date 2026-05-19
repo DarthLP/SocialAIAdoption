@@ -15,11 +15,11 @@ Functionality:
   - author == "AutoModerator"
   - stickied == true
   - distinguished == "moderator"
-- Keeps URL-only text and keeps author == "[deleted]" rows.
+- Drops URL-only text (bare URL, single markdown link, or negligible text after link strip).
+- Keeps author == "[deleted]" rows with is_deleted_author flag.
 - Adds flags on kept rows:
   - is_deleted_author
   - is_bot_name_heuristic
-  - is_url_only
   - is_short_text (body length < 20 chars)
 - Writes cleaned monthly chunks to
   `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`.
@@ -38,7 +38,6 @@ import argparse
 import json
 from pathlib import Path
 import importlib.util
-import re
 import sys
 from collections import defaultdict
 import time
@@ -64,9 +63,9 @@ PROJECT_ROOT = _resolve_project_root()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.config_utils import load_config, resolve_primary_subreddits
+from src.config_utils import load_config, load_screening_config, resolve_primary_subreddits
+from src.text_hygiene import is_url_only_text
 
-URL_ONLY_PATTERN = re.compile(r"^\s*https?://\S+\s*$", re.IGNORECASE)
 SCHEMA_SAMPLE_LIMIT = 200
 
 INTERIM_SCHEMA: dict[str, str] = {
@@ -85,7 +84,6 @@ INTERIM_SCHEMA: dict[str, str] = {
     "stickied": "boolean",
     "is_deleted_author": "boolean",
     "is_bot_name_heuristic": "boolean",
-    "is_url_only": "boolean",
     "is_short_text": "boolean",
     "date_utc": "string",
     "year_month": "string",
@@ -103,7 +101,6 @@ BOOLEAN_COLUMNS = {
     "stickied",
     "is_deleted_author",
     "is_bot_name_heuristic",
-    "is_url_only",
     "is_short_text",
 }
 INTEGER_COLUMNS = {"created_utc", "score", "controversiality"}
@@ -121,11 +118,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def is_url_only_text(body: str) -> bool:
-    """Function summary: return true when body contains only a single URL token."""
-    return bool(URL_ONLY_PATTERN.match(body or ""))
-
-
 def build_flags(record: Dict[str, Any]) -> Dict[str, bool]:
     """Function summary: compute non-dropping analysis flags for a retained record."""
     body = (record.get("body") or "").strip()
@@ -133,12 +125,11 @@ def build_flags(record: Dict[str, Any]) -> Dict[str, bool]:
     return {
         "is_deleted_author": author == "[deleted]",
         "is_bot_name_heuristic": "bot" in author.lower(),
-        "is_url_only": is_url_only_text(body),
         "is_short_text": len(body) < 20,
     }
 
 
-def evaluate_drop_rules(record: Dict[str, Any]) -> Dict[str, bool]:
+def evaluate_drop_rules(record: Dict[str, Any], drop_url_only: bool) -> Dict[str, bool]:
     """Function summary: evaluate all configured drop conditions for one record."""
     body = (record.get("body") or "").strip()
     author = (record.get("author") or "").strip()
@@ -148,10 +139,13 @@ def evaluate_drop_rules(record: Dict[str, Any]) -> Dict[str, bool]:
         "drop_author_automoderator": author == "AutoModerator",
         "drop_stickied_true": bool(record.get("stickied")),
         "drop_distinguished_moderator": (record.get("distinguished") == "moderator"),
+        "drop_url_only": drop_url_only and is_url_only_text(body),
     }
 
 
-def clean_one_file(in_path: Path, subreddit: str, date_utc: str) -> tuple[Dict[str, Any], list[Dict[str, Any]]]:
+def clean_one_file(
+    in_path: Path, subreddit: str, date_utc: str, drop_url_only: bool
+) -> tuple[Dict[str, Any], list[Dict[str, Any]]]:
     """Function summary: clean one daily NDJSON file and return audit counters plus kept records."""
     counters: Dict[str, Any] = {
         "subreddit": subreddit,
@@ -164,6 +158,7 @@ def clean_one_file(in_path: Path, subreddit: str, date_utc: str) -> tuple[Dict[s
         "drop_author_automoderator": 0,
         "drop_stickied_true": 0,
         "drop_distinguished_moderator": 0,
+        "drop_url_only": 0,
         "drop_overlap_automod_and_distinguished": 0,
         "invalid_json_rows": 0,
     }
@@ -179,7 +174,7 @@ def clean_one_file(in_path: Path, subreddit: str, date_utc: str) -> tuple[Dict[s
                 counters["invalid_json_rows"] += 1
                 continue
             counters["rows_input"] += 1
-            rule_hits = evaluate_drop_rules(record)
+            rule_hits = evaluate_drop_rules(record, drop_url_only=drop_url_only)
             for rule_name, is_hit in rule_hits.items():
                 if is_hit:
                     counters[rule_name] += 1
@@ -370,6 +365,7 @@ def write_audit_outputs(audit_df: pd.DataFrame, tables_dir: Path) -> None:
         "drop_author_automoderator",
         "drop_stickied_true",
         "drop_distinguished_moderator",
+        "drop_url_only",
         "drop_overlap_automod_and_distinguished",
         "invalid_json_rows",
     ]
@@ -392,9 +388,9 @@ def write_audit_outputs(audit_df: pd.DataFrame, tables_dir: Path) -> None:
         "- author == AutoModerator",
         "- stickied == true",
         '- distinguished == "moderator"',
+        "- URL-only text (bare URL, single markdown link, or negligible text after link strip)",
         "",
         "Keep policy reminders:",
-        "- URL-only text is kept.",
         "- author == [deleted] is kept.",
         "",
         (
@@ -435,6 +431,8 @@ def main() -> None:
     """Function summary: run full cleaning workflow and emit cleaned monthly Parquet plus audit artifacts."""
     args = parse_args()
     config = load_config(args.config)
+    screening = load_screening_config(config)
+    drop_url_only = bool(screening.get("url_only_drop", True))
     raw_daily_dir = Path(config["paths"]["raw_dir"]) / "daily_chunks"
     interim_dir = Path(config["paths"]["interim_dir"])
     tables_dir = Path(config["paths"]["tables_dir"])
@@ -467,7 +465,12 @@ def main() -> None:
                 f"[clean_daily_chunks] file_start subreddit={subreddit} month={year_month} file={file_idx}/{len(month_files)} date={date_utc}",
                 flush=True,
             )
-            counters, kept_records = clean_one_file(in_path=in_path, subreddit=subreddit, date_utc=date_utc)
+            counters, kept_records = clean_one_file(
+                in_path=in_path,
+                subreddit=subreddit,
+                date_utc=date_utc,
+                drop_url_only=drop_url_only,
+            )
             audits.append(counters)
             monthly_records.extend(kept_records)
             print(

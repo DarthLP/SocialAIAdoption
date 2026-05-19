@@ -1,0 +1,155 @@
+# Spanish political lexicon
+gobierno
+parlamento
+congreso
+senado
+presidente
+ministro
+ministra
+ministros
+elección
+elecciones
+electoral
+voto
+votar
+referéndum
+constitución
+ley
+leyes
+partido
+partidos
+coalición
+oposición
+mayoría
+psoe
+pp
+podemos
+vox
+ciudadanos
+sumar
+feijóo
+sánchez
+pedro sánchez
+abascal
+inmigración
+migrantes
+ue
+unión europea
+europa
+otan
+guerra
+ucrania
+rusia
+inflación
+economía
+presupuesto
+deuda
+sanidad
+educación
+clima
+energía
+impuesto
+impuestos
+policía
+justicia
+derechos
+política
+político
+políticos
+democracia
+extremismo
+populismo
+izquierda
+derecha
+monarquía
+república
+independencia
+cataluña
+catalunya
+procés
+referendum catalán
+eta
+vasco
+gallego
+andalucía
+madrid
+comunidad autónoma
+autonomía
+estatuto
+tribunal constitucional
+congreso diputados
+moción censura
+investidura
+decreto ley
+real decreto
+reforma laboral
+pensiones
+paro
+desempleo
+precariedad
+vivienda
+alquiler
+okupa
+manifestación
+huelga
+sindicato
+empresario
+corrupción
+gürtel
+caso
+juez
+fiscal
+tribunal
+sentencia
+indulto
+amnistía
+corrupción política
+medios
+prensa
+televisión
+debate
+encuesta
+sondeo
+campaña electoral
+programa electoral
+voto útil
+abstención
+coalición gobierno
+gabinete
+ministro interior
+exteriores
+defensa
+hacienda
+sanidad pública
+covid
+pandemia
+vacuna
+mascarilla
+confinamiento
+energía renovable
+gas
+factura luz
+precios
+crisis económica
+rescate bancario
+euro
+bce
+banco españa
+frontera
+melilla
+ceuta
+cayucos
+salvamento
+ong
+acogida
+centro internamiento
+extranjería
+nacionalidad
+ciudadanía
+racismo
+machismo
+feminismo
+aborto
+igualdad
+lgtbi
+trans

@@ -1,0 +1,186 @@
+# English political lexicon — US/UK/EU terms
+government
+parliament
+congress
+senate
+house
+president
+vice president
+prime minister
+minister
+ministers
+cabinet
+white house
+downing street
+westminster
+capitol
+election
+elections
+electoral
+vote
+voting
+ballot
+referendum
+constitution
+law
+bill
+legislation
+legislative
+senator
+representative
+mp
+mps
+party
+parties
+coalition
+majority
+opposition
+democrat
+democrats
+republican
+republicans
+gop
+labour
+conservative
+tories
+liberal
+liberals
+green
+greens
+independence
+brexit
+immigration
+migrant
+migrants
+border
+eu
+european union
+european
+union
+nato
+war
+ukraine
+russia
+inflation
+economy
+budget
+debt
+welfare
+healthcare
+education
+climate
+energy
+tax
+taxes
+police
+justice
+rights
+abortion
+lgbt
+racism
+fascism
+terrorism
+policy
+policies
+political
+politician
+politicians
+politics
+governance
+democracy
+authoritarian
+populism
+left wing
+right wing
+centrist
+extremism
+lobby
+lobbying
+sanction
+sanctions
+geopolitics
+diplomacy
+biden
+trump
+obama
+sunak
+starmer
+johnson
+macron
+scholz
+von der leyen
+supreme court
+federal
+state legislature
+governor
+mayor
+primary election
+midterm
+impeachment
+filibuster
+executive order
+national security
+defense
+foreign policy
+state department
+pentagon
+cia
+fbi
+sanctions
+tariff
+trade war
+inflation reduction
+green new deal
+medicare
+medicaid
+social security
+gun control
+second amendment
+climate change
+net zero
+renewable
+fossil fuel
+opec
+interest rate
+federal reserve
+bank of england
+ecb
+eurozone
+sovereignty
+devolution
+scotland
+wales
+northern ireland
+good friday
+protocol
+human rights
+asylum
+refugee
+deportation
+visa
+citizenship
+nationalism
+globalism
+culture war
+misinformation
+disinformation
+media bias
+press freedom
+whistleblower
+transparency
+corruption
+lobbyist
+campaign finance
+super pac
+polling
+exit poll
+swing state
+electoral college
+gerrymandering
+redistricting
+supreme court ruling
+roe wade
+affirmative action
+civil rights
+voting rights
+gerrymander

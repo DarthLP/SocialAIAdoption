@@ -1,0 +1,39 @@
+# Italian issue salience (orthogonal to left-right)
+eu:ue
+eu:unione europea
+eu:europa
+eu:europarlamento
+eu:bruxelles
+eu:euroscettico
+eu:euroscettici
+eu:euroskeptic
+migration:immigrazione
+migration:immigrati
+migration:immigrato
+migration:migranti
+migration:migrante
+migration:clandestini
+migration:clandestino
+migration:sbarchi
+migration:sbarcho
+migration:frontex
+migration:schengen
+economy:economia
+economy:inflazione
+economy:debito
+economy:bilancio
+economy:tasse
+economy:fisco
+economy:lavoro
+economy:salario
+economy:pensioni
+culture:aborto
+culture:lgbt
+culture:femminismo
+culture:femminicidio
+culture:razzismo
+culture:omofobia
+culture:trans
+culture:gender
+culture:ideologia gender
+culture:woke

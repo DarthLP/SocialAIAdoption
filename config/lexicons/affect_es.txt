@@ -1,0 +1,10 @@
+negative:triste
+negative:terrible
+negative:miedo
+negative:odio
+negative:vergüenza
+anger:enfadado
+anger:enfadados
+anger:furioso
+anger:rabia
+anger:ira
