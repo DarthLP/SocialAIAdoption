@@ -2,29 +2,19 @@
 # Unlisted primary subreddits receive defaults from infer_subreddit_metadata() in config_utils.
 
 topic_overrides:
-  politicaITA: it_political
-  litigi: it_political
-  news_and_talk: it_political
-  oknotizie: it_political
-  LeAlternative: it_political
-  Italia: it_general
-  ITAGLIA: it_general
-  Ask_Politics: en_us_political
-  NeutralPolitics: en_us_political
-  PoliticalDiscussion: en_us_political
-  moderatepolitics: en_us_political
+  Ask_Politics: us
+  NeutralPolitics: us
+  PoliticalDiscussion: us
+  moderatepolitics: us
   ukpolitics: uk_political
-  de: de_hub
-  spain: es_hub
-  unitedkingdom: uk_hub
-  europe: europe_hub
+  de: de
+  unitedkingdom: uk
+  europe: eu
 
 forum_type_overrides:
   politicaITA: dedicated_political
-  litigi: dedicated_political
   news_and_talk: dedicated_political
   oknotizie: dedicated_political
-  LeAlternative: dedicated_political
   Ask_Politics: dedicated_political
   NeutralPolitics: dedicated_political
   PoliticalDiscussion: dedicated_political
@@ -33,14 +23,13 @@ forum_type_overrides:
   Italia: general_hub
   ITAGLIA: general_hub
   de: general_hub
-  spain: general_hub
   unitedkingdom: general_hub
   europe: general_hub
 
 primary_lexicon_overrides:
   europe: en
 
-# Subreddits assigned to it_creator_celebrity by name (forum_type creator_celebrity).
+# Subreddits assigned to it_others via creator_celebrity metadata list.
 creator_celebrity_subreddits:
   - Alessia_Lanza
   - Cecilia_Rodriguez
@@ -75,11 +64,12 @@ nsfw_subreddits:
   - SeduzioneItalia
   - ItalianDicks
 
-# Meme / humor forums.
+# Meme / humor forums (routed to it_others only when word-weighted political rate < threshold).
 meme_humor_subreddits:
   - BancaDelMeme
   - MemeItaliani
   - memesITA
+  - ItaliaMeme
   - Memolandia
   - copypastaitalia
   - ilCanileDiPoggo

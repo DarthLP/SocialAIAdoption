@@ -1,19 +1,17 @@
 # TODO Board
 
-## Purpose
-Track active implementation tasks, ownership, status, and handoff context for coding sessions.
+## Active milestones (Italy polarization)
 
-## Now
-- TASK-YYYYMMDD-01: Initialize project-local Python environment and define dependency management approach. (owner: human, status: todo)
-- TASK-YYYYMMDD-02: Add first reproducible pipeline script skeleton under the appropriate `scripts/<domain>/` folder (see `scripts/README.md`). (owner: human/agent, status: todo)
+- Dominant export + re-run stage 4 + `prepare_lexicon_descriptives.py` / `plot_lexicon_descriptives.py` (before P/R labeling).
+- Lexicon hand-label P/R validation (`audit_polarization_lexicons.py`, `lexicon_validation_pr.csv`) — **after** dominant features exist on shards.
+- Event-study / DiD at ban dates (`plot_reference_dates_utc` in config).
+- Within-user pre/post: panel → analyze → plot (`scripts/user_week/`; composites in `config/italy_polarization_setup.yaml` `user_week` block).
 
-## Next
-- TASK-YYYYMMDD-03: Define config file schema in `config/` for reproducible run settings. (owner: human/agent, status: todo)
-- TASK-YYYYMMDD-04: Establish initial data dictionary note linked from `Projects/Thesis-Project-Hub.md`. (owner: human, status: todo)
+## Maintenance
 
-## Later
-- TASK-YYYYMMDD-05: Add automated validation checks for markdown links and note metadata quality. (owner: human/agent, status: todo)
+- Re-run feature passes after lexicon export: `export_italian_lexicon_v4.py --policy dominant` then `compute_enriched_shard_features.py --pass all`.
+- Filter state: `italy_polarization_state.json` under `data/logs/`.
 
-## Handoff
-- Keep this file concise and operational.
-- Move durable lessons to `Decisions/` notes.
+## Archived (reproducibility only)
+
+- AI-adoption ML + event-time + legacy user-week: `scripts/archive/`, `config/archive/ai_adoption_political_forums_setup.yaml`.

@@ -1,4 +1,5 @@
 # Italian issue salience (orthogonal to left-right)
+# v4 export (broad) from italian_political_lexicon_v4.csv — issue salience from mapped topics
 eu:ue
 eu:unione europea
 eu:europa
@@ -37,3 +38,207 @@ culture:trans
 culture:gender
 culture:ideologia gender
 culture:woke
+# v4 additions (broad)
+culture:25 aprile
+culture:antifa
+culture:antifascismo
+culture:antimafia
+culture:antipolitica
+culture:atlantismo
+culture:bicameralismo perfetto
+culture:casta
+culture:cittadini onesti
+culture:classe politica
+culture:complottismo
+culture:coppia di fatto
+culture:criminalità organizzata
+culture:cultura della cancellazione
+culture:ddl Zan
+culture:decoro urbano
+culture:democrazia diretta
+culture:democrazia rappresentativa
+culture:diritti civili
+culture:disarmo
+culture:disinformazione
+culture:fake news
+culture:famiglia naturale
+culture:fascisti
+culture:foibe
+culture:Fratelli d'Italia
+culture:garantismo
+culture:gestazione per altri
+culture:giudici
+culture:giustizialismo
+culture:governo
+culture:governo di unità
+culture:governo tecnico
+culture:guerra civile
+culture:inciucio
+culture:interruzione di gravidanza
+culture:interventismo
+culture:italiani prima
+culture:laicità
+culture:larghe intese
+culture:Lega
+culture:legalità
+culture:Legge 194
+culture:legge bavaglio
+culture:Legge Cirinnà
+culture:legge e ordine
+culture:libertà di stampa
+culture:M5S
+culture:mafia
+culture:maggioritario
+culture:mainstream
+culture:Mani Pulite
+culture:mascolinità tossica
+culture:merito
+culture:NATO
+culture:nazionalismo
+culture:nazione
+culture:neo-fascisti
+culture:nomenklatura
+culture:omicidio
+culture:omotransfobia
+culture:onestà
+culture:opinione
+culture:otto per mille
+culture:pacifismo
+culture:palazzo
+culture:partitocrazia
+culture:patria
+culture:patriarcato
+culture:patriottismo
+culture:politichese
+culture:populismo
+culture:poteri forti
+culture:premierato
+culture:presidenzialismo
+culture:regime
+culture:Resistenza
+culture:riarmo
+culture:scuola pubblica
+culture:scuole paritarie
+culture:sistema
+culture:solidarietà
+culture:soppressione del nascituro
+culture:spese militari
+culture:squadrismo
+culture:stampa di regime
+culture:Tangentopoli
+culture:teatrino
+culture:toghe rosse
+culture:transfobia
+culture:unioni civili
+culture:uno vale uno
+culture:utero in affitto
+culture:vaffa
+culture:valori cristiani
+culture:élite
+economy:18app
+economy:ammortizzatori sociali
+economy:articolo 18
+economy:assegno unico
+economy:assistenzialismo
+economy:bamboccioni
+economy:bonus 80 euro
+economy:capitalismo selvaggio
+economy:caporalato
+economy:cassa integrazione
+economy:choosy
+economy:classe lavoratrice
+economy:condono
+economy:contratto a tutele crescenti
+economy:costo del lavoro
+economy:cuneo fiscale
+economy:delocalizzazione
+economy:disagio sociale
+economy:divani
+economy:esclusione sociale
+economy:esproprio
+economy:flat tax
+economy:flessibilità
+economy:fuga dal lavoro
+economy:IRPEF
+economy:IVA
+economy:Jobs Act
+economy:lotta all'evasione
+economy:mancia di stato
+economy:multinazionali
+economy:NASpI
+economy:neoliberismo
+economy:nullafacenti
+economy:pace fiscale
+economy:patrimoniale
+economy:persecuzione fiscale
+economy:pizzo di stato
+economy:precariato
+economy:precarizzazione
+economy:progressività fiscale
+economy:proletariato
+economy:protezionismo
+economy:Quota 100
+economy:quota 100 (legge)
+economy:reddito di cittadinanza
+economy:salario minimo
+economy:sfruttamento
+economy:superbonus 110%
+economy:sussidio statale
+economy:tassa regressiva
+economy:tassazione punitiva
+economy:tutele del lavoro
+economy:vincoli al mercato
+economy:voucher lavoro
+eu:austerità imposta
+eu:autonomia differenziata
+eu:autonomia regionale
+eu:cessione di sovranità
+eu:cooperazione europea
+eu:europeismo
+eu:integrazione europea
+eu:Italexit
+eu:MES
+eu:NextGenerationEU
+eu:Piano Mattei
+eu:PNRR
+eu:secessione fiscale
+eu:sovranismo
+eu:sovranità
+eu:spread
+eu:troika
+eu:vincoli di bilancio
+migration:accoglienza
+migration:Bossi-Fini
+migration:buonismo
+migration:corridoi umanitari
+migration:CPR
+migration:decreti sicurezza
+migration:emergenza migratoria
+migration:espulsioni di massa
+migration:falsi richiedenti asilo
+migration:flussi migratori
+migration:hotspot
+migration:immigrati irregolari
+migration:immigrazionisti
+migration:integrazione
+migration:invasione
+migration:islamizzazione
+migration:ius sanguinis
+migration:ius scholae
+migration:ius soli
+migration:Lampedusa
+migration:libera circolazione
+migration:Mare Nostrum
+migration:Memorandum Italia-Libia
+migration:ONG scafiste
+migration:ONG umanitarie
+migration:piano Kalergi
+migration:profughi
+migration:razzismo di stato
+migration:razzismo strutturale
+migration:richiedenti asilo
+migration:rimpatri assistiti
+migration:salvataggio in mare
+migration:sostituzione etnica
+migration:taxi del mare
+migration:xenofobia

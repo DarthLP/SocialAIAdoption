@@ -24,22 +24,24 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 
-def _resolve_project_root() -> Path:
-    """Function summary: load scripts/_project_root.py and return repository root Path."""
-    scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod", scripts_dir / "_project_root.py"
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import (  # noqa: E402
     infer_subreddit_topic,
@@ -175,7 +177,7 @@ def write_exclusion_summaries(
         topic = sub_to_topic.get(subreddit) or infer_subreddit_topic(
             config, subreddit, metadata=metadata
         )
-        family = topic_to_family.get(topic, sub_to_family.get(subreddit, "italian"))
+        family = topic_to_family.get(topic, sub_to_family.get(subreddit, "it_others"))
         codes = str(screen.get("exclusion_codes", "") or "")
         reason = primary_reason(codes)
         action = str(screen.get("action", ""))

@@ -14,9 +14,9 @@ How to apply/run:
 - Requires merged comment_features with author and created_utc (run
   merge_ml_shards_into_comment_features.py or compute_comment_features with those
   columns in cleaned Parquet).
-- `.venv/bin/python scripts/event_time/prepare_event_time_stratified_metrics.py --config config/political_forums_setup.yaml`
+- `.venv/bin/python scripts/archive/event_time/prepare_event_time_stratified_metrics.py --config config/archive/ai_adoption_political_forums_setup.yaml`
 - Bounded smoke test:
-  `.venv/bin/python scripts/event_time/prepare_event_time_stratified_metrics.py --config config/political_forums_setup.yaml --max_month_files_per_subreddit 1 --max_days_per_month 5`
+  `.venv/bin/python scripts/archive/event_time/prepare_event_time_stratified_metrics.py --config config/archive/ai_adoption_political_forums_setup.yaml --max_month_files_per_subreddit 1 --max_days_per_month 5`
 """
 
 from __future__ import annotations
@@ -33,23 +33,24 @@ from typing import Any, Dict, Iterable
 import numpy as np
 import pandas as pd
 
-def _resolve_project_root() -> Path:
-    """Load scripts/_project_root.py and return the repository root Path."""
-    _scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod",
-        _scripts_dir / "_project_root.py",
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
 import prepare_event_time_metrics as pem
 
@@ -62,7 +63,7 @@ LENGTH_BUCKET_ORDER = ("short", "medium", "long")
 def parse_args() -> argparse.Namespace:
     """Function summary: parse CLI for config path and the same bounded scan flags as prepare_event_time_metrics."""
     parser = argparse.ArgumentParser(description="Prepare stratified pooled event-time metrics from comment_features.")
-    parser.add_argument("--config", type=str, default="config/political_forums_setup.yaml")
+    parser.add_argument("--config", type=str, default="config/archive/ai_adoption_political_forums_setup.yaml")
     parser.add_argument("--max_month_files_per_subreddit", type=int, default=0)
     parser.add_argument("--max_total_month_files", type=int, default=0)
     parser.add_argument("--max_days_per_month", type=int, default=0)

@@ -1,0 +1,251 @@
+# v4 polarized export (dominant) from italian_political_lexicon_v4.csv
+no:18app
+no:25 aprile
+no:antimafia
+no:antipolitica
+no:assegno unico
+no:atlantismo
+no:autonomia differenziata
+no:bicameralismo perfetto
+no:bonus 80 euro
+no:bossi-fini
+no:caporalato
+no:cassa integrazione
+no:cittadini onesti
+no:complottismo
+no:cpr
+no:cuneo fiscale
+no:decoro urbano
+no:decreti sicurezza
+no:disagio sociale
+no:disinformazione
+no:emergenza ambientale
+no:eni
+no:esclusione sociale
+no:fake news
+no:fit for 55
+no:flussi migratori
+no:foibe
+no:fratelli d'italia
+no:fridays for future
+no:frontex
+no:governo di unità
+no:governo tecnico
+no:green deal
+no:hotspot
+no:ilva
+no:inciucio
+no:inquinamento
+no:irpef
+no:ius scholae
+no:iva
+no:jobs act
+no:lampedusa
+no:larghe intese
+no:lega
+no:legge 194
+no:legge cirinnà
+no:m5s
+no:maggioritario
+no:mainstream
+no:mani pulite
+no:mare nostrum
+no:memorandum italia-libia
+no:mes
+no:naspi
+no:nato
+no:nazione
+no:negazionisti climatici
+no:nextgenerationeu
+no:nomenklatura
+no:omofobia
+no:onestà
+no:otto per mille
+no:partitocrazia
+no:patria
+no:piano mattei
+no:pnrr
+no:politichese
+no:populismo
+no:precarizzazione
+no:premierato
+no:presidenzialismo
+no:protezionismo
+no:quota 100 (legge)
+no:sbarchi
+no:scuola pubblica
+no:scuole paritarie
+no:sfruttamento
+no:sistema
+no:sovranità
+no:spese militari
+no:spread
+no:superbonus 110%
+no:tangentopoli
+no:teatrino
+no:troika
+no:uno vale uno
+no:vaffa
+no:voucher lavoro
+yes:accoglienza
+yes:allarmismo climatico
+yes:ammortizzatori sociali
+yes:antifa
+yes:antifascismo
+yes:articolo 18
+yes:assistenzialismo
+yes:attivisti climatici
+yes:austerità imposta
+yes:autonomia regionale
+yes:bamboccioni
+yes:bruxelles
+yes:buonismo
+yes:capitalismo selvaggio
+yes:casta
+yes:catastrofismo
+yes:cessione di sovranità
+yes:choosy
+yes:clandestini
+yes:classe lavoratrice
+yes:classe politica
+yes:condono
+yes:contratto a tutele crescenti
+yes:cooperazione europea
+yes:coppia di fatto
+yes:corridoi umanitari
+yes:costo del lavoro
+yes:criminalità organizzata
+yes:crisi climatica
+yes:cultura della cancellazione
+yes:ddl eco-vandali
+yes:ddl zan
+yes:decarbonizzazione
+yes:deindustrializzazione
+yes:delocalizzazione
+yes:democrazia diretta
+yes:democrazia rappresentativa
+yes:diritti civili
+yes:disarmo
+yes:dittatura sanitaria
+yes:divani
+yes:eco-vandali
+yes:emergenza climatica
+yes:emergenza migratoria
+yes:energia intermittente
+yes:esproprio
+yes:espulsioni di massa
+yes:europeismo
+yes:falsi richiedenti asilo
+yes:famiglia naturale
+yes:fascisti
+yes:femminicidio
+yes:flat tax
+yes:flessibilità
+yes:fuga dal lavoro
+yes:garantismo
+yes:gestazione per altri
+yes:giudici
+yes:giustizia climatica
+yes:giustizialismo
+yes:governo
+yes:grandi opere inutili
+yes:green pass
+yes:guerra all'automobile
+yes:guerra civile
+yes:ideologia gender
+yes:ideologia green
+yes:immigrati irregolari
+yes:immigrazionisti
+yes:integrazione
+yes:integrazione europea
+yes:interruzione di gravidanza
+yes:interventismo
+yes:invasione
+yes:islamizzazione
+yes:italexit
+yes:italiani prima
+yes:ius sanguinis
+yes:ius soli
+yes:laicità
+yes:lasciapassare
+yes:legalità
+yes:legge bavaglio
+yes:legge e ordine
+yes:libera circolazione
+yes:libertà di stampa
+yes:lotta all'evasione
+yes:mafia
+yes:mancia di stato
+yes:mascolinità tossica
+yes:merito
+yes:migranti
+yes:mobilità sostenibile
+yes:multinazionali
+yes:nazionalismo
+yes:neo-fascisti
+yes:neoliberismo
+yes:nullafacenti
+yes:obbligo vaccinale
+yes:omicidio
+yes:omotransfobia
+yes:ong scafiste
+yes:ong umanitarie
+yes:opinione
+yes:pace fiscale
+yes:pacifismo
+yes:palazzo
+yes:patriarcato
+yes:patrimoniale
+yes:patriottismo
+yes:persecuzione fiscale
+yes:piano kalergi
+yes:pizzo di stato
+yes:poteri forti
+yes:precariato
+yes:profughi
+yes:progressività fiscale
+yes:proletariato
+yes:quota 100
+yes:razzismo di stato
+yes:razzismo strutturale
+yes:reddito di cittadinanza
+yes:regime
+yes:resistenza
+yes:riarmo
+yes:richiedenti asilo
+yes:rimpatri assistiti
+yes:rinnovabili
+yes:salario minimo
+yes:salvataggio in mare
+yes:sanità di stato
+yes:sanità pubblica
+yes:secessione fiscale
+yes:siero sperimentale
+yes:solidarietà
+yes:soppressione del nascituro
+yes:sostituzione etnica
+yes:sovranismo
+yes:sovranità energetica
+yes:squadrismo
+yes:stampa di regime
+yes:sussidio statale
+yes:tassa regressiva
+yes:tassazione punitiva
+yes:tasse
+yes:tav
+yes:taxi del mare
+yes:toghe rosse
+yes:transfobia
+yes:transizione ecologica
+yes:trivelle
+yes:tutele del lavoro
+yes:ultima generazione
+yes:unione europea
+yes:unioni civili
+yes:utero in affitto
+yes:vaccino
+yes:valori cristiani
+yes:vincoli al mercato
+yes:vincoli di bilancio
+yes:xenofobia
+yes:élite

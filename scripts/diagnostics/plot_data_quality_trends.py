@@ -3,10 +3,10 @@ Script summary:
 This script builds and visualizes pre-cleaning data-quality indicators from the
 daily Reddit NDJSON chunks. It computes day-level metrics per subreddit, topic,
 and family (config-driven), validates totals against existing filtering audits,
-and saves trend plots around the ChatGPT launch anchor.
+and saves trend plots with vertical markers from config (Italy: ban dates).
 
 Functionality:
-- Reads daily Reddit NDJSON chunks under `paths.raw_dir` (for example `data/raw/political_forums/daily_chunks/`).
+- Reads daily Reddit NDJSON chunks under `paths.raw_dir/daily_chunks/` (Italy: `data/raw/italy_polarization/daily_chunks/`).
 - Computes counts for removed/deleted placeholders, deleted authors, AutoModerator,
   stickied comments, and an exploratory bot-name heuristic.
 - Enforces configured event window bounds before writing trend tables and figures.
@@ -20,19 +20,18 @@ Functionality:
 - Writes tidy outputs to `paths.tables_dir/data_quality_trends/`:
   per-subreddit (granular audit), per-family, pooled overall, topic-by-family, and validation tables.
 - Generates percentage trend plots in `paths.figures_dir/data_quality_trends/`:
-  one `overall_<metric>.png`, one `by_family_<metric>.png`, one
-  `by_subreddit_by_family/<family>/<metric>.png`, and one
+  `overall/<metric>.png`, `by_family/<metric>.png`,
+  `by_subreddit_by_family/<family>/<metric>.png`, and
   `by_topic_by_family/by_topic_by_family_<metric>.png` (row-rate and author-share metrics).
 - Uses a non-interactive plotting backend by default for terminal-safe rendering.
 - Logs per-metric `plot_progress` markers so long plotting runs show progress.
 - Annotates AutoModerator plots with the AutoModerator row total summed for the current window.
 - Validates `rows_total` against `paths.tables_dir/filtering/dump_filter_counts_by_day.csv`.
 - Optional YAML key `plot_reference_dates_utc` (list of ISO-8601 UTC strings): vertical reference lines on all
-  trend plots. When omitted or empty, defaults to ChatGPT (`2022-11-30`) and GPT-4 (`2023-03-14`) calendar markers.
+  trend plots. When omitted or empty, defaults to Italy ban onset (`2023-03-31`) and lift (`2023-04-28`) for the active study.
 
 How to apply/run:
-- `.venv/bin/python scripts/diagnostics/plot_data_quality_trends.py --config config/political_forums_setup.yaml`
-- Italy polarization (Stage 0, raw only): `--config config/italy_polarization_setup.yaml`
+- `.venv/bin/python scripts/diagnostics/plot_data_quality_trends.py --config config/italy_polarization_setup.yaml`
 
 Important: This script does NOT drop or filter rows — it only counts signals on raw NDJSON.
 Row removal happens in Stage 1 (`clean_daily_chunks.py`). Author `[deleted]` rows are counted, not removed.
@@ -59,23 +58,24 @@ import matplotlib.dates as mdates
 import pandas as pd
 import seaborn as sns
 
-def _resolve_project_root() -> Path:
-    """Load scripts/_project_root.py and return the repository root Path."""
-    _scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod",
-        _scripts_dir / "_project_root.py",
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import (
     load_config,
@@ -159,7 +159,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=str,
-        default="config/political_forums_setup.yaml",
+        default="config/italy_polarization_setup.yaml",
         help="Path to YAML config file.",
     )
     return parser.parse_args()
@@ -607,7 +607,7 @@ def write_tables(
 
 
 def add_release_markers(ax: Any, release_dates: list[datetime]) -> None:
-    """Function summary: draw vertical reference lines for key ChatGPT release dates on one plot axis."""
+    """Function summary: draw vertical reference lines for ban/reference dates on one plot axis."""
     for release_date in release_dates:
         ax.axvline(x=release_date, color="red", linestyle=":", linewidth=1.2)
 
@@ -764,12 +764,16 @@ def make_plots(
     """Function summary: generate percentage-only plot sets for overall, by-family, and family-faceted subreddit/topic views."""
     _ = event_ts
     total_metrics = len(PLOT_RATE_METRICS)
+    overall_dir = figures_subdir / "overall"
+    by_family_dir = figures_subdir / "by_family"
+    overall_dir.mkdir(parents=True, exist_ok=True)
+    by_family_dir.mkdir(parents=True, exist_ok=True)
     for idx, metric in enumerate(PLOT_RATE_METRICS, start=1):
         print(f"plot_progress metric={idx}/{total_metrics} name={metric} stage=overall")
         plot_overall(
             overall_df,
             metric,
-            figures_subdir / f"overall_{metric}.png",
+            overall_dir / f"{metric}.png",
             release_dates,
             span_days=span_days,
             automod_total=automod_total,
@@ -778,7 +782,7 @@ def make_plots(
         plot_by_group(
             per_family_df,
             metric,
-            figures_subdir / f"by_family_{metric}.png",
+            by_family_dir / f"{metric}.png",
             release_dates,
             span_days=span_days,
             automod_total=automod_total,

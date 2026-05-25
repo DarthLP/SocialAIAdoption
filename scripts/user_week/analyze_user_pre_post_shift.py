@@ -1,41 +1,29 @@
 """
 Script summary:
-This script consumes the per-author per-ISO-week style panel produced by
-`scripts/user_week/prepare_user_week_style_panel.py` and produces the per-user pre-vs-post
-shift analysis described in the within-user pre/post style shift plan. It
-answers, for each user, "is the post-launch level unusual relative to that
-user's own pre-launch wiggle (weekly view) AND relative to a precision-aware
-pooled-comments view that scales standard errors with how much the user
-actually wrote?".
+This script consumes the per-author per-ISO-week panel from
+`scripts/user_week/prepare_user_week_style_panel.py` and produces per-user
+pre-vs-post shift tables around the Italy ChatGPT ban (`event_window.launch_day_utc`,
+default 2023-03-31 UTC). It answers whether each user's post-ban level is unusual
+relative to their own pre-ban weekly variation and to a pooled, volume-aware view.
 
-Two parallel comparisons are computed for every user and every feature:
-  1. Weekly view: word-weighted weekly mean / SD across pre weeks vs post weeks,
-     standardized delta with a winsorized SD floor, robust MAD variant, and a
-     Welch-style across-weeks t.
-  2. Pooled-comments view: pre and post pooled directly (rate features =
-     sum(hits)/sum(words); mean features = sum/n with sumsq variance), SE,
-     delta with 95% CI, and a per-user t.
+Two parallel comparisons per user and feature:
+  1. Weekly view: word-weighted weekly mean / SD across pre vs post weeks; std_delta
+     with winsorized SD floor; robust MAD; Welch-style across-weeks t.
+  2. Pooled-comments view: pooled pre/post with Poisson/binomial/sumsq SEs.
 
-A composite `ai_likeness_user_week` (z(ai_word) + z(formality_balance) +
-z(assistant_tone) + z(list_structure) - z(contraction)) is built with z-scales
-frozen on the pre-launch user-week pool and applied to all user-weeks.
+Italy (`enriched_shards`): runs polarization and style composites from config
+`user_week` (default `polarization_composite_user_week`, `ai_style_composite_user_week`).
+Cohort thresholds: weekly (--min_pre_weeks, --min_post_weeks, --min_words_per_week)
+and pooled word totals. Users need both pre and post coverage; others go to audit CSVs.
 
-Cohort thresholds are split into weekly thresholds (good weeks must have
->= --min_words_per_week, >= --min_pre_weeks and >= --min_post_weeks) and
-pooled thresholds (>= --min_total_words_pre, --min_total_words_post). Hard
-pre-launch requirement: a user enters the comparison only with both pre and
-post coverage above thresholds. Excluded users are surfaced in the side audit.
-
-Aggregate-level outputs include tail shares, Wilcoxon and sign tests, an
-inverse-variance weighted pooled effect, an agreement diagnostic between
-weekly and pooled views, a topic-stable sub-cohort, topic-stratified summaries,
-and a placebo run with the launch shifted by --placebo_offset_weeks.
+Outputs per cohort and composite slug: `shift_per_user_<cohort>_<polarization|style>.csv`,
+`shift_summary_*`, placebo row when `--placebo_offset_weeks` > 0.
 
 How to apply/run:
 - Default (both strict and loose cohorts):
-  `.venv/bin/python scripts/user_week/analyze_user_pre_post_shift.py --config config/political_forums_setup.yaml`
+  `.venv/bin/python scripts/user_week/analyze_user_pre_post_shift.py --config config/italy_polarization_setup.yaml`
 - Strict only with explicit thresholds:
-  `.venv/bin/python scripts/user_week/analyze_user_pre_post_shift.py --config config/political_forums_setup.yaml --cohort strict --min_words_per_week 100 --min_pre_weeks 4 --min_post_weeks 4 --min_total_words_pre 400 --min_total_words_post 400`
+  `.venv/bin/python scripts/user_week/analyze_user_pre_post_shift.py --config config/italy_polarization_setup.yaml --cohort strict --min_words_per_week 100 --min_pre_weeks 4 --min_post_weeks 4 --min_total_words_pre 400 --min_total_words_post 400`
 """
 
 from __future__ import annotations
@@ -54,162 +42,118 @@ from typing import Any, Dict, Iterable, List, Tuple
 import numpy as np
 import pandas as pd
 
-def _resolve_project_root() -> Path:
-    """Load scripts/_project_root.py and return the repository root Path."""
-    _scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod",
-        _scripts_dir / "_project_root.py",
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
-from src.config_utils import load_config
+from src.config_utils import (
+    load_config,
+    plot_reference_dates_calendar_utc,
+    user_week_composites,
+    user_week_default_features,
+    user_week_drop_ban_week_default,
+    user_week_placebo_offset_weeks_default,
+)
 
 
 # ----------------------------- Constants -----------------------------
 
-# Composite components and their signs (matches add_ai_likeness_index in prepare_event_time_metrics.py).
-COMPOSITE_COMPONENTS: List[Tuple[str, int]] = [
-    ("ai_word_rate_100w", +1),
-    ("formality_balance_100w", +1),
-    ("assistant_tone_rate_100w", +1),
-    ("list_structure_intensity", +1),
-    ("contraction_rate_100w", -1),
-]
-COMPOSITE_NAME = "ai_likeness_user_week"
-
-# Per-feature spec: how to recover pooled pre/post values and SE from the panel.
-# kind in {"rate_100w", "binary_mean", "mean"}.
-# rate_100w: panel has <feat>=hits_per_100_words, raw_hits_col integer hits; SE Poisson on hits.
-# binary_mean: panel has <feat> = mean of 0/1 flag, plus <flag_sum_col> raw sum; SE binomial p(1-p)/n.
-# mean: panel has <feat>_mean, <feat>_sum, <feat>_sumsq, <feat>_n; SE = sqrt(var/n) where
-#       var is the sample variance from sumsq/sum/n.
-FEATURE_SPECS: Dict[str, Dict[str, str]] = {
-    "ai_word_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "strict_ai_word_hits_total",
-    },
-    "ai_word_extended_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "extended_ai_word_hits_total",
-    },
-    "assistant_tone_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "assistant_tone_phrase_count",
-    },
-    "contraction_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "contraction_count",
-    },
-    "full_form_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "full_form_count",
-    },
-    "passive_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "passive_count",
-    },
-    "toxic_lexicon_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "toxic_lexicon_hits",
-    },
-    "semicolon_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "semicolon_count",
-    },
-    "em_dash_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "em_dash_count",
-    },
-    "en_dash_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "en_dash_count",
-    },
-    "ascii_double_hyphen_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "ascii_double_hyphen_count",
-    },
-    "colon_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "colon_count",
-    },
-    "open_paren_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "open_paren_count",
-    },
-    "curly_quote_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "curly_quote_count",
-    },
-    "markdown_bold_pair_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "markdown_bold_pair_count",
-    },
-    "markdown_heading_line_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "markdown_heading_line_count",
-    },
-    "hedging_phrase_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "hedging_phrase_hits",
-    },
-    "polite_closer_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "polite_closer_hits",
-    },
-    "signposting_phrase_rate_100w": {
-        "kind": "rate_100w",
-        "raw_hits_col": "signposting_phrase_hits",
-    },
-    "formality_balance_100w": {
-        # Special: = (full_form_count - contraction_count) / n_words * 100. We treat as a rate-100w
-        # with raw_hits being the SIGNED difference; SE is the sum of two Poisson SEs added in quadrature
-        # (full_form ~ Poisson, contraction ~ Poisson) since they are different lexical events; this is
-        # a conservative approximation.
-        "kind": "rate_100w_signed",
-    },
-    "list_structure_intensity": {
-        "kind": "binary_mean",
-        "flag_sum_col": "list_structure_flag_sum",
-    },
-    "comment_length_words": {
-        "kind": "mean",
-    },
-    "avg_words_per_sentence_comment": {
-        "kind": "mean",
-    },
-    "complexity_index": {
-        # Ratio of sums (not a per-comment mean). Pooled value is recomputed from
-        # weekly totals; SE is left NaN unless --bootstrap_reps>0 (deferred). Plotted but
-        # not part of the composite SE.
-        "kind": "complexity",
-    },
+# Per-feature spec for pooled pre/post SE recovery (enriched shards).
+# kind in {"rate_100w", "binary_mean", "mean", "complexity"}.
+ENRICHED_FEATURE_SPECS: Dict[str, Dict[str, str]] = {
+    "semicolon_rate_100w": {"kind": "rate_100w", "raw_hits_col": "semicolon_count"},
+    "em_dash_rate_100w": {"kind": "rate_100w", "raw_hits_col": "em_dash_count"},
+    "en_dash_rate_100w": {"kind": "rate_100w", "raw_hits_col": "en_dash_count"},
+    "ascii_double_hyphen_rate_100w": {"kind": "rate_100w", "raw_hits_col": "ascii_double_hyphen_count"},
+    "colon_rate_100w": {"kind": "rate_100w", "raw_hits_col": "colon_count"},
+    "open_paren_rate_100w": {"kind": "rate_100w", "raw_hits_col": "open_paren_count"},
+    "curly_quote_rate_100w": {"kind": "rate_100w", "raw_hits_col": "curly_quote_count"},
+    "markdown_bold_pair_rate_100w": {"kind": "rate_100w", "raw_hits_col": "markdown_bold_pair_count"},
+    "markdown_heading_line_rate_100w": {"kind": "rate_100w", "raw_hits_col": "markdown_heading_line_count"},
+    "hedging_phrase_rate_100w": {"kind": "rate_100w", "raw_hits_col": "hedging_phrase_hits"},
+    "polite_closer_rate_100w": {"kind": "rate_100w", "raw_hits_col": "polite_closer_hits"},
+    "signposting_phrase_rate_100w": {"kind": "rate_100w", "raw_hits_col": "signposting_phrase_hits"},
+    "ai_style_rate_100w": {"kind": "rate_100w", "raw_hits_col": "ai_style_hits"},
+    "other_side_salience_rate_100w": {"kind": "rate_100w", "raw_hits_col": "other_side_salience_hits"},
+    "aggression_rate_100w": {"kind": "rate_100w", "raw_hits_col": "aggression_hits"},
+    "left_rate_100w": {"kind": "rate_100w", "raw_hits_col": "left_hits"},
+    "right_rate_100w": {"kind": "rate_100w", "raw_hits_col": "right_hits"},
+    "center_rate_100w": {"kind": "rate_100w", "raw_hits_col": "center_hits"},
+    "net_ideology": {"kind": "mean"},
+    "extremity": {"kind": "mean"},
+    "ambivalence": {"kind": "mean"},
+    "negative_rate_100w": {"kind": "mean"},
+    "anger_rate_100w": {"kind": "mean"},
+    "issue_eu_rate_100w": {"kind": "mean"},
+    "issue_migration_rate_100w": {"kind": "mean"},
+    "issue_economy_rate_100w": {"kind": "mean"},
+    "issue_culture_rate_100w": {"kind": "mean"},
+    "comment_length_words": {"kind": "mean"},
+    "avg_words_per_sentence_comment": {"kind": "mean"},
+    "complexity_index": {"kind": "complexity"},
 }
 
-# Default features to report (keep concise; composite components first).
-DEFAULT_FEATURES: List[str] = [
-    "ai_word_rate_100w",
-    "formality_balance_100w",
-    "assistant_tone_rate_100w",
-    "contraction_rate_100w",
-    "list_structure_intensity",
-    "ai_word_extended_rate_100w",
-    "comment_length_words",
-    "em_dash_rate_100w",
-    "hedging_phrase_rate_100w",
-    "signposting_phrase_rate_100w",
-    "avg_words_per_sentence_comment",
-    "complexity_index",
-]
+# Set per run in main() from config composites.
+COMPOSITE_COMPONENTS: List[Tuple[str, int]] = []
+COMPOSITE_NAME = ""
+
+FEATURE_SPECS: Dict[str, Dict[str, str]] = ENRICHED_FEATURE_SPECS
+
+
+def composite_file_slug(composite_name: str) -> str:
+    """Function summary: short filesystem slug for per-composite output files.
+
+    Parameters:
+    - composite_name: full composite column name.
+
+    Returns:
+    - Short slug used in CSV/JSON filenames.
+    """
+    if composite_name.startswith("polarization"):
+        return "polarization"
+    if "style" in composite_name:
+        return "style"
+    return composite_name.replace("_user_week", "").replace("_composite", "")
+
+
+def study_analysis_context(
+    config: Dict[str, Any],
+) -> tuple[Dict[str, Dict[str, str]], List[str], List[Dict[str, Any]]]:
+    """Function summary: resolve feature specs, default features, and composite list for the study config.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - Tuple of (feature_specs, default_features, composites) where each composite has name and components.
+    """
+    specs = dict(ENRICHED_FEATURE_SPECS)
+    yaml_feats = user_week_default_features(config)
+    if not yaml_feats:
+        raise ValueError("config user_week.default_features must be non-empty for Italy analysis")
+    defaults = list(yaml_feats)
+    composites = user_week_composites(config)
+    if not composites:
+        raise ValueError(
+            "config user_week must define style_composite and polarization_composite "
+            "(see config/italy_polarization_setup.yaml)"
+        )
+    return specs, defaults, composites
 
 
 # ----------------------------- CLI / dataclasses -----------------------------
@@ -239,7 +183,7 @@ class RuntimePaths:
 def parse_args() -> argparse.Namespace:
     """Function summary: parse command line options for cohort thresholds, placebo, and IO control."""
     parser = argparse.ArgumentParser(description="Within-user pre/post style shift analysis from user-week panel.")
-    parser.add_argument("--config", type=str, default="config/political_forums_setup.yaml")
+    parser.add_argument("--config", type=str, default="config/italy_polarization_setup.yaml")
     parser.add_argument(
         "--cohort",
         type=str,
@@ -260,9 +204,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min_total_words_post_loose", type=int, default=100)
 
     parser.add_argument(
+        "--drop_ban_week",
         "--drop_launch_week",
         action="store_true",
-        help="Drop the ISO week containing the launch date itself as a buffer between pre and post.",
+        dest="drop_ban_week",
+        help="Drop the ISO week containing the ban anchor (event_window.launch_day_utc) between pre and post.",
     )
     parser.add_argument(
         "--sd_winsor_pct",
@@ -273,8 +219,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--placebo_offset_weeks",
         type=int,
-        default=8,
-        help="Run a placebo analysis with the launch date shifted back by this many weeks.",
+        default=None,
+        help="Placebo: shift ban anchor back by N weeks (default: config user_week.placebo_offset_weeks).",
     )
     parser.add_argument(
         "--bootstrap_reps",
@@ -286,7 +232,7 @@ def parse_args() -> argparse.Namespace:
         "--features",
         type=str,
         default="",
-        help="Optional comma-separated subset of features to analyze (default uses DEFAULT_FEATURES).",
+        help="Optional comma-separated subset of features to analyze (default from config user_week.default_features).",
     )
     return parser.parse_args()
 
@@ -392,13 +338,16 @@ def launch_iso_week_str(launch_dt_utc: datetime) -> str:
 # ----------------------------- Composite frozen-pre z-scaling -----------------------------
 
 
-def freeze_composite_zscale(panel_pre: pd.DataFrame) -> Dict[str, Dict[str, float]]:
+def freeze_composite_zscale(
+    panel_pre: pd.DataFrame,
+    composite_components: List[Tuple[str, int]],
+) -> Dict[str, Dict[str, float]]:
     """Function summary: compute word-weighted means and SDs for composite components on the pre-launch user-week pool."""
     scales: Dict[str, Dict[str, float]] = {}
     if panel_pre.empty:
         return scales
     weights = panel_pre["n_words"].astype(float).values
-    for component, _sign in COMPOSITE_COMPONENTS:
+    for component, _sign in composite_components:
         if component not in panel_pre.columns:
             continue
         values = pd.to_numeric(panel_pre[component], errors="coerce").fillna(0.0).values
@@ -410,16 +359,21 @@ def freeze_composite_zscale(panel_pre: pd.DataFrame) -> Dict[str, Dict[str, floa
     return scales
 
 
-def add_composite_to_panel(panel: pd.DataFrame, scales: Dict[str, Dict[str, float]]) -> pd.DataFrame:
-    """Function summary: add the composite ai_likeness_user_week column using frozen-pre z-scales for each component."""
+def add_composite_to_panel(
+    panel: pd.DataFrame,
+    scales: Dict[str, Dict[str, float]],
+    composite_components: List[Tuple[str, int]],
+    composite_name: str,
+) -> pd.DataFrame:
+    """Function summary: add a composite column using frozen-pre z-scales for each component."""
     if panel.empty or not scales:
         out = panel.copy()
-        out[COMPOSITE_NAME] = float("nan")
+        out[composite_name] = float("nan")
         return out
     out = panel.copy()
     composite = pd.Series(0.0, index=out.index)
     any_component = False
-    for component, sign in COMPOSITE_COMPONENTS:
+    for component, sign in composite_components:
         if component not in out.columns or component not in scales:
             continue
         mean = float(scales[component]["mean"])
@@ -429,7 +383,7 @@ def add_composite_to_panel(panel: pd.DataFrame, scales: Dict[str, Dict[str, floa
         z = (pd.to_numeric(out[component], errors="coerce").fillna(0.0) - mean) / sd
         composite = composite + sign * z
         any_component = True
-    out[COMPOSITE_NAME] = composite if any_component else float("nan")
+    out[composite_name] = composite if any_component else float("nan")
     return out
 
 
@@ -1041,6 +995,9 @@ def run_one_cohort(
     features: List[str],
     placebo_offset_weeks: int,
     paths: RuntimePaths,
+    composite_components: List[Tuple[str, int]],
+    composite_name: str,
+    composite_slug: str,
 ) -> Dict[str, Any]:
     """Function summary: run one cohort (strict or loose) including main analysis, audits, topic splits, and placebo, and write outputs."""
     label = thresholds.label
@@ -1051,16 +1008,16 @@ def run_one_cohort(
 
     labelled = label_pre_post(panel, launch_iso_week=launch_iso_week, drop_launch_week=drop_launch_week)
     pre_pool = labelled[(labelled["period"] == "pre") & (labelled["n_words"].astype(float) >= float(thresholds.min_words_per_week))]
-    scales = freeze_composite_zscale(pre_pool)
+    scales = freeze_composite_zscale(pre_pool, composite_components)
     print(
         f"[analyze_user_pre_post_shift] cohort={label} pre_pool_user_weeks={int(len(pre_pool))} components_in_scales={list(scales.keys())}",
         flush=True,
     )
-    panel_with_composite = add_composite_to_panel(labelled, scales)
+    panel_with_composite = add_composite_to_panel(labelled, scales, composite_components, composite_name)
 
     # Persist scales (one file shared across cohorts; last cohort wins, but they should be identical
     # if input panel is the same — we keep one file per cohort to be unambiguous).
-    scales_path = paths.user_week_tables_dir / f"composite_zscale_pre_{label}.json"
+    scales_path = paths.user_week_tables_dir / f"composite_zscale_pre_{label}_{composite_slug}.json"
     scales_path.write_text(json.dumps(scales, indent=2, sort_keys=True), encoding="utf-8")
 
     user_df, audit_df = per_user_summary(panel_with_composite, thresholds=thresholds, scales=scales, features=features)
@@ -1091,8 +1048,10 @@ def run_one_cohort(
         placebo_pre = placebo_labelled[
             (placebo_labelled["period"] == "pre") & (placebo_labelled["n_words"].astype(float) >= float(thresholds.min_words_per_week))
         ]
-        placebo_scales = freeze_composite_zscale(placebo_pre)
-        placebo_panel = add_composite_to_panel(placebo_labelled, placebo_scales)
+        placebo_scales = freeze_composite_zscale(placebo_pre, composite_components)
+        placebo_panel = add_composite_to_panel(
+            placebo_labelled, placebo_scales, composite_components, composite_name
+        )
         placebo_user_df, _placebo_audit = per_user_summary(
             placebo_panel, thresholds=thresholds, scales=placebo_scales, features=features
         )
@@ -1101,8 +1060,8 @@ def run_one_cohort(
         summary_rows.append(placebo_summary)
 
     # Write outputs.
-    out_user = paths.user_week_tables_dir / f"shift_per_user_{label}.csv"
-    out_summary = paths.user_week_tables_dir / f"shift_summary_{label}.csv"
+    out_user = paths.user_week_tables_dir / f"shift_per_user_{label}_{composite_slug}.csv"
+    out_summary = paths.user_week_tables_dir / f"shift_summary_{label}_{composite_slug}.csv"
     out_audit = paths.user_week_tables_dir / f"shift_audit_per_user_{label}.csv"
     user_df.to_csv(out_user, index=False)
     pd.DataFrame(summary_rows).to_csv(out_summary, index=False)
@@ -1124,6 +1083,8 @@ def main() -> None:
     args = parse_args()
     config = load_config(args.config)
     paths = build_paths(config)
+    feature_specs, default_feats, composites = study_analysis_context(config)
+    globals()["FEATURE_SPECS"] = feature_specs
 
     if not paths.panel_path.exists():
         raise FileNotFoundError(
@@ -1139,40 +1100,54 @@ def main() -> None:
     if args.features:
         feats = [f.strip() for f in args.features.split(",") if f.strip()]
     else:
-        feats = list(DEFAULT_FEATURES)
-    feats = [f for f in feats if f in FEATURE_SPECS]
+        feats = list(default_feats)
+    feats = [f for f in feats if f in feature_specs]
     if not feats:
-        feats = list(DEFAULT_FEATURES)
+        feats = list(default_feats)
 
-    # Launch ISO week.
-    launch_iso_str = str(config["event_window"]["launch_day_utc"])
-    launch_dt = datetime.fromisoformat(launch_iso_str.replace("Z", "+00:00")).astimezone(timezone.utc)
-    launch_iso_week = launch_iso_week_str(launch_dt)
+    ban_iso_str = str(config["event_window"]["launch_day_utc"])
+    ban_dt = datetime.fromisoformat(ban_iso_str.replace("Z", "+00:00")).astimezone(timezone.utc)
+    ban_iso_week = launch_iso_week_str(ban_dt)
+    drop_ban_week = bool(args.drop_ban_week) or user_week_drop_ban_week_default(config)
+    placebo_weeks = (
+        int(args.placebo_offset_weeks)
+        if args.placebo_offset_weeks is not None
+        else user_week_placebo_offset_weeks_default(config)
+    )
     print(
-        f"[analyze_user_pre_post_shift] launch_day_utc={launch_iso_str} launch_iso_week_start={launch_iso_week} "
-        f"drop_launch_week={bool(args.drop_launch_week)} features={feats}",
+        f"[analyze_user_pre_post_shift] ban_day_utc={ban_iso_str} ban_iso_week_start={ban_iso_week} "
+        f"drop_ban_week={drop_ban_week} placebo_offset_weeks={placebo_weeks} features={feats} "
+        f"composites={[c['name'] for c in composites]}",
         flush=True,
     )
 
     cohorts = make_thresholds_from_args(args)
     results: List[Dict[str, Any]] = []
-    for thresholds in cohorts:
-        # Suppress spurious numpy warnings (NaN comparisons in MAD with sparse data).
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=RuntimeWarning)
-            result = run_one_cohort(
-                panel=panel,
-                thresholds=thresholds,
-                launch_iso_week=launch_iso_week,
-                drop_launch_week=bool(args.drop_launch_week),
-                sd_winsor_pct=float(args.sd_winsor_pct),
-                features=feats,
-                placebo_offset_weeks=int(args.placebo_offset_weeks),
-                paths=paths,
-            )
-            results.append(result)
+    for comp in composites:
+        composite_name = str(comp["name"])
+        composite_components = list(comp["components"])
+        composite_slug = composite_file_slug(composite_name)
+        globals()["COMPOSITE_COMPONENTS"] = composite_components
+        globals()["COMPOSITE_NAME"] = composite_name
+        for thresholds in cohorts:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=RuntimeWarning)
+                result = run_one_cohort(
+                    panel=panel,
+                    thresholds=thresholds,
+                    launch_iso_week=ban_iso_week,
+                    drop_launch_week=drop_ban_week,
+                    sd_winsor_pct=float(args.sd_winsor_pct),
+                    features=feats,
+                    placebo_offset_weeks=placebo_weeks,
+                    paths=paths,
+                    composite_components=composite_components,
+                    composite_name=composite_name,
+                    composite_slug=composite_slug,
+                )
+                results.append(result)
 
-    write_methods_note(paths.user_week_tables_dir / "shift_methods_note.txt", launch_iso_str=launch_iso_str)
+    write_methods_note(paths.user_week_tables_dir / "shift_methods_note.txt", ban_iso_str=ban_iso_str)
 
     # One terse log line per cohort for quick eyeballing.
     summary_log = paths.user_week_logs_dir / "analyze_user_pre_post_shift.log"
@@ -1185,15 +1160,15 @@ def main() -> None:
     print("[analyze_user_pre_post_shift] done", flush=True)
 
 
-def write_methods_note(path: Path, launch_iso_str: str) -> None:
+def write_methods_note(path: Path, ban_iso_str: str) -> None:
     """Function summary: write a short methods file documenting design choices, caveats, and what each output contains."""
     lines = [
         "Within-User Pre/Post Shift: Methods Note",
         "========================================",
         "",
-        f"Launch anchor (UTC): {launch_iso_str}",
-        "Time bin: ISO week (UTC, Monday start). The week containing the launch date is",
-        "treated as 'launch'; pass --drop_launch_week to exclude it as a buffer.",
+        f"Italy ChatGPT ban anchor (UTC, event_window.launch_day_utc): {ban_iso_str}",
+        "Time bin: ISO week (UTC, Monday start). The week containing the ban date is",
+        "treated as 'launch' in code; pass --drop_ban_week to exclude it as a buffer.",
         "",
         "Two parallel comparisons per user, per feature:",
         "1. Weekly view: word-weighted weekly mean and SD across pre vs post weeks; std_delta",
@@ -1205,14 +1180,15 @@ def write_methods_note(path: Path, launch_iso_str: str) -> None:
         "   variance. Composite SE is the quadrature sum of component SE/sd contributions",
         "   (independence approximation, called out here).",
         "",
-        "Composite ai_likeness_user_week:",
-        "+ z(ai_word_rate_100w) + z(formality_balance_100w) + z(assistant_tone_rate_100w)",
-        "+ z(list_structure_intensity) - z(contraction_rate_100w)",
-        "Z-scales are frozen on the pre-launch user-week pool (word-weighted) and persisted to",
-        "composite_zscale_pre_<cohort>.json so the same scaling is applied to all weeks.",
+        "Composites (from config user_week.style_composite / polarization_composite):",
+        "  polarization_composite_user_week: extremity, net_ideology, other_side_salience, aggression.",
+        "  ai_style_composite_user_week: ai_style, semicolon, em_dash, hedging rates.",
+        "Legacy comment_features stack: scripts/archive/user_week/ with ai_adoption config.",
+        "Z-scales are frozen on the pre-ban user-week pool and persisted to",
+        "composite_zscale_pre_<cohort>_<polarization|style>.json.",
         "",
         "Cohort gating:",
-        "Hard pre-launch + post-launch requirement. Users who lack good pre or good post weeks",
+        "Hard pre-ban + post-ban requirement. Users who lack good pre or good post weeks",
         "are excluded from the comparison and surfaced in shift_audit_per_user_<cohort>.csv and",
         "in the audit_* rows of shift_summary_<cohort>.csv.",
         "",
@@ -1221,13 +1197,12 @@ def write_methods_note(path: Path, launch_iso_str: str) -> None:
         "(top_topic_pre == top_topic_post) and per-topic stratifications (panel_topic=...).",
         "",
         "Placebo:",
-        "If --placebo_offset_weeks > 0, the same analysis is rerun with the launch shifted back",
-        "by that many ISO weeks; result appears as the placebo_offset_weeks=<n> row.",
+        "If --placebo_offset_weeks > 0, the ban anchor is shifted back by that many ISO weeks;",
+        "result appears as the placebo_offset_weeks=<n> row in shift_summary_*.",
         "",
         "What this does and does not say:",
-        "It quantifies how unusual each user's post-launch level is relative to (a) their own",
-        "weekly wiggle and (b) a pooled standard error tied to actual writing volume. Neither",
-        "view proves causal use of ChatGPT.",
+        "It quantifies how unusual each user's post-ban level is relative to (a) their own",
+        "weekly wiggle and (b) a pooled standard error tied to writing volume. Not a causal DiD.",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

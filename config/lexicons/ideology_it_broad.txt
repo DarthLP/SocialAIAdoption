@@ -1,0 +1,687 @@
+# Italian ideology lexicon — category:term (Mar–Apr 2023)
+# v4 export (broad) from italian_political_lexicon_v4.csv — ideology L/C/R from use columns
+left:sinistra
+left:sinistre
+left:progressista
+left:progressisti
+left:comunista
+left:comunisti
+left:socialista
+left:socialisti
+left:pd
+left:partito democratico
+left:schlein
+left:letta
+left:renzi
+left:cgil
+left:sindacato
+left:sindacati
+left:antifascista
+left:antifascisti
+left:ecologista
+left:ecologisti
+center:centro
+center:centrista
+center:centristi
+center:moderato
+center:moderati
+center:tecnocratico
+center:tecnocratici
+center:governo di unità
+center:unità nazionale
+right:destra
+right:destre
+right:conservatore
+right:conservatori
+right:sovranista
+right:sovranisti
+right:fdi
+right:fratelli d'italia
+right:fratelli
+right:meloni
+right:lega
+right:salvini
+right:forza italia
+right:berlusconi
+right:centrodestra
+right:estremista di destra
+right:nazionalista
+right:nazionalisti
+# v4 additions (broad)
+center:18app
+center:25 aprile
+center:accoglienza
+center:allarmismo climatico
+center:ammortizzatori sociali
+center:antifa
+center:antifascismo
+center:antimafia
+center:antipolitica
+center:articolo 18
+center:assegno unico
+center:assistenzialismo
+center:atlantismo
+center:attivisti climatici
+center:austerità imposta
+center:autonomia differenziata
+center:autonomia regionale
+center:bamboccioni
+center:bicameralismo perfetto
+center:bonus 80 euro
+center:Bossi-Fini
+center:Bruxelles
+center:buonismo
+center:capitalismo selvaggio
+center:caporalato
+center:cassa integrazione
+center:casta
+center:catastrofismo
+center:cessione di sovranità
+center:choosy
+center:cittadini onesti
+center:clandestini
+center:classe lavoratrice
+center:classe politica
+center:complottismo
+center:condono
+center:contratto a tutele crescenti
+center:cooperazione europea
+center:coppia di fatto
+center:corridoi umanitari
+center:costo del lavoro
+center:CPR
+center:criminalità organizzata
+center:crisi climatica
+center:cultura della cancellazione
+center:cuneo fiscale
+center:Ddl eco-vandali
+center:ddl Zan
+center:decarbonizzazione
+center:decoro urbano
+center:decreti sicurezza
+center:deindustrializzazione
+center:delocalizzazione
+center:democrazia diretta
+center:democrazia rappresentativa
+center:diritti civili
+center:disagio sociale
+center:disarmo
+center:disinformazione
+center:divani
+center:eco-vandali
+center:emergenza ambientale
+center:emergenza climatica
+center:emergenza migratoria
+center:energia intermittente
+center:ENI
+center:esclusione sociale
+center:esproprio
+center:espulsioni di massa
+center:europeismo
+center:fake news
+center:famiglia naturale
+center:fascisti
+center:femminicidio
+center:Fit for 55
+center:flat tax
+center:flessibilità
+center:flussi migratori
+center:foibe
+center:Fratelli d'Italia
+center:Fridays For Future
+center:Frontex
+center:fuga dal lavoro
+center:garantismo
+center:gestazione per altri
+center:giudici
+center:giustizia climatica
+center:giustizialismo
+center:governo
+center:governo tecnico
+center:grandi opere inutili
+center:Green Deal
+center:green pass
+center:guerra all'automobile
+center:guerra civile
+center:hotspot
+center:ideologia gender
+center:ideologia green
+center:ILVA
+center:immigrati irregolari
+center:inciucio
+center:inquinamento
+center:integrazione
+center:integrazione europea
+center:interruzione di gravidanza
+center:interventismo
+center:invasione
+center:IRPEF
+center:italiani prima
+center:ius sanguinis
+center:ius scholae
+center:ius soli
+center:IVA
+center:Jobs Act
+center:laicità
+center:Lampedusa
+center:larghe intese
+center:lasciapassare
+center:Lega
+center:legalità
+center:Legge 194
+center:Legge Cirinnà
+center:legge e ordine
+center:libertà di stampa
+center:lotta all'evasione
+center:M5S
+center:mafia
+center:maggioritario
+center:mainstream
+center:mancia di stato
+center:Mani Pulite
+center:Mare Nostrum
+center:mascolinità tossica
+center:Memorandum Italia-Libia
+center:merito
+center:MES
+center:migranti
+center:mobilità sostenibile
+center:multinazionali
+center:NASpI
+center:NATO
+center:nazionalismo
+center:nazione
+center:negazionisti climatici
+center:neo-fascisti
+center:neoliberismo
+center:NextGenerationEU
+center:nomenklatura
+center:nullafacenti
+center:obbligo vaccinale
+center:omicidio
+center:omofobia
+center:omotransfobia
+center:onestà
+center:ONG umanitarie
+center:opinione
+center:otto per mille
+center:pace fiscale
+center:pacifismo
+center:partitocrazia
+center:patria
+center:patriarcato
+center:patrimoniale
+center:patriottismo
+center:persecuzione fiscale
+center:Piano Mattei
+center:PNRR
+center:politichese
+center:populismo
+center:poteri forti
+center:precariato
+center:precarizzazione
+center:premierato
+center:presidenzialismo
+center:profughi
+center:progressività fiscale
+center:protezionismo
+center:Quota 100
+center:quota 100 (legge)
+center:razzismo di stato
+center:razzismo strutturale
+center:reddito di cittadinanza
+center:regime
+center:Resistenza
+center:riarmo
+center:richiedenti asilo
+center:rimpatri assistiti
+center:rinnovabili
+center:salario minimo
+center:salvataggio in mare
+center:sanità di stato
+center:sanità pubblica
+center:sbarchi
+center:scuola pubblica
+center:scuole paritarie
+center:secessione fiscale
+center:sfruttamento
+center:sistema
+center:solidarietà
+center:soppressione del nascituro
+center:sovranismo
+center:sovranità
+center:sovranità energetica
+center:spese militari
+center:spread
+center:squadrismo
+center:stampa di regime
+center:superbonus 110%
+center:sussidio statale
+center:Tangentopoli
+center:tassa regressiva
+center:tassazione punitiva
+center:tasse
+center:TAV
+center:taxi del mare
+center:teatrino
+center:toghe rosse
+center:transfobia
+center:transizione ecologica
+center:trivelle
+center:troika
+center:tutele del lavoro
+center:Ultima Generazione
+center:Unione Europea
+center:unioni civili
+center:uno vale uno
+center:utero in affitto
+center:vaccino
+center:vaffa
+center:valori cristiani
+center:vincoli al mercato
+center:vincoli di bilancio
+center:voucher lavoro
+center:xenofobia
+center:élite
+left:18app
+left:25 aprile
+left:accoglienza
+left:ammortizzatori sociali
+left:antifascismo
+left:antimafia
+left:antipolitica
+left:articolo 18
+left:assegno unico
+left:atlantismo
+left:attivisti climatici
+left:austerità imposta
+left:autonomia differenziata
+left:autonomia regionale
+left:bicameralismo perfetto
+left:bonus 80 euro
+left:Bossi-Fini
+left:capitalismo selvaggio
+left:caporalato
+left:cassa integrazione
+left:casta
+left:cittadini onesti
+left:classe lavoratrice
+left:classe politica
+left:complottismo
+left:condono
+left:contratto a tutele crescenti
+left:cooperazione europea
+left:coppia di fatto
+left:corridoi umanitari
+left:CPR
+left:criminalità organizzata
+left:crisi climatica
+left:cuneo fiscale
+left:ddl Zan
+left:decarbonizzazione
+left:decoro urbano
+left:decreti sicurezza
+left:delocalizzazione
+left:democrazia diretta
+left:democrazia rappresentativa
+left:diritti civili
+left:disagio sociale
+left:disarmo
+left:disinformazione
+left:emergenza ambientale
+left:emergenza climatica
+left:energia intermittente
+left:ENI
+left:esclusione sociale
+left:espulsioni di massa
+left:europeismo
+left:fake news
+left:fascisti
+left:femminicidio
+left:Fit for 55
+left:flussi migratori
+left:foibe
+left:Fratelli d'Italia
+left:Fridays For Future
+left:Frontex
+left:fuga dal lavoro
+left:gestazione per altri
+left:giudici
+left:giustizia climatica
+left:giustizialismo
+left:governo
+left:governo di unità
+left:governo tecnico
+left:grandi opere inutili
+left:Green Deal
+left:green pass
+left:guerra civile
+left:hotspot
+left:ILVA
+left:inciucio
+left:inquinamento
+left:integrazione
+left:integrazione europea
+left:interruzione di gravidanza
+left:IRPEF
+left:ius sanguinis
+left:ius scholae
+left:ius soli
+left:IVA
+left:Jobs Act
+left:laicità
+left:Lampedusa
+left:larghe intese
+left:Lega
+left:legalità
+left:Legge 194
+left:Legge Cirinnà
+left:legge e ordine
+left:libertà di stampa
+left:lotta all'evasione
+left:M5S
+left:mafia
+left:maggioritario
+left:mainstream
+left:Mani Pulite
+left:Mare Nostrum
+left:mascolinità tossica
+left:Memorandum Italia-Libia
+left:merito
+left:MES
+left:migranti
+left:mobilità sostenibile
+left:multinazionali
+left:NASpI
+left:NATO
+left:nazionalismo
+left:nazione
+left:negazionisti climatici
+left:neo-fascisti
+left:neoliberismo
+left:NextGenerationEU
+left:nomenklatura
+left:obbligo vaccinale
+left:omicidio
+left:omofobia
+left:omotransfobia
+left:onestà
+left:ONG umanitarie
+left:otto per mille
+left:pace fiscale
+left:pacifismo
+left:palazzo
+left:partitocrazia
+left:patria
+left:patriarcato
+left:patrimoniale
+left:patriottismo
+left:Piano Mattei
+left:PNRR
+left:politichese
+left:populismo
+left:poteri forti
+left:precariato
+left:precarizzazione
+left:premierato
+left:presidenzialismo
+left:profughi
+left:progressività fiscale
+left:proletariato
+left:protezionismo
+left:Quota 100
+left:quota 100 (legge)
+left:razzismo di stato
+left:razzismo strutturale
+left:reddito di cittadinanza
+left:regime
+left:Resistenza
+left:richiedenti asilo
+left:rimpatri assistiti
+left:rinnovabili
+left:salario minimo
+left:salvataggio in mare
+left:sanità pubblica
+left:sbarchi
+left:scuola pubblica
+left:scuole paritarie
+left:secessione fiscale
+left:sfruttamento
+left:sistema
+left:solidarietà
+left:sovranità
+left:spese militari
+left:spread
+left:squadrismo
+left:stampa di regime
+left:superbonus 110%
+left:Tangentopoli
+left:tassa regressiva
+left:tasse
+left:TAV
+left:teatrino
+left:transfobia
+left:transizione ecologica
+left:trivelle
+left:troika
+left:tutele del lavoro
+left:Ultima Generazione
+left:Unione Europea
+left:unioni civili
+left:uno vale uno
+left:vaccino
+left:vaffa
+left:vincoli di bilancio
+left:voucher lavoro
+left:xenofobia
+left:élite
+right:18app
+right:25 aprile
+right:allarmismo climatico
+right:ammortizzatori sociali
+right:antifa
+right:antifascismo
+right:antimafia
+right:antipolitica
+right:assegno unico
+right:assistenzialismo
+right:atlantismo
+right:austerità imposta
+right:autonomia differenziata
+right:autonomia regionale
+right:bamboccioni
+right:bicameralismo perfetto
+right:bonus 80 euro
+right:Bossi-Fini
+right:Bruxelles
+right:buonismo
+right:caporalato
+right:cassa integrazione
+right:casta
+right:catastrofismo
+right:cessione di sovranità
+right:choosy
+right:cittadini onesti
+right:clandestini
+right:classe politica
+right:complottismo
+right:condono
+right:contratto a tutele crescenti
+right:cooperazione europea
+right:coppia di fatto
+right:corridoi umanitari
+right:costo del lavoro
+right:CPR
+right:criminalità organizzata
+right:crisi climatica
+right:cultura della cancellazione
+right:cuneo fiscale
+right:Ddl eco-vandali
+right:ddl Zan
+right:decarbonizzazione
+right:decoro urbano
+right:decreti sicurezza
+right:deindustrializzazione
+right:democrazia diretta
+right:democrazia rappresentativa
+right:diritti civili
+right:disagio sociale
+right:disinformazione
+right:dittatura sanitaria
+right:divani
+right:eco-vandali
+right:emergenza ambientale
+right:emergenza climatica
+right:emergenza migratoria
+right:energia intermittente
+right:ENI
+right:esclusione sociale
+right:esproprio
+right:espulsioni di massa
+right:europeismo
+right:fake news
+right:falsi richiedenti asilo
+right:famiglia naturale
+right:femminicidio
+right:Fit for 55
+right:flat tax
+right:flessibilità
+right:flussi migratori
+right:foibe
+right:Fridays For Future
+right:Frontex
+right:garantismo
+right:giudici
+right:giustizialismo
+right:governo
+right:governo di unità
+right:governo tecnico
+right:Green Deal
+right:green pass
+right:guerra all'automobile
+right:guerra civile
+right:hotspot
+right:ideologia gender
+right:ideologia green
+right:ILVA
+right:immigrati irregolari
+right:immigrazionisti
+right:inciucio
+right:inquinamento
+right:integrazione
+right:interruzione di gravidanza
+right:interventismo
+right:invasione
+right:IRPEF
+right:islamizzazione
+right:Italexit
+right:italiani prima
+right:ius sanguinis
+right:ius scholae
+right:ius soli
+right:IVA
+right:Jobs Act
+right:Lampedusa
+right:larghe intese
+right:lasciapassare
+right:legalità
+right:Legge 194
+right:legge bavaglio
+right:Legge Cirinnà
+right:legge e ordine
+right:libera circolazione
+right:libertà di stampa
+right:lotta all'evasione
+right:M5S
+right:mafia
+right:maggioritario
+right:mainstream
+right:mancia di stato
+right:Mani Pulite
+right:Mare Nostrum
+right:Memorandum Italia-Libia
+right:merito
+right:MES
+right:migranti
+right:mobilità sostenibile
+right:NASpI
+right:NATO
+right:nazionalismo
+right:nazione
+right:negazionisti climatici
+right:NextGenerationEU
+right:nomenklatura
+right:nullafacenti
+right:omicidio
+right:omofobia
+right:onestà
+right:ONG scafiste
+right:opinione
+right:otto per mille
+right:pace fiscale
+right:palazzo
+right:partitocrazia
+right:patria
+right:patriottismo
+right:persecuzione fiscale
+right:piano Kalergi
+right:Piano Mattei
+right:pizzo di stato
+right:PNRR
+right:politichese
+right:populismo
+right:poteri forti
+right:precariato
+right:precarizzazione
+right:premierato
+right:presidenzialismo
+right:profughi
+right:protezionismo
+right:Quota 100
+right:quota 100 (legge)
+right:regime
+right:Resistenza
+right:riarmo
+right:richiedenti asilo
+right:rimpatri assistiti
+right:rinnovabili
+right:salario minimo
+right:sanità di stato
+right:sanità pubblica
+right:sbarchi
+right:scuola pubblica
+right:scuole paritarie
+right:sfruttamento
+right:siero sperimentale
+right:sistema
+right:solidarietà
+right:soppressione del nascituro
+right:sostituzione etnica
+right:sovranismo
+right:sovranità
+right:sovranità energetica
+right:spese militari
+right:spread
+right:stampa di regime
+right:superbonus 110%
+right:sussidio statale
+right:Tangentopoli
+right:tassazione punitiva
+right:tasse
+right:TAV
+right:taxi del mare
+right:teatrino
+right:toghe rosse
+right:transizione ecologica
+right:troika
+right:Unione Europea
+right:unioni civili
+right:uno vale uno
+right:utero in affitto
+right:vaccino
+right:vaffa
+right:valori cristiani
+right:vincoli al mercato
+right:vincoli di bilancio
+right:voucher lavoro
+right:élite

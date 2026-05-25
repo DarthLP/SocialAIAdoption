@@ -25,7 +25,6 @@ subreddits:
   - moderatepolitics
   controls_europe_hub:
   - de
-  - spain
   - unitedkingdom
   - europe
   controls_europe_political:
@@ -252,7 +251,6 @@ subreddits:
   - roma
   - scurrillo
   - sexitaly
-  - spain
   - torino
   - treninewsfs
   - u_LaSignora1021
@@ -279,80 +277,54 @@ screening:
   langid_italian_threshold_pooled: 0.70
   langid_min_body_chars: 15
   langid_rng_seed: 20260318
-  thread_political_rate_threshold: 0.35
-  thread_political_min_hits: 2
-  forum_political_rate_multiplier_vs_politicaita: 0.25
+  thread_political_rate_threshold: 0.45  # diagnostic only; thread flag uses thread_political_min_points
+  thread_political_min_hits: 0  # legacy; unused when min_points is set
+  thread_political_min_points: 3
+  forum_political_soft_threshold: 0.35  # recalibrate from political_threshold_sensitivity.csv after enrich
+  forum_political_pure_threshold: 0.7
 topics:
-  it_political:
+  it_political: []
+  it_pure_political: []
+  it_others: []
+  de:
     subreddits:
-      - politicaITA
-      - litigi
-      - news_and_talk
-      - oknotizie
-      - LeAlternative
-  it_general:
+      - de
+  eu:
     subreddits:
-      - Italia
-      - ITAGLIA
-      - DomandeDaReddit
-      - Universitaly
-  it_meme_humor:
-    subreddits:
-      - BancaDelMeme
-      - MemeItaliani
-      - memesITA
-      - Doesntmatterpod
-  it_creator_celebrity:
-    subreddits: []
-  it_nsfw_sensitivity:
-    subreddits: []
-  en_us_political:
+      - europe
+  us:
     subreddits:
       - Ask_Politics
       - NeutralPolitics
       - PoliticalDiscussion
       - moderatepolitics
-  de_hub:
-    subreddits:
-      - de
-  es_hub:
-    subreddits:
-      - spain
-  uk_hub:
+  uk:
     subreddits:
       - unitedkingdom
   uk_political:
     subreddits:
       - ukpolitics
-  europe_hub:
-    subreddits:
-      - europe
 topic_families:
-  italian:
+  it_political:
     topics:
       - it_political
-      - it_general
-      - it_meme_humor
-      - it_creator_celebrity
-      - it_nsfw_sensitivity
-  english_us_political:
+      - it_pure_political
+  it_others:
     topics:
-      - en_us_political
-  german_hub:
+      - it_others
+  de:
     topics:
-      - de_hub
-  spanish_hub:
+      - de
+  eu:
     topics:
-      - es_hub
-  uk_hub:
+      - eu
+  us:
     topics:
-      - uk_hub
-  uk_political:
+      - us
+  uk:
     topics:
+      - uk
       - uk_political
-  europe_hub_english:
-    topics:
-      - europe_hub
 exclusions: []
 dataset:
   fields:
@@ -380,15 +352,68 @@ comment_features:
   emotion_model: ''
   perplexity_model: ''
 polarization:
+  ideology_scoring: dominant_v1
+  use_score_map:
+    yes: 3
+    some: 2
+    rarely: 1
+    no: 0
   eps: 1.0e-6
   negation_window_tokens: 3
   lang_match_filter: false
   dip_min_n: 30
   er_alpha: 1.6
+  primary_outcomes:
+    ideology: net_ideology
+    pair_framing: pair_framing_net_strict
+    window: launch_w0
+    weighting: comment_weighted
+    rolling_days: 7
 ai_use:
   lang_match_filter: false
   validation_sample_n: 200
+comment_style:
+  lang_match_filter: false
+  enable_phrase_lexicons: true
+user_week:
+  input_mode: enriched_shards
+  # Pre/post split uses event_window.launch_day_utc (Italy ChatGPT ban onset, 2023-03-31 UTC).
+  drop_ban_week: false
+  placebo_offset_weeks: 8
+  default_features:
+    - ai_style_rate_100w
+    - semicolon_rate_100w
+    - em_dash_rate_100w
+    - hedging_phrase_rate_100w
+    - other_side_salience_rate_100w
+    - aggression_rate_100w
+    - extremity
+    - net_ideology
+    - complexity_index
+  style_composite:
+    name: ai_style_composite_user_week
+    components:
+      - feature: ai_style_rate_100w
+        sign: 1
+      - feature: semicolon_rate_100w
+        sign: 1
+      - feature: em_dash_rate_100w
+        sign: 1
+      - feature: hedging_phrase_rate_100w
+        sign: 1
+  polarization_composite:
+    name: polarization_composite_user_week
+    components:
+      - feature: extremity
+        sign: 1
+      - feature: net_ideology
+        sign: 1
+      - feature: other_side_salience_rate_100w
+        sign: 1
+      - feature: aggression_rate_100w
+        sign: 1
 paths:
+  political_lexicon_parallel: data/raw/political_lexicon_parallel.csv
   raw_dir: data/raw/italy_polarization
   interim_dir: data/interim/italy_polarization
   processed_dir: data/processed/italy_polarization

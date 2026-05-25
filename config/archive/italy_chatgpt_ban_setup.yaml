@@ -1,7 +1,8 @@
+# Superseded by config/italy_polarization_setup.yaml (data-driven Italian discovery + comparison forums).
 project:
   name: "SocialAIAdoption_ItalyChatGPTBan"
   description: >-
-    Exploratory parallel corpus: Italian subreddits plus size-matched English/global
+    ARCHIVED — superseded by italy_polarization_setup.yaml. Exploratory parallel corpus: Italian subreddits plus size-matched English/global
     counterparts around Italy's ChatGPT access restriction (Mar–Apr 2023). Isolated
     paths and filter state so this arm does not touch the main political_forums pipeline.
 

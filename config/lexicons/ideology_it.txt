@@ -1,4 +1,6 @@
+# dominant export (dominant) from italian_political_lexicon_v4.csv — one L/C/R per v4 term
 # Italian ideology lexicon — category:term (Mar–Apr 2023)
+# v4 export (broad) from italian_political_lexicon_v4.csv — ideology L/C/R from use columns
 left:sinistra
 left:sinistre
 left:progressista
@@ -26,7 +28,6 @@ center:moderato
 center:moderati
 center:tecnocratico
 center:tecnocratici
-center:governo di unità
 center:unità nazionale
 right:destra
 right:destre
@@ -35,10 +36,8 @@ right:conservatori
 right:sovranista
 right:sovranisti
 right:fdi
-right:fratelli d'italia
 right:fratelli
 right:meloni
-right:lega
 right:salvini
 right:forza italia
 right:berlusconi
@@ -46,3 +45,246 @@ right:centrodestra
 right:estremista di destra
 right:nazionalista
 right:nazionalisti
+# v4 additions (broad)
+# v4 dominant additions (dominant)
+center:18app
+center:antipolitica
+center:assegno unico
+center:atlantismo
+center:bicameralismo perfetto
+center:bonus 80 euro
+center:Bossi-Fini
+center:cassa integrazione
+center:casta
+center:classe politica
+center:CPR
+center:criminalità organizzata
+center:cuneo fiscale
+center:decreti sicurezza
+center:ENI
+center:fake news
+center:Fit for 55
+center:flussi migratori
+center:Fratelli d'Italia
+center:Frontex
+center:governo
+center:governo di unità
+center:governo tecnico
+center:Green Deal
+center:hotspot
+center:ILVA
+center:inciucio
+center:inquinamento
+center:IRPEF
+center:IVA
+center:Jobs Act
+center:Lampedusa
+center:larghe intese
+center:Lega
+center:Legge 194
+center:Legge Cirinnà
+center:M5S
+center:maggioritario
+center:Mani Pulite
+center:Memorandum Italia-Libia
+center:MES
+center:NASpI
+center:NATO
+center:NextGenerationEU
+center:omicidio
+center:otto per mille
+center:partitocrazia
+center:Piano Mattei
+center:PNRR
+center:protezionismo
+center:sbarchi
+center:scuola pubblica
+center:spese militari
+center:spread
+center:superbonus 110%
+center:Tangentopoli
+center:Unione Europea
+center:vaccino
+center:voucher lavoro
+left:25 aprile
+left:accoglienza
+left:ammortizzatori sociali
+left:antifascismo
+left:antimafia
+left:articolo 18
+left:attivisti climatici
+left:capitalismo selvaggio
+left:caporalato
+left:classe lavoratrice
+left:complottismo
+left:cooperazione europea
+left:corridoi umanitari
+left:crisi climatica
+left:ddl Zan
+left:decarbonizzazione
+left:delocalizzazione
+left:democrazia rappresentativa
+left:diritti civili
+left:disagio sociale
+left:disarmo
+left:disinformazione
+left:emergenza ambientale
+left:emergenza climatica
+left:esclusione sociale
+left:europeismo
+left:fascisti
+left:femminicidio
+left:Fridays For Future
+left:fuga dal lavoro
+left:gestazione per altri
+left:giudici
+left:giustizia climatica
+left:giustizialismo
+left:grandi opere inutili
+left:green pass
+left:integrazione
+left:integrazione europea
+left:interruzione di gravidanza
+left:ius scholae
+left:ius soli
+left:laicità
+left:legalità
+left:libertà di stampa
+left:lotta all'evasione
+left:mafia
+left:Mare Nostrum
+left:mascolinità tossica
+left:migranti
+left:mobilità sostenibile
+left:multinazionali
+left:nazionalismo
+left:negazionisti climatici
+left:neo-fascisti
+left:neoliberismo
+left:obbligo vaccinale
+left:omofobia
+left:omotransfobia
+left:ONG umanitarie
+left:pacifismo
+left:patriarcato
+left:patrimoniale
+left:populismo
+left:precariato
+left:precarizzazione
+left:profughi
+left:progressività fiscale
+left:proletariato
+left:razzismo di stato
+left:razzismo strutturale
+left:reddito di cittadinanza
+left:Resistenza
+left:richiedenti asilo
+left:rimpatri assistiti
+left:rinnovabili
+left:salario minimo
+left:salvataggio in mare
+left:sanità pubblica
+left:secessione fiscale
+left:sfruttamento
+left:solidarietà
+left:squadrismo
+left:tassa regressiva
+left:tasse
+left:transfobia
+left:transizione ecologica
+left:trivelle
+left:tutele del lavoro
+left:Ultima Generazione
+left:unioni civili
+left:uno vale uno
+left:vincoli di bilancio
+left:xenofobia
+left:élite
+right:allarmismo climatico
+right:antifa
+right:assistenzialismo
+right:autonomia differenziata
+right:autonomia regionale
+right:bamboccioni
+right:Bruxelles
+right:buonismo
+right:catastrofismo
+right:cessione di sovranità
+right:choosy
+right:clandestini
+right:condono
+right:contratto a tutele crescenti
+right:coppia di fatto
+right:costo del lavoro
+right:cultura della cancellazione
+right:Ddl eco-vandali
+right:decoro urbano
+right:deindustrializzazione
+right:dittatura sanitaria
+right:divani
+right:eco-vandali
+right:emergenza migratoria
+right:energia intermittente
+right:esproprio
+right:espulsioni di massa
+right:falsi richiedenti asilo
+right:famiglia naturale
+right:flat tax
+right:flessibilità
+right:foibe
+right:garantismo
+right:guerra all'automobile
+right:guerra civile
+right:ideologia gender
+right:ideologia green
+right:immigrati irregolari
+right:immigrazionisti
+right:interventismo
+right:invasione
+right:islamizzazione
+right:Italexit
+right:italiani prima
+right:ius sanguinis
+right:lasciapassare
+right:legge bavaglio
+right:legge e ordine
+right:libera circolazione
+right:mainstream
+right:mancia di stato
+right:merito
+right:nazione
+right:nomenklatura
+right:nullafacenti
+right:ONG scafiste
+right:opinione
+right:pace fiscale
+right:palazzo
+right:patria
+right:patriottismo
+right:persecuzione fiscale
+right:piano Kalergi
+right:pizzo di stato
+right:politichese
+right:poteri forti
+right:premierato
+right:presidenzialismo
+right:Quota 100
+right:quota 100 (legge)
+right:riarmo
+right:sanità di stato
+right:scuole paritarie
+right:siero sperimentale
+right:soppressione del nascituro
+right:sostituzione etnica
+right:sovranismo
+right:sovranità
+right:sovranità energetica
+right:sussidio statale
+right:tassazione punitiva
+right:TAV
+right:taxi del mare
+right:teatrino
+right:toghe rosse
+right:utero in affitto
+right:valori cristiani
+right:vincoli al mercato

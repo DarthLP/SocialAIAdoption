@@ -1,0 +1,591 @@
+{
+  "source": "italian_political_lexicon_v4.csv",
+  "ideology_scoring": "dominant_v1",
+  "pairs": [
+    {
+      "pair_id": "migration_0",
+      "topic": "migration",
+      "term_a": "migranti",
+      "term_b": "clandestini",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "migration_1",
+      "topic": "migration",
+      "term_a": "profughi",
+      "term_b": "immigrati irregolari",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "migration_2",
+      "topic": "migration",
+      "term_a": "richiedenti asilo",
+      "term_b": "falsi richiedenti asilo",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "migration_3",
+      "topic": "migration",
+      "term_a": "accoglienza",
+      "term_b": "invasione",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "migration_4",
+      "topic": "migration",
+      "term_a": "integrazione",
+      "term_b": "sostituzione etnica",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "migration_5",
+      "topic": "migration",
+      "term_a": "ius soli",
+      "term_b": "ius sanguinis",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "migration_6",
+      "topic": "migration",
+      "term_a": "salvataggio in mare",
+      "term_b": "taxi del mare",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "migration_7",
+      "topic": "migration",
+      "term_a": "ONG umanitarie",
+      "term_b": "ONG scafiste",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "migration_8",
+      "topic": "migration",
+      "term_a": "rimpatri assistiti",
+      "term_b": "espulsioni di massa",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "migration_9",
+      "topic": "migration",
+      "term_a": "corridoi umanitari",
+      "term_b": "libera circolazione",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "labor_10",
+      "topic": "labor",
+      "term_a": "precariato",
+      "term_b": "flessibilità",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "labor_11",
+      "topic": "labor",
+      "term_a": "tutele del lavoro",
+      "term_b": "vincoli al mercato",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "labor_12",
+      "topic": "labor",
+      "term_a": "articolo 18",
+      "term_b": "contratto a tutele crescenti",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "labor_13",
+      "topic": "labor",
+      "term_a": "salario minimo",
+      "term_b": "costo del lavoro",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "welfare_14",
+      "topic": "welfare",
+      "term_a": "reddito di cittadinanza",
+      "term_b": "sussidio statale",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "welfare_15",
+      "topic": "welfare",
+      "term_a": "ammortizzatori sociali",
+      "term_b": "assistenzialismo",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "welfare_16",
+      "topic": "welfare",
+      "term_a": "Quota 100",
+      "term_b": "fuga dal lavoro",
+      "pole_a": "right",
+      "pole_b": "left",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "EU_17",
+      "topic": "EU",
+      "term_a": "europeismo",
+      "term_b": "sovranismo",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "EU_18",
+      "topic": "EU",
+      "term_a": "Unione Europea",
+      "term_b": "Bruxelles",
+      "pole_a": "center",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "EU_19",
+      "topic": "EU",
+      "term_a": "integrazione europea",
+      "term_b": "cessione di sovranità",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "EU_20",
+      "topic": "EU",
+      "term_a": "vincoli di bilancio",
+      "term_b": "austerità imposta",
+      "pole_a": "left",
+      "pole_b": "ambiguous",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "EU_21",
+      "topic": "EU",
+      "term_a": "cooperazione europea",
+      "term_b": "Italexit",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "EU_22",
+      "topic": "EU",
+      "term_a": "autonomia regionale",
+      "term_b": "secessione fiscale",
+      "pole_a": "right",
+      "pole_b": "left",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "fiscal_23",
+      "topic": "fiscal",
+      "term_a": "tasse",
+      "term_b": "pizzo di stato",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "fiscal_24",
+      "topic": "fiscal",
+      "term_a": "flat tax",
+      "term_b": "tassa regressiva",
+      "pole_a": "right",
+      "pole_b": "left",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "fiscal_25",
+      "topic": "fiscal",
+      "term_a": "lotta all'evasione",
+      "term_b": "persecuzione fiscale",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "fiscal_26",
+      "topic": "fiscal",
+      "term_a": "patrimoniale",
+      "term_b": "esproprio",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "fiscal_27",
+      "topic": "fiscal",
+      "term_a": "progressività fiscale",
+      "term_b": "tassazione punitiva",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "fiscal_28",
+      "topic": "fiscal",
+      "term_a": "condono",
+      "term_b": "pace fiscale",
+      "pole_a": "right",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "climate_29",
+      "topic": "climate",
+      "term_a": "crisi climatica",
+      "term_b": "allarmismo climatico",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "climate_30",
+      "topic": "climate",
+      "term_a": "transizione ecologica",
+      "term_b": "ideologia green",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "climate_31",
+      "topic": "climate",
+      "term_a": "rinnovabili",
+      "term_b": "energia intermittente",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "climate_32",
+      "topic": "climate",
+      "term_a": "attivisti climatici",
+      "term_b": "eco-vandali",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "climate_33",
+      "topic": "climate",
+      "term_a": "emergenza climatica",
+      "term_b": "catastrofismo",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "climate_34",
+      "topic": "climate",
+      "term_a": "decarbonizzazione",
+      "term_b": "deindustrializzazione",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "climate_35",
+      "topic": "climate",
+      "term_a": "mobilità sostenibile",
+      "term_b": "guerra all'automobile",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "energy_36",
+      "topic": "energy",
+      "term_a": "trivelle",
+      "term_b": "sovranità energetica",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "energy_37",
+      "topic": "energy",
+      "term_a": "TAV",
+      "term_b": "grandi opere inutili",
+      "pole_a": "right",
+      "pole_b": "left",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "social_38",
+      "topic": "social",
+      "term_a": "diritti civili",
+      "term_b": "ideologia gender",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "social_39",
+      "topic": "social",
+      "term_a": "omotransfobia",
+      "term_b": "opinione",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "social_40",
+      "topic": "social",
+      "term_a": "interruzione di gravidanza",
+      "term_b": "soppressione del nascituro",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "social_41",
+      "topic": "social",
+      "term_a": "gestazione per altri",
+      "term_b": "utero in affitto",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "social_42",
+      "topic": "social",
+      "term_a": "ddl Zan",
+      "term_b": "legge bavaglio",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "social_43",
+      "topic": "social",
+      "term_a": "unioni civili",
+      "term_b": "coppia di fatto",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "social_44",
+      "topic": "social",
+      "term_a": "femminicidio",
+      "term_b": "omicidio",
+      "pole_a": "left",
+      "pole_b": "center",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "health_45",
+      "topic": "health",
+      "term_a": "green pass",
+      "term_b": "lasciapassare",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "health_46",
+      "topic": "health",
+      "term_a": "obbligo vaccinale",
+      "term_b": "dittatura sanitaria",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "health_47",
+      "topic": "health",
+      "term_a": "vaccino",
+      "term_b": "siero sperimentale",
+      "pole_a": "center",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "health_48",
+      "topic": "health",
+      "term_a": "sanità pubblica",
+      "term_b": "sanità di stato",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "populism_49",
+      "topic": "populism",
+      "term_a": "classe politica",
+      "term_b": "casta",
+      "pole_a": "center",
+      "pole_b": "center",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "populism_50",
+      "topic": "populism",
+      "term_a": "élite",
+      "term_b": "poteri forti",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "populism_51",
+      "topic": "populism",
+      "term_a": "governo",
+      "term_b": "regime",
+      "pole_a": "center",
+      "pole_b": "ambiguous",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "populism_52",
+      "topic": "populism",
+      "term_a": "democrazia rappresentativa",
+      "term_b": "democrazia diretta",
+      "pole_a": "left",
+      "pole_b": "ambiguous",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "populism_53",
+      "topic": "populism",
+      "term_a": "libertà di stampa",
+      "term_b": "stampa di regime",
+      "pole_a": "left",
+      "pole_b": "ambiguous",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "identity_54",
+      "topic": "identity",
+      "term_a": "patriottismo",
+      "term_b": "nazionalismo",
+      "pole_a": "right",
+      "pole_b": "left",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "identity_55",
+      "topic": "identity",
+      "term_a": "Resistenza",
+      "term_b": "guerra civile",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "identity_56",
+      "topic": "identity",
+      "term_a": "antifascismo",
+      "term_b": "antifa",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "law_order_57",
+      "topic": "law_order",
+      "term_a": "giudici",
+      "term_b": "toghe rosse",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "law_order_58",
+      "topic": "law_order",
+      "term_a": "legalità",
+      "term_b": "legge e ordine",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "social_59",
+      "topic": "social",
+      "term_a": "solidarietà",
+      "term_b": "merito",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "social_60",
+      "topic": "social",
+      "term_a": "laicità",
+      "term_b": "valori cristiani",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "foreign_61",
+      "topic": "foreign",
+      "term_a": "disarmo",
+      "term_b": "riarmo",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "foreign_62",
+      "topic": "foreign",
+      "term_a": "pacifismo",
+      "term_b": "interventismo",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "law_order_63",
+      "topic": "law_order",
+      "term_a": "mafia",
+      "term_b": "criminalità organizzata",
+      "pole_a": "left",
+      "pole_b": "center",
+      "polarized": "yes"
+    },
+    {
+      "pair_id": "law_order_64",
+      "topic": "law_order",
+      "term_a": "giustizialismo",
+      "term_b": "garantismo",
+      "pole_a": "left",
+      "pole_b": "right",
+      "polarized": "yes"
+    }
+  ]
+}

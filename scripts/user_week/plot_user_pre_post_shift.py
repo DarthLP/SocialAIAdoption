@@ -6,14 +6,14 @@ analysis. It consumes the per-user shift CSVs produced by
 `scripts/user_week/prepare_user_week_style_panel.py`, and writes a small set of figures
 that communicate the headline result and its sanity checks.
 
-Outputs (one set per cohort under `results/figures/user_week/<cohort>/`):
+Outputs (per cohort and composite under `paths.figures_dir/user_week/<cohort>/<polarization|style>/`):
 - dist_std_delta_composite.png: histogram of weekly std_delta_composite with
   vertical lines at +/-1 and +/-2 SD; tail shares in legend.
 - dist_t_user_pooled_composite.png: same idea on the precision-aware pooled t.
 - weekly_vs_pooled_scatter.png: per-user std_delta_weekly vs t_user_pooled,
   color by post-period word count (sparse vs dense users).
 - spaghetti_sample.png: weekly composite trajectories for a deterministic
-  sample of panel users with the launch marker.
+  sample of panel users with ban reference markers from `plot_reference_dates_utc`.
 - mirror_top_movers.png: top-10 surge and top-10 drop users by
   t_user_pooled_composite shown side-by-side.
 - components_grid.png: small multiples of std_delta_weekly distributions for
@@ -21,9 +21,9 @@ Outputs (one set per cohort under `results/figures/user_week/<cohort>/`):
 
 How to apply/run:
 - Default (renders both strict and loose cohorts when present):
-  `.venv/bin/python scripts/user_week/plot_user_pre_post_shift.py --config config/political_forums_setup.yaml`
+  `.venv/bin/python scripts/user_week/plot_user_pre_post_shift.py --config config/italy_polarization_setup.yaml`
 - One cohort only:
-  `.venv/bin/python scripts/user_week/plot_user_pre_post_shift.py --config config/political_forums_setup.yaml --cohort strict`
+  `.venv/bin/python scripts/user_week/plot_user_pre_post_shift.py --config config/italy_polarization_setup.yaml --cohort strict`
 """
 
 from __future__ import annotations
@@ -43,41 +43,52 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-def _resolve_project_root() -> Path:
-    """Load scripts/_project_root.py and return the repository root Path."""
-    _scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod",
-        _scripts_dir / "_project_root.py",
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
-from src.config_utils import load_config
+from src.config_utils import load_config, plot_reference_dates_calendar_utc, user_week_composites
 
 
-COMPOSITE_NAME = "ai_likeness_user_week"
-COMPOSITE_COMPONENTS: List[str] = [
-    "ai_word_rate_100w",
-    "formality_balance_100w",
-    "assistant_tone_rate_100w",
-    "list_structure_intensity",
-    "contraction_rate_100w",
-]
+def composite_file_slug(composite_name: str) -> str:
+    """Function summary: short filesystem slug for per-composite output files."""
+    if composite_name.startswith("polarization"):
+        return "polarization"
+    if "style" in composite_name:
+        return "style"
+    return composite_name.replace("_user_week", "").replace("_composite", "")
+
+
+def composites_for_config(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Function summary: resolve composite list from config user_week block."""
+    comps = user_week_composites(config)
+    if not comps:
+        raise ValueError(
+            "config user_week must define style_composite and polarization_composite "
+            "(see config/italy_polarization_setup.yaml)"
+        )
+    return comps
 
 
 def parse_args() -> argparse.Namespace:
     """Function summary: parse CLI options including cohort selection and figure-tuning controls."""
     parser = argparse.ArgumentParser(description="Plot user-level pre/post style shift figures.")
-    parser.add_argument("--config", type=str, default="config/political_forums_setup.yaml")
+    parser.add_argument("--config", type=str, default="config/italy_polarization_setup.yaml")
     parser.add_argument(
         "--cohort",
         type=str,
@@ -101,14 +112,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def release_dates() -> List[datetime]:
-    """Function summary: return ChatGPT and GPT-4 public release dates as UTC datetimes for marker drawing."""
-    return [datetime(2022, 11, 30), datetime(2023, 3, 14)]
-
-
-def add_release_markers(ax: plt.Axes) -> None:
-    """Function summary: draw red dotted vertical lines at the configured release anchor dates."""
-    for d in release_dates():
+def add_ban_reference_markers(ax: plt.Axes, config: Dict[str, Any]) -> None:
+    """Function summary: draw red dotted vertical lines at plot_reference_dates_utc from the study config."""
+    for d in plot_reference_dates_calendar_utc(config):
         ax.axvline(x=d, color="red", linestyle=":", linewidth=1.2)
 
 
@@ -126,15 +132,19 @@ def figures_root(config: Dict[str, Any]) -> Path:
     return root
 
 
-def cohort_paths(config: Dict[str, Any], cohort: str) -> Dict[str, Path]:
-    """Function summary: resolve all input/output paths needed to render figures for one cohort."""
+def cohort_paths(config: Dict[str, Any], cohort: str, composite_slug: str) -> Dict[str, Path]:
+    """Function summary: resolve all input/output paths needed to render figures for one cohort and composite."""
     tables = Path(config["paths"]["tables_dir"]) / "user_week"
-    figs = figures_root(config) / cohort
+    figs = figures_root(config) / cohort / composite_slug
     figs.mkdir(parents=True, exist_ok=True)
+    per_user = tables / f"shift_per_user_{cohort}_{composite_slug}.csv"
+    if not per_user.exists():
+        per_user = tables / f"shift_per_user_{cohort}.csv"
     return {
-        "per_user_csv": tables / f"shift_per_user_{cohort}.csv",
+        "per_user_csv": per_user,
         "panel_parquet": tables / "user_week_panel.parquet",
         "figures_dir": figs,
+        "scales_json": tables / f"composite_zscale_pre_{cohort}_{composite_slug}.json",
     }
 
 
@@ -187,13 +197,13 @@ def plot_histogram_with_thresholds(
     plt.close()
 
 
-def plot_weekly_vs_pooled_scatter(per_user: pd.DataFrame, out_path: Path) -> None:
+def plot_weekly_vs_pooled_scatter(per_user: pd.DataFrame, composite_name: str, out_path: Path) -> None:
     """Function summary: scatter weekly std_delta vs pooled t per user, colored by post words (sparse vs dense)."""
-    weekly_col = f"std_delta_weekly_{COMPOSITE_NAME}"
-    pooled_col = f"t_user_pooled_{COMPOSITE_NAME}"
+    weekly_col = f"std_delta_weekly_{composite_name}"
+    pooled_col = f"t_user_pooled_{composite_name}"
     if weekly_col not in per_user.columns or pooled_col not in per_user.columns:
         return
-    color_col = f"post_total_words_{COMPOSITE_NAME}"
+    color_col = f"post_total_words_{composite_name}"
     if color_col not in per_user.columns:
         color_col = "post_words_total_good"
     df = per_user[[weekly_col, pooled_col, color_col]].dropna()
@@ -221,30 +231,28 @@ def plot_weekly_vs_pooled_scatter(per_user: pd.DataFrame, out_path: Path) -> Non
         f"Weekly std_delta vs Pooled t (composite)\n"
         f"sign-agree {same_sign_share:.1%}, corr {corr:.2f}, n={len(df)}"
     )
-    plt.xlabel(f"Weekly view: std_delta_weekly_{COMPOSITE_NAME}")
-    plt.ylabel(f"Pooled view: t_user_pooled_{COMPOSITE_NAME}")
+    plt.xlabel(f"Weekly view: std_delta_weekly_{composite_name}")
+    plt.ylabel(f"Pooled view: t_user_pooled_{composite_name}")
     plt.tight_layout()
     plt.savefig(out_path, dpi=140)
     plt.close()
 
 
-def add_composite_to_panel_with_scales(panel: pd.DataFrame, scales: Dict[str, Dict[str, float]]) -> pd.DataFrame:
+def add_composite_to_panel_with_scales(
+    panel: pd.DataFrame,
+    scales: Dict[str, Dict[str, float]],
+    composite_name: str,
+    composite_components: List[tuple[str, int]],
+) -> pd.DataFrame:
     """Function summary: apply frozen-pre z-scales to compute composite per user-week (mirrors analysis script logic)."""
     if panel.empty or not scales:
         out = panel.copy()
-        out[COMPOSITE_NAME] = float("nan")
+        out[composite_name] = float("nan")
         return out
-    sign_map = {
-        "ai_word_rate_100w": +1,
-        "formality_balance_100w": +1,
-        "assistant_tone_rate_100w": +1,
-        "list_structure_intensity": +1,
-        "contraction_rate_100w": -1,
-    }
     out = panel.copy()
     composite = pd.Series(0.0, index=out.index)
     has_any = False
-    for component, sign in sign_map.items():
+    for component, sign in composite_components:
         if component not in out.columns or component not in scales:
             continue
         sd = float(scales[component].get("sd", float("nan")))
@@ -252,9 +260,9 @@ def add_composite_to_panel_with_scales(panel: pd.DataFrame, scales: Dict[str, Di
         if not np.isfinite(sd) or sd == 0:
             continue
         v = pd.to_numeric(out[component], errors="coerce").fillna(0.0)
-        composite = composite + sign * (v - mean) / sd
+        composite = composite + int(sign) * (v - mean) / sd
         has_any = True
-    out[COMPOSITE_NAME] = composite if has_any else float("nan")
+    out[composite_name] = composite if has_any else float("nan")
     return out
 
 
@@ -264,8 +272,10 @@ def plot_spaghetti_sample(
     sample_n: int,
     seed: int,
     out_path: Path,
+    config: Dict[str, Any],
+    composite_name: str,
 ) -> None:
-    """Function summary: render a random sample of panel users' weekly composite trajectories with the launch anchor."""
+    """Function summary: render a random sample of panel users' weekly composite trajectories with ban reference markers."""
     if panel.empty or per_user.empty:
         return
     panel_authors = per_user["author"].astype(str).unique()
@@ -282,16 +292,16 @@ def plot_spaghetti_sample(
 
     plt.figure(figsize=(11, 6))
     for author, grp in sub.groupby("author"):
-        plt.plot(grp["date"].values, grp[COMPOSITE_NAME].values, color="#4C72B0", alpha=0.20, linewidth=0.8)
+        plt.plot(grp["date"].values, grp[composite_name].values, color="#4C72B0", alpha=0.20, linewidth=0.8)
 
-    pooled = sub.groupby("date")[COMPOSITE_NAME].mean().reset_index()
-    plt.plot(pooled["date"].values, pooled[COMPOSITE_NAME].values, color="black", linewidth=2.0, label="Sample mean")
+    pooled = sub.groupby("date")[composite_name].mean().reset_index()
+    plt.plot(pooled["date"].values, pooled[composite_name].values, color="black", linewidth=2.0, label="Sample mean")
 
-    add_release_markers(plt.gca())
+    add_ban_reference_markers(plt.gca(), config)
     format_month_start_axis(plt.gca())
     plt.title(f"Composite weekly trajectories (random sample n={n})")
     plt.xlabel("Date (UTC)")
-    plt.ylabel(f"{COMPOSITE_NAME} (frozen-pre z scaled)")
+    plt.ylabel(f"{composite_name} (frozen-pre z scaled)")
     plt.legend(loc="best")
     plt.tight_layout()
     plt.savefig(out_path, dpi=140)
@@ -303,9 +313,11 @@ def plot_mirror_top_movers(
     per_user: pd.DataFrame,
     top_n: int,
     out_path: Path,
+    config: Dict[str, Any],
+    composite_name: str,
 ) -> None:
     """Function summary: render top-N surge and top-N drop users (by pooled t) side by side as paired weekly trajectories."""
-    pooled_col = f"t_user_pooled_{COMPOSITE_NAME}"
+    pooled_col = f"t_user_pooled_{composite_name}"
     if pooled_col not in per_user.columns:
         return
     valid = per_user[["author", pooled_col]].dropna()
@@ -329,20 +341,25 @@ def plot_mirror_top_movers(
             g = sub[sub["author"].astype(str) == author]
             if g.empty:
                 continue
-            ax.plot(g["date"].values, g[COMPOSITE_NAME].values, color=color, alpha=0.7, linewidth=1.0, label=author)
-        add_release_markers(ax)
+            ax.plot(g["date"].values, g[composite_name].values, color=color, alpha=0.7, linewidth=1.0, label=author)
+        add_ban_reference_markers(ax, config)
         format_month_start_axis(ax)
         ax.set_title(title)
         ax.set_xlabel("Date (UTC)")
-        ax.set_ylabel(f"{COMPOSITE_NAME}")
+        ax.set_ylabel(f"{composite_name}")
     plt.tight_layout()
     plt.savefig(out_path, dpi=140)
     plt.close()
 
 
-def plot_components_grid(per_user: pd.DataFrame, out_path: Path) -> None:
+def plot_components_grid(
+    per_user: pd.DataFrame,
+    out_path: Path,
+    composite_name: str,
+    component_feats: List[str],
+) -> None:
     """Function summary: small multiples of weekly std_delta distributions for each composite component plus the composite itself."""
-    feats = COMPOSITE_COMPONENTS + [COMPOSITE_NAME]
+    feats = list(component_feats) + [composite_name]
     feats = [f for f in feats if f"std_delta_weekly_{f}" in per_user.columns]
     if not feats:
         return
@@ -374,9 +391,17 @@ def plot_components_grid(per_user: pd.DataFrame, out_path: Path) -> None:
     plt.close()
 
 
-def render_one_cohort(config: Dict[str, Any], cohort: str, args: argparse.Namespace) -> None:
-    """Function summary: render the full figure set for one cohort if its analysis outputs exist."""
-    paths = cohort_paths(config, cohort=cohort)
+def render_one_cohort(
+    config: Dict[str, Any],
+    cohort: str,
+    composite_name: str,
+    composite_slug: str,
+    composite_components: List[tuple[str, int]],
+    component_feats: List[str],
+    args: argparse.Namespace,
+) -> None:
+    """Function summary: render the full figure set for one cohort and composite if analysis outputs exist."""
+    paths = cohort_paths(config, cohort=cohort, composite_slug=composite_slug)
     csv_path = paths["per_user_csv"]
     if not csv_path.exists():
         print(f"[plot_user_pre_post_shift] cohort={cohort} skip: per-user CSV not found at {csv_path}", flush=True)
@@ -389,24 +414,29 @@ def render_one_cohort(config: Dict[str, Any], cohort: str, args: argparse.Namesp
     print(f"[plot_user_pre_post_shift] cohort={cohort} n_users={len(per_user)}", flush=True)
     figures_dir = paths["figures_dir"]
 
-    weekly_col = f"std_delta_weekly_{COMPOSITE_NAME}"
-    pooled_col = f"t_user_pooled_{COMPOSITE_NAME}"
+    weekly_col = f"std_delta_weekly_{composite_name}"
+    pooled_col = f"t_user_pooled_{composite_name}"
 
     if weekly_col in per_user.columns:
         plot_histogram_with_thresholds(
             per_user[weekly_col],
-            title=f"Distribution of weekly std_delta_{COMPOSITE_NAME} ({cohort}, n={len(per_user)})",
+            title=f"Distribution of weekly std_delta_{composite_name} ({cohort}, n={len(per_user)})",
             out_path=figures_dir / "dist_std_delta_composite.png",
         )
     if pooled_col in per_user.columns:
         plot_histogram_with_thresholds(
             per_user[pooled_col],
-            title=f"Distribution of pooled t_user_{COMPOSITE_NAME} ({cohort}, n={len(per_user)})",
+            title=f"Distribution of pooled t_user_{composite_name} ({cohort}, n={len(per_user)})",
             out_path=figures_dir / "dist_t_user_pooled_composite.png",
         )
 
-    plot_weekly_vs_pooled_scatter(per_user, out_path=figures_dir / "weekly_vs_pooled_scatter.png")
-    plot_components_grid(per_user, out_path=figures_dir / "components_grid.png")
+    plot_weekly_vs_pooled_scatter(per_user, composite_name=composite_name, out_path=figures_dir / "weekly_vs_pooled_scatter.png")
+    plot_components_grid(
+        per_user,
+        out_path=figures_dir / "components_grid.png",
+        composite_name=composite_name,
+        component_feats=component_feats,
+    )
 
     panel_path = paths["panel_parquet"]
     if not panel_path.exists():
@@ -416,7 +446,7 @@ def render_one_cohort(config: Dict[str, Any], cohort: str, args: argparse.Namesp
     if panel.empty:
         return
 
-    scales_path = Path(config["paths"]["tables_dir"]) / "user_week" / f"composite_zscale_pre_{cohort}.json"
+    scales_path = paths["scales_json"]
     scales: Dict[str, Dict[str, float]] = {}
     if scales_path.exists():
         try:
@@ -426,7 +456,9 @@ def render_one_cohort(config: Dict[str, Any], cohort: str, args: argparse.Namesp
         except Exception as exc:
             print(f"[plot_user_pre_post_shift] cohort={cohort} composite_zscale_pre load failed: {exc}", flush=True)
             scales = {}
-    panel_with_composite = add_composite_to_panel_with_scales(panel, scales)
+    panel_with_composite = add_composite_to_panel_with_scales(
+        panel, scales, composite_name=composite_name, composite_components=composite_components
+    )
 
     plot_spaghetti_sample(
         panel_with_composite,
@@ -434,12 +466,16 @@ def render_one_cohort(config: Dict[str, Any], cohort: str, args: argparse.Namesp
         sample_n=int(args.spaghetti_n),
         seed=int(args.seed),
         out_path=figures_dir / "spaghetti_sample.png",
+        config=config,
+        composite_name=composite_name,
     )
     plot_mirror_top_movers(
         panel_with_composite,
         per_user=per_user,
         top_n=int(args.top_movers_n),
         out_path=figures_dir / "mirror_top_movers.png",
+        config=config,
+        composite_name=composite_name,
     )
     print(f"[plot_user_pre_post_shift] cohort={cohort} figures written to {figures_dir}", flush=True)
 
@@ -448,9 +484,23 @@ def main() -> None:
     """Function summary: render figures for the requested cohort(s) using existing analysis outputs and the user-week panel."""
     args = parse_args()
     config = load_config(args.config)
+    composites = composites_for_config(config)
     cohorts: List[str] = ["strict", "loose"] if args.cohort == "both" else [args.cohort]
-    for cohort in cohorts:
-        render_one_cohort(config, cohort=cohort, args=args)
+    for comp in composites:
+        composite_name = str(comp["name"])
+        composite_components = [(str(f), int(s)) for f, s in comp["components"]]
+        component_feats = [f for f, _ in composite_components]
+        slug = composite_file_slug(composite_name)
+        for cohort in cohorts:
+            render_one_cohort(
+                config,
+                cohort=cohort,
+                composite_name=composite_name,
+                composite_slug=slug,
+                composite_components=composite_components,
+                component_feats=component_feats,
+                args=args,
+            )
 
 
 if __name__ == "__main__":

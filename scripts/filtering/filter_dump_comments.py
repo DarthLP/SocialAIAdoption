@@ -18,14 +18,14 @@ Functionality:
 - Validates source file fingerprints before trusting resume checkpoints.
 - Persists low-cost resume anchors for future fast-start reruns.
 - Applies subreddit/date/field filters defined in project config.
-- Writes outputs to `data/raw/political_forums/daily_chunks/<subreddit>/<YYYY-MM-DD>.ndjson`.
+- Writes outputs to `paths.raw_dir/daily_chunks/<subreddit>/<YYYY-MM-DD>.ndjson` (Italy: `data/raw/italy_polarization/daily_chunks/`).
 - Maintains resumable per-worker checkpoints and logs throughput/time-at-data telemetry.
 - Produces filtering audit tables from persisted counters without a recount pass.
 
 How to run:
 - Ensure dump files exist on external media.
 - Run:
-  `.venv/bin/python scripts/filtering/filter_dump_comments.py --config config/political_forums_setup.yaml`
+  `.venv/bin/python scripts/filtering/filter_dump_comments.py --config config/italy_polarization_setup.yaml`
 """
 
 from __future__ import annotations
@@ -46,25 +46,33 @@ from typing import Any, Dict, Iterable, Pattern, Tuple
 import pandas as pd
 import zstandard as zstd
 
-def _resolve_project_root() -> Path:
-    """Load scripts/_project_root.py and return the repository root Path."""
-    _scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod",
-        _scripts_dir / "_project_root.py",
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
-from src.config_utils import comment_dump_filenames, load_config, resolve_primary_subreddits, utc_ts
+from src.config_utils import (
+    comment_dump_filenames,
+    filter_dump_logs_dir,
+    load_config,
+    resolve_primary_subreddits,
+    study_id_from_config,
+    utc_ts,
+)
 
 try:
     import orjson
@@ -82,7 +90,7 @@ def serialize_record(record: Dict[str, Any]) -> bytes:
 def parse_args() -> argparse.Namespace:
     """Function summary: parse command line args and return runtime options."""
     parser = argparse.ArgumentParser(description="Filter Reddit dump files into day-chunk outputs.")
-    parser.add_argument("--config", type=str, default="config/political_forums_setup.yaml")
+    parser.add_argument("--config", type=str, default="config/italy_polarization_setup.yaml")
     parser.add_argument(
         "--source_dir",
         type=str,
@@ -90,10 +98,16 @@ def parse_args() -> argparse.Namespace:
         help="Directory containing RC_YYYY-MM.zst files listed for event_window (see config).",
     )
     parser.add_argument(
-        "--state_file", type=str, default="results/logs/filter_dump/filter_dump_state.json"
+        "--state_file",
+        type=str,
+        default=None,
+        help="Resume state JSON (default: results/logs/<study>/filter_dump/<study>_state.json).",
     )
     parser.add_argument(
-        "--log_file", type=str, default="results/logs/filter_dump/filter_dump.log"
+        "--log_file",
+        type=str,
+        default=None,
+        help="Filter log file (default: results/logs/<study>/filter_dump/<study>.log).",
     )
     parser.add_argument("--checkpoint_every", type=int, default=1_000_000)
     parser.add_argument(
@@ -576,14 +590,28 @@ def process_file_worker(
 def main() -> None:
     """Function summary: execute dump filtering for all event-window months and write audit outputs."""
     args = parse_args()
-    config = load_config(args.config)
+    config_path = Path(args.config)
+    if not config_path.is_absolute():
+        config_path = PROJECT_ROOT / config_path
+    config = load_config(config_path)
 
     base_raw_dir = Path(config["paths"]["raw_dir"])
+    if not base_raw_dir.is_absolute():
+        base_raw_dir = PROJECT_ROOT / base_raw_dir
     tables_dir = Path(config["paths"]["tables_dir"])
+    if not tables_dir.is_absolute():
+        tables_dir = PROJECT_ROOT / tables_dir
     filtering_tables_dir = tables_dir / "filtering"
     source_dir = Path(args.source_dir)
-    state_path = Path(args.state_file)
-    log_path = Path(args.log_file)
+    study = study_id_from_config(config)
+    filter_log_dir = filter_dump_logs_dir(config)
+    filter_log_dir.mkdir(parents=True, exist_ok=True)
+    state_path = (
+        Path(args.state_file)
+        if args.state_file
+        else filter_log_dir / f"{study}_state.json"
+    )
+    log_path = Path(args.log_file) if args.log_file else filter_log_dir / f"{study}.log"
     filtering_tables_dir.mkdir(parents=True, exist_ok=True)
 
     ew = config["event_window"]

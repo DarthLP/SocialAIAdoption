@@ -1,9 +1,9 @@
 """
 Script summary:
-One-off generator for `notebooks/colab_compute_comment_features_gpu.ipynb` embedding
-`config/political_forums_setup.yaml` and `src/comment_feature_models.py` so Colab can
+One-off generator for `scripts/archive/notebooks/colab_compute_comment_features_gpu.ipynb` embedding
+`config/archive/ai_adoption_political_forums_setup.yaml` and `src/archive/comment_feature_models.py` so Colab can
 run without cloning the repository. Re-run after changing those sources:
-`.venv/bin/python scripts/devtools/_gen_colab_standalone_nb.py`
+`.venv/bin/python scripts/archive/devtools/_gen_colab_standalone_nb.py`
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from pathlib import Path
 
 def _repo_root() -> Path:
     """Load scripts/_project_root.py and return the repository root Path."""
-    _scripts_dir = Path(__file__).resolve().parent.parent
+    _scripts_dir = Path(__file__).resolve().parent.parent.parent
     spec = importlib.util.spec_from_file_location(
         "_socialai_scripts_project_root_mod",
         _scripts_dir / "_project_root.py",
@@ -28,13 +28,13 @@ def _repo_root() -> Path:
 
 
 ROOT = _repo_root()
-YAML_TEXT = (ROOT / "config/political_forums_setup.yaml").read_text(encoding="utf-8")
-MODELS_TEXT = (ROOT / "src" / "comment_feature_models.py").read_text(encoding="utf-8")
+YAML_TEXT = (ROOT / "config/archive/ai_adoption_political_forums_setup.yaml").read_text(encoding="utf-8")
+MODELS_TEXT = (ROOT / "src" / "archive" / "comment_feature_models.py").read_text(encoding="utf-8")
 needle = "from __future__ import annotations\n"
 HELPERS = MODELS_TEXT[MODELS_TEXT.index(needle) :]
 
 if '"""' in YAML_TEXT:
-    raise SystemExit("political_forums_setup.yaml must not contain triple-double-quotes for embedding")
+    raise SystemExit("ai_adoption_political_forums_setup.yaml must not contain triple-double-quotes for embedding")
 
 CONTROL_CELL = (
     "# -----------------------------------------------------------------------------\n"
@@ -373,7 +373,7 @@ def cell_source_lines(text: str) -> list[str]:
 
 INTRO_MD = """# ML-only comment features — **standalone notebook**
 
-**No Git clone.** No subprocess to repo scripts. This file embeds the project YAML and CUDA-capable inference helpers copied from `src/comment_feature_models.py`.
+**No Git clone.** No subprocess to repo scripts. This file embeds the project YAML and CUDA-capable inference helpers copied from `src/archive/comment_feature_models.py`.
 
 **You provide:** cleaned monthly Parquet on Drive (`cleaned_monthly_chunks/<subreddit>/<YYYY-MM>.parquet`).
 
@@ -381,7 +381,7 @@ INTRO_MD = """# ML-only comment features — **standalone notebook**
 
 **On your laptop:** copy `comment_features_ml` into `data/interim/political_forums/` and run repo script:
 
-`scripts/features/merge_ml_shards_into_comment_features.py --config config/political_forums_setup.yaml`
+`scripts/archive/features/merge_ml_shards_into_comment_features.py --config config/archive/ai_adoption_political_forums_setup.yaml`
 
 to merge Colab ML shards with locally computed lexical fields into final `comment_features/` for downstream metrics.
 
@@ -396,9 +396,9 @@ print("torch", torch.__version__, "cuda", torch.cuda.is_available())
 MERGE_NOTE = """## After Colab finishes (laptop)
 
 1. Sync `comment_features_ml` from Drive → `data/interim/political_forums/comment_features_ml/` in your repo checkout.
-2. Run: `.venv/bin/python scripts/features/merge_ml_shards_into_comment_features.py --config config/political_forums_setup.yaml`
-3. (Optional) `.venv/bin/python scripts/features/compute_daily_repetition_similarity.py --config config/political_forums_setup.yaml`
-4. `.venv/bin/python scripts/event_time/prepare_event_time_metrics.py --config config/political_forums_setup.yaml`"""
+2. Run: `.venv/bin/python scripts/archive/features/merge_ml_shards_into_comment_features.py --config config/archive/ai_adoption_political_forums_setup.yaml`
+3. (Optional) `.venv/bin/python scripts/archive/features/compute_daily_repetition_similarity.py --config config/archive/ai_adoption_political_forums_setup.yaml`
+4. `.venv/bin/python scripts/archive/event_time/prepare_event_time_metrics.py --config config/archive/ai_adoption_political_forums_setup.yaml`"""
 
 
 def main() -> None:
@@ -436,7 +436,7 @@ def main() -> None:
         "cells": cells,
     }
 
-    out = ROOT / "notebooks" / "colab_compute_comment_features_gpu.ipynb"
+    out = ROOT / "scripts" / "archive" / "notebooks" / "colab_compute_comment_features_gpu.ipynb"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(nb, indent=1), encoding="utf-8")
     print("wrote", out)

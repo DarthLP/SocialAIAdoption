@@ -12,9 +12,9 @@ Functionality:
 
 How to run:
 - Dry run (no file changes):
-  `.venv/bin/python scripts/cleaning/dedupe_daily_chunks.py --config config/political_forums_setup.yaml`
+  `.venv/bin/python scripts/cleaning/dedupe_daily_chunks.py --config config/italy_polarization_setup.yaml`
 - Apply dedupe in place:
-  `.venv/bin/python scripts/cleaning/dedupe_daily_chunks.py --config config/political_forums_setup.yaml --apply`
+  `.venv/bin/python scripts/cleaning/dedupe_daily_chunks.py --config config/italy_polarization_setup.yaml --apply`
 """
 
 from __future__ import annotations
@@ -33,25 +33,26 @@ from typing import Any, Dict
 import sys
 
 
-def _resolve_project_root() -> Path:
-    """Load scripts/_project_root.py and return the repository root Path."""
-    _scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod",
-        _scripts_dir / "_project_root.py",
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
-from src.config_utils import load_config
+from src.config_utils import load_config, tables_subdir
 
 ID_FIELD_REGEX = re.compile(r'"id"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"')
 
@@ -59,7 +60,7 @@ ID_FIELD_REGEX = re.compile(r'"id"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"')
 def parse_args() -> argparse.Namespace:
     """Function summary: parse CLI args for dedupe mode, config path, and reporting output."""
     parser = argparse.ArgumentParser(description="Deduplicate daily chunk NDJSON files by comment id.")
-    parser.add_argument("--config", type=str, default="config/political_forums_setup.yaml")
+    parser.add_argument("--config", type=str, default="config/italy_polarization_setup.yaml")
     parser.add_argument(
         "--apply",
         action="store_true",
@@ -68,8 +69,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--report_csv",
         type=str,
-        default="results/tables/filtering/dedupe_daily_chunks_report.csv",
-        help="CSV output path with per-file dedupe metrics.",
+        default=None,
+        help="CSV output path (default: <study tables>/filtering/dedupe_daily_chunks_report.csv).",
     )
     parser.add_argument(
         "--workers",
@@ -202,9 +203,12 @@ def write_report(path: Path, rows: list[Dict[str, Any]]) -> None:
 def main() -> None:
     """Function summary: orchestrate dry-run or apply dedupe over all daily chunk NDJSON files and emit report."""
     args = parse_args()
-    config = load_config(args.config)
+    config = load_config(PROJECT_ROOT / args.config)
     base_raw_dir = Path(config["paths"]["raw_dir"])
-    report_path = Path(args.report_csv)
+    if not Path(base_raw_dir).is_absolute():
+        base_raw_dir = PROJECT_ROOT / base_raw_dir
+    default_report = tables_subdir(config, "filtering", "dedupe_daily_chunks_report.csv")
+    report_path = Path(args.report_csv) if args.report_csv else default_report
     workers = max(1, int(args.workers))
 
     files = iter_daily_chunk_files(base_raw_dir)

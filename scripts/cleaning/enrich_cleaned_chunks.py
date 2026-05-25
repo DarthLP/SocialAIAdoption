@@ -2,11 +2,12 @@
 Script summary:
 Stage-3 enrichment for cleaned Italy polarization Parquet: taxonomy columns,
 language-matched political lexicon scores, thread roll-ups, topic assignment audit,
-and optional deprecated family-month aggregates.
+and screening audit tables.
 
 Functionality:
 - Reads screening outputs and adds metadata plus political scores per comment.
-- Assigns topics via first-match-wins priority (metadata → controls → config lists → lexicon).
+- Assigns topics via first-match-wins priority (metadata → controls → config topic lists → graded WW thresholds).
+- Political salience from data/raw/political_lexicon_parallel.csv (grades 1–3 → points 1/2/3; thread political if thread points ≥3).
 - Writes assignment, political profile, and political mismatch audit CSVs.
 
 How to apply/run:
@@ -30,41 +31,72 @@ except ImportError as exc:
     raise SystemExit("langid is required: pip install langid") from exc
 
 
-def _resolve_project_root() -> Path:
-    """Function summary: load scripts/_project_root.py and return repository root Path."""
-    scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod", scripts_dir / "_project_root.py"
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import (  # noqa: E402
     build_subreddit_metadata_table,
+    forum_political_thresholds,
     infer_subreddit_topic,
+    italian_arms_for_langid,
     load_config,
     load_screening_config,
+    load_screening_pooled,
     load_subreddit_metadata,
+    parallel_political_lexicon_path,
     resolve_primary_subreddits,
+    screening_by_subreddit,
+    should_skip_screened_subreddit,
+    subreddit_arm_map,
+    subreddit_screening_action,
     subreddit_family_map,
     subreddit_topic_map,
     topic_family_map,
 )
-from src.political_lexicon import count_political_hits, political_rate_100w  # noqa: E402
-
-POLITICAL_TOPICS = frozenset({"it_political", "en_us_political", "uk_political"})
-SPECIAL_TOPICS = frozenset({"it_meme_humor", "it_creator_celebrity", "it_nsfw_sensitivity"})
-CONFIG_LIST_TOPICS = frozenset(
-    {"it_political", "it_meme_humor", "it_creator_celebrity", "it_nsfw_sensitivity"}
+from src.political_lexicon import (  # noqa: E402
+    political_rate_100w,
+    score_comment_political_salience,
 )
+
+POLITICAL_TOPICS = frozenset({"it_political", "it_pure_political", "us", "uk_political"})
+ITALIAN_POLITICAL_TOPICS = frozenset({"it_political", "it_pure_political"})
+CONFIG_LIST_TOPICS = frozenset({"it_political", "de", "eu", "us", "uk", "uk_political"})
+CONTROL_SUBREDDITS_WARN_ZERO_WW = frozenset({"europe", "ukpolitics", "unitedkingdom", "de"})
+
+
+def read_parquet_shard_safe(shard: Path, columns: List[str] | None = None) -> pd.DataFrame | None:
+    """Function summary: read a monthly Parquet shard, skipping corrupt or empty files.
+
+    Parameters:
+    - shard: path to a cleaned monthly Parquet file.
+    - columns: optional column subset for pandas.read_parquet.
+
+    Returns:
+    - DataFrame on success, or None if the file is missing, empty, or unreadable.
+    """
+    if not shard.is_file() or shard.stat().st_size < 8:
+        return None
+    try:
+        if columns is None:
+            return pd.read_parquet(shard)
+        return pd.read_parquet(shard, columns=columns)
+    except Exception:
+        return None
 
 
 def parse_args() -> argparse.Namespace:
@@ -77,31 +109,39 @@ def parse_args() -> argparse.Namespace:
         help="Enrich excluded subreddits too (for audit plots).",
     )
     parser.add_argument(
-        "--write-by-family",
+        "--skip-pipeline-plots",
         action="store_true",
-        help="DEPRECATED: also write cleaned_monthly_by_family/ aggregates. Prefer groupby on shards.",
-    )
-    parser.add_argument(
-        "--prune-family-copies",
-        action="store_true",
-        help="Remove cleaned_monthly_by_family/ under interim_dir if present.",
+        help="Do not run plot_cleaning_pipeline_trends.py after enrichment (default: run when inputs exist).",
     )
     return parser.parse_args()
 
 
-def load_screening_pooled(tables_dir: Path) -> pd.DataFrame:
-    """Function summary: load pooled screening table.
+def run_cleaning_pipeline_plots_if_ready(config_path: str) -> None:
+    """Function summary: refresh cleaning_pipeline tables/figures after stage 3 CSVs are written.
 
     Parameters:
-    - tables_dir: study tables directory.
+    - config_path: path to study YAML passed to enrich.
 
     Returns:
-    - Screening pooled dataframe.
+    - None. Logs and swallows plot errors so enrichment still completes.
     """
-    path = tables_dir / "screening" / "subreddit_screening_pooled.csv"
-    if not path.is_file():
-        raise FileNotFoundError(f"Run screen_subreddits.py first: missing {path}")
-    return pd.read_csv(path)
+    import importlib.util
+
+    plot_path = PROJECT_ROOT / "scripts" / "diagnostics" / "plot_cleaning_pipeline_trends.py"
+    spec = importlib.util.spec_from_file_location("_plot_cleaning_pipeline_mod", plot_path)
+    if spec is None or spec.loader is None:
+        print("[enrich_cleaned_chunks] skip pipeline plots: could not load plot module", flush=True)
+        return
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    run_cleaning_pipeline_plots = mod.run_cleaning_pipeline_plots
+
+    config = load_config(PROJECT_ROOT / config_path)
+    print("[enrich_cleaned_chunks] running cleaning pipeline plots (post-enrich)...", flush=True)
+    try:
+        run_cleaning_pipeline_plots(config, project_root=PROJECT_ROOT)
+    except Exception as exc:
+        print(f"[enrich_cleaned_chunks] pipeline plots failed (non-fatal): {exc}", flush=True)
 
 
 def load_topic_overrides(metadata: Dict[str, Any]) -> Dict[str, str]:
@@ -119,29 +159,30 @@ def load_topic_overrides(metadata: Dict[str, Any]) -> Dict[str, str]:
     return {str(k): str(v) for k, v in raw.items()}
 
 
-def compute_political_threshold(
+def compute_political_thresholds(
     subreddit_stats: Dict[str, Dict[str, float]],
     screening: Dict[str, Any],
-) -> Tuple[float, float]:
-    """Function summary: politicaITA-calibrated threshold for auto_lexicon assignment.
+) -> Tuple[float, float, float]:
+    """Function summary: soft/pure word-weighted rate thresholds for Italian topic assignment.
 
     Parameters:
-    - subreddit_stats: per-subreddit stats with median_political_rate_100w.
+    - subreddit_stats: per-subreddit stats (unused; kept for API stability).
     - screening: screening config.
 
     Returns:
-    - Tuple (threshold, politicaITA_benchmark_median).
+    - Tuple (soft_threshold, pure_threshold, politicaITA_benchmark_median for audit).
     """
-    benchmark = float(subreddit_stats.get("politicaITA", {}).get("median_political_rate_100w", 0.0))
-    multiplier = float(screening.get("forum_political_rate_multiplier_vs_politicaita", 0.25))
-    threshold = max(0.5, benchmark * multiplier) if benchmark > 0 else 0.5
-    return threshold, benchmark
+    del subreddit_stats
+    soft_tau, pure_tau = forum_political_thresholds(screening)
+    benchmark = 0.0
+    return soft_tau, pure_tau, benchmark
 
 
 def collect_subreddit_political_stats(
     interim_dir: Path,
     subreddit: str,
     meta_row: Dict[str, str],
+    parallel_csv: Path,
 ) -> Dict[str, float]:
     """Function summary: aggregate political lexicon stats for one subreddit.
 
@@ -149,47 +190,64 @@ def collect_subreddit_political_stats(
     - interim_dir: interim root.
     - subreddit: subreddit name.
     - meta_row: metadata with primary_lexicon.
+    - parallel_csv: graded parallel political lexicon CSV path.
 
     Returns:
     - Dict with hit/word counts and rate metrics.
     """
+    lex_lang = meta_row["primary_lexicon"]
     shard_dir = interim_dir / "cleaned_monthly_chunks" / subreddit
     if not shard_dir.exists():
         return {
+            "primary_lexicon": lex_lang,
             "total_hits": 0,
             "total_words": 0,
             "n_comments": 0,
             "n_comments_with_hits": 0,
+            "n_shards_read": 0,
+            "n_shards_skipped": 0,
             "median_political_rate_100w": 0.0,
             "mean_political_rate_100w": 0.0,
             "word_weighted_political_rate_100w": 0.0,
             "comment_hit_share": 0.0,
         }
 
-    lex_lang = meta_row["primary_lexicon"]
     rates: List[float] = []
-    total_hits = 0
+    total_points = 0
     total_words = 0
     n_with_hits = 0
+    n_shards_read = 0
+    n_shards_skipped = 0
 
     for shard in sorted(shard_dir.glob("*.parquet")):
-        df = pd.read_parquet(shard, columns=["body"])
+        df = read_parquet_shard_safe(shard, columns=["body"])
+        if df is None or df.empty:
+            n_shards_skipped += 1
+            continue
+        n_shards_read += 1
         for body in df["body"].astype(str).tolist():
-            hits, nw = count_political_hits(body, lex_lang, PROJECT_ROOT)
-            total_hits += hits
+            scored = score_comment_political_salience(
+                body, lex_lang, PROJECT_ROOT, csv_path=parallel_csv
+            )
+            points = int(scored["political_weighted_points"])
+            nw = int(scored["n_words"])
+            total_points += points
             total_words += nw
-            rate = political_rate_100w(hits, nw)
+            rate = political_rate_100w(points, nw)
             rates.append(rate)
-            if hits > 0:
+            if points > 0:
                 n_with_hits += 1
 
     n_comments = len(rates)
     if n_comments == 0:
         return {
-            "total_hits": 0,
+            "primary_lexicon": lex_lang,
+            "total_weighted_points": 0,
             "total_words": 0,
             "n_comments": 0,
             "n_comments_with_hits": 0,
+            "n_shards_read": n_shards_read,
+            "n_shards_skipped": n_shards_skipped,
             "median_political_rate_100w": 0.0,
             "mean_political_rate_100w": 0.0,
             "word_weighted_political_rate_100w": 0.0,
@@ -198,13 +256,16 @@ def collect_subreddit_political_stats(
 
     series = pd.Series(rates)
     return {
-        "total_hits": total_hits,
+        "primary_lexicon": lex_lang,
+        "total_weighted_points": total_points,
         "total_words": total_words,
         "n_comments": n_comments,
         "n_comments_with_hits": n_with_hits,
+        "n_shards_read": n_shards_read,
+        "n_shards_skipped": n_shards_skipped,
         "median_political_rate_100w": float(series.median()),
         "mean_political_rate_100w": float(series.mean()),
-        "word_weighted_political_rate_100w": political_rate_100w(total_hits, total_words),
+        "word_weighted_political_rate_100w": political_rate_100w(total_points, total_words),
         "comment_hit_share": n_with_hits / n_comments,
     }
 
@@ -228,39 +289,38 @@ def assign_topics(
     """
     overrides = load_topic_overrides(metadata)
     base_map = subreddit_topic_map(config, include_topic_aliases=False)
-    sub_to_family = subreddit_family_map(config, include_family_aliases=False)
-    threshold, benchmark = compute_political_threshold(subreddit_stats, screening)
-
-    meta_lists = {
-        "it_nsfw_sensitivity": set(metadata.get("nsfw_subreddits", []) or []),
-        "it_meme_humor": set(metadata.get("meme_humor_subreddits", []) or []),
-        "it_creator_celebrity": set(metadata.get("creator_celebrity_subreddits", []) or []),
-    }
+    soft_tau, pure_tau, benchmark = compute_political_thresholds(subreddit_stats, screening)
+    italian_arms = italian_arms_for_langid(config)
+    arms = subreddit_arm_map(config)
 
     assignments: Dict[str, Dict[str, Any]] = {}
     for subreddit in resolve_primary_subreddits(config):
         stats = subreddit_stats.get(subreddit, {})
-        median_rate = float(stats.get("median_political_rate_100w", 0.0))
+        ww_rate = float(stats.get("word_weighted_political_rate_100w", 0.0))
 
         if subreddit in overrides:
             assignments[subreddit] = {
                 "topic": overrides[subreddit],
                 "assignment_source": "metadata_override",
-                "political_threshold": threshold,
+                "political_soft_threshold": soft_tau,
+                "political_pure_threshold": pure_tau,
+                "political_threshold": pure_tau,
                 "politicaITA_benchmark_median": benchmark,
-                "assignment_metric_used": "median",
+                "assignment_metric_used": "word_weighted",
             }
             continue
 
-        family = sub_to_family.get(subreddit, "italian")
-        if family != "italian":
+        arm = arms.get(subreddit, "")
+        if arm not in italian_arms:
             topic = base_map.get(subreddit, infer_subreddit_topic(config, subreddit, metadata=metadata))
             assignments[subreddit] = {
                 "topic": topic,
                 "assignment_source": "config_control",
-                "political_threshold": threshold,
+                "political_soft_threshold": soft_tau,
+                "political_pure_threshold": pure_tau,
+                "political_threshold": pure_tau,
                 "politicaITA_benchmark_median": benchmark,
-                "assignment_metric_used": "median",
+                "assignment_metric_used": "word_weighted",
             }
             continue
 
@@ -268,34 +328,32 @@ def assign_topics(
             assignments[subreddit] = {
                 "topic": base_map[subreddit],
                 "assignment_source": "config_topic_list",
-                "political_threshold": threshold,
+                "political_soft_threshold": soft_tau,
+                "political_pure_threshold": pure_tau,
+                "political_threshold": pure_tau,
                 "politicaITA_benchmark_median": benchmark,
-                "assignment_metric_used": "median",
+                "assignment_metric_used": "word_weighted",
             }
             continue
 
-        if subreddit in meta_lists["it_nsfw_sensitivity"]:
-            topic = "it_nsfw_sensitivity"
-            source = "metadata_special_list"
-        elif subreddit in meta_lists["it_meme_humor"]:
-            topic = "it_meme_humor"
-            source = "metadata_special_list"
-        elif subreddit in meta_lists["it_creator_celebrity"]:
-            topic = "it_creator_celebrity"
-            source = "metadata_special_list"
-        elif median_rate >= threshold:
+        if ww_rate >= pure_tau:
+            topic = "it_pure_political"
+            source = "auto_lexicon_pure"
+        elif ww_rate >= soft_tau:
             topic = "it_political"
-            source = "auto_lexicon"
+            source = "auto_lexicon_soft"
         else:
-            topic = "it_general"
+            topic = "it_others"
             source = "auto_lexicon"
 
         assignments[subreddit] = {
             "topic": topic,
             "assignment_source": source,
-            "political_threshold": threshold,
+            "political_soft_threshold": soft_tau,
+            "political_pure_threshold": pure_tau,
+            "political_threshold": pure_tau,
             "politicaITA_benchmark_median": benchmark,
-            "assignment_metric_used": "median",
+            "assignment_metric_used": "word_weighted",
         }
     return assignments
 
@@ -322,52 +380,52 @@ def build_political_audit_rows(
         stats = subreddit_stats.get(subreddit, {})
         topic = info["topic"]
         source = info["assignment_source"]
-        threshold = float(info["political_threshold"])
+        soft_tau = float(info.get("political_soft_threshold", info.get("political_threshold", 0.35)))
+        pure_tau = float(info.get("political_pure_threshold", info.get("political_threshold", 0.7)))
         median_r = float(stats.get("median_political_rate_100w", 0.0))
         mean_r = float(stats.get("mean_political_rate_100w", 0.0))
         ww_r = float(stats.get("word_weighted_political_rate_100w", 0.0))
         hit_share = float(stats.get("comment_hit_share", 0.0))
 
-        is_political_topic = topic in POLITICAL_TOPICS
-        high_score = median_r >= threshold or mean_r >= threshold or ww_r >= threshold
-        low_score = median_r < threshold and mean_r < threshold
-
-        high_score_non_political = (not is_political_topic) and high_score and topic not in SPECIAL_TOPICS
-        low_score_political = is_political_topic and low_score
-        informational_seed_low = (
-            source in ("metadata_override", "config_topic_list") and low_score_political
+        high_score_non_political = topic == "it_others" and ww_r >= soft_tau
+        low_score_political = (
+            topic == "it_pure_political" and ww_r < pure_tau
+        ) or (
+            topic == "it_political" and ww_r < soft_tau
         )
-        special_topic_high = topic in SPECIAL_TOPICS and high_score
+        informational_seed_low = False
+        special_topic_high = False
 
         note_parts: List[str] = []
         if high_score_non_political:
+            if ww_r >= pure_tau:
+                note_parts.append(
+                    f"Assigned {topic} via {source} but ww={ww_r:.2f} ≥ pure {pure_tau:.2f} "
+                    f"— consider it_pure_political."
+                )
+            else:
+                note_parts.append(
+                    f"Assigned {topic} via {source} but ww={ww_r:.2f} ≥ soft {soft_tau:.2f} "
+                    f"— consider it_political."
+                )
+        elif low_score_political:
             note_parts.append(
-                f"Assigned {topic} via {source} but lexicon rates (med={median_r:.2f}, "
-                f"ww={ww_r:.2f}) ≥ threshold {threshold:.2f} — consider it_political."
-            )
-        elif informational_seed_low:
-            note_parts.append(
-                f"Seeded {topic} ({source}) with low lexicon (med={median_r:.2f}) — expected manual seed."
-            )
-        elif low_score_political and not informational_seed_low:
-            note_parts.append(
-                f"Labeled {topic} but median={median_r:.2f} and mean={mean_r:.2f} below threshold {threshold:.2f}."
-            )
-        elif special_topic_high:
-            note_parts.append(
-                f"Special topic {topic} with elevated political lexicon (ww={ww_r:.2f}) — informational."
+                f"Labeled {topic} but ww={ww_r:.2f} below applicable cutoff "
+                f"(soft={soft_tau:.2f}, pure={pure_tau:.2f})."
             )
         else:
             note_parts.append(f"Topic {topic} ({source}) consistent with lexicon scores.")
 
-        family = topic_to_family.get(topic, sub_to_family.get(subreddit, "italian"))
+        family = topic_to_family.get(topic, sub_to_family.get(subreddit, "it_others"))
         rows.append(
             {
                 "subreddit": subreddit,
                 "topic": topic,
                 "topic_family": family,
                 "assignment_source": source,
-                "political_threshold": round(threshold, 4),
+                "political_soft_threshold": round(soft_tau, 4),
+                "political_pure_threshold": round(pure_tau, 4),
+                "political_threshold": round(pure_tau, 4),
                 "politicaITA_benchmark_median": round(float(info["politicaITA_benchmark_median"]), 4),
                 "median_political_rate_100w": round(median_r, 4),
                 "mean_political_rate_100w": round(mean_r, 4),
@@ -391,6 +449,7 @@ def enrich_dataframe(
     topic_family: str,
     screening_row: Dict[str, Any],
     screening: Dict[str, Any],
+    parallel_csv: Path,
 ) -> pd.DataFrame:
     """Function summary: add enrichment columns and thread roll-ups to one month dataframe.
 
@@ -402,12 +461,17 @@ def enrich_dataframe(
     - topic_family: topic family name.
     - screening_row: pooled screening record.
     - screening: screening config.
+    - parallel_csv: graded parallel political lexicon CSV path.
 
     Returns:
     - Enriched dataframe.
     """
     enrich_cols = [
         "political_lexicon_hits",
+        "political_g1_hits",
+        "political_g2_hits",
+        "political_g3_hits",
+        "political_weighted_points",
         "n_words",
         "political_rate_100w",
         "lang_comment",
@@ -420,24 +484,38 @@ def enrich_dataframe(
         "volume_band",
         "analysis_tier",
         "exclusion_code",
+        "thread_political_weighted_points",
         "thread_political_rate_100w",
         "thread_is_political",
     ]
     out = df.drop(columns=[c for c in enrich_cols if c in df.columns], errors="ignore").copy()
     lex_lang = meta_row["primary_lexicon"]
-    hits: List[int] = []
+    g1_list: List[int] = []
+    g2_list: List[int] = []
+    g3_list: List[int] = []
+    points_list: List[int] = []
     n_words_list: List[int] = []
     lang_comments: List[str] = []
     for body in out["body"].astype(str).tolist():
-        h, nw = count_political_hits(body, lex_lang, PROJECT_ROOT)
-        hits.append(h)
-        n_words_list.append(nw)
+        scored = score_comment_political_salience(
+            body, lex_lang, PROJECT_ROOT, csv_path=parallel_csv
+        )
+        g1_list.append(int(scored["political_g1_hits"]))
+        g2_list.append(int(scored["political_g2_hits"]))
+        g3_list.append(int(scored["political_g3_hits"]))
+        points = int(scored["political_weighted_points"])
+        points_list.append(points)
+        n_words_list.append(int(scored["n_words"]))
         lang, _ = langid.classify(body)
         lang_comments.append(lang)
-    out["political_lexicon_hits"] = hits
+    out["political_g1_hits"] = g1_list
+    out["political_g2_hits"] = g2_list
+    out["political_g3_hits"] = g3_list
+    out["political_weighted_points"] = points_list
+    out["political_lexicon_hits"] = points_list
     out["n_words"] = n_words_list
     out["political_rate_100w"] = [
-        political_rate_100w(h, nw) for h, nw in zip(hits, n_words_list, strict=True)
+        political_rate_100w(p, nw) for p, nw in zip(points_list, n_words_list, strict=True)
     ]
     out["lang_comment"] = lang_comments
     out["thread_id"] = out["link_id"].astype(str)
@@ -452,29 +530,66 @@ def enrich_dataframe(
     out["volume_band"] = volume_band
     out["exclusion_code"] = str(screening_row.get("exclusion_codes", "")) or pd.NA
 
-    tau = float(screening["thread_political_rate_threshold"])
-    min_hits = int(screening["thread_political_min_hits"])
+    min_points = int(screening.get("thread_political_min_points", 3))
     thread_stats = (
         out.groupby("thread_id", as_index=False)
         .agg(
-            thread_political_hits=("political_lexicon_hits", "sum"),
+            thread_political_weighted_points=("political_weighted_points", "sum"),
             thread_n_words=("n_words", "sum"),
         )
     )
     thread_stats["thread_political_rate_100w"] = thread_stats.apply(
-        lambda r: political_rate_100w(int(r["thread_political_hits"]), int(r["thread_n_words"])),
+        lambda r: political_rate_100w(
+            int(r["thread_political_weighted_points"]), int(r["thread_n_words"])
+        ),
         axis=1,
     )
     thread_stats["thread_is_political"] = (
-        (thread_stats["thread_political_rate_100w"] >= tau)
-        | (thread_stats["thread_political_hits"] >= min_hits)
+        thread_stats["thread_political_weighted_points"] >= min_points
     )
     out = out.merge(
-        thread_stats[["thread_id", "thread_political_rate_100w", "thread_is_political"]],
+        thread_stats[
+            [
+                "thread_id",
+                "thread_political_weighted_points",
+                "thread_political_rate_100w",
+                "thread_is_political",
+            ]
+        ],
         on="thread_id",
         how="left",
     )
     return out
+
+
+def warn_zero_ww_control_forums(
+    subreddit_stats: Dict[str, Dict[str, Any]],
+    interim_dir: Path,
+) -> None:
+    """Function summary: log warnings when control forums have shards but zero word-weighted political rate.
+
+    Parameters:
+    - subreddit_stats: per-subreddit aggregates from collect_subreddit_political_stats.
+    - interim_dir: interim data root.
+
+    Returns:
+    - None.
+    """
+    for subreddit in CONTROL_SUBREDDITS_WARN_ZERO_WW:
+        stats = subreddit_stats.get(subreddit, {})
+        ww = float(stats.get("word_weighted_political_rate_100w", 0.0))
+        n_comments = int(stats.get("n_comments", 0))
+        shard_dir = interim_dir / "cleaned_monthly_chunks" / subreddit
+        if not shard_dir.is_dir():
+            continue
+        if n_comments > 0 and ww <= 0.0:
+            print(
+                f"[enrich_cleaned_chunks] WARN zero_ww subreddit={subreddit} "
+                f"lexicon={stats.get('primary_lexicon', '')} "
+                f"n_comments={n_comments} shards_read={stats.get('n_shards_read', 0)} "
+                f"shards_skipped={stats.get('n_shards_skipped', 0)}",
+                flush=True,
+            )
 
 
 def thread_political_share_from_enriched(enriched: pd.DataFrame) -> List[bool]:
@@ -500,40 +615,49 @@ def main() -> None:
     interim_dir = Path(config["paths"]["interim_dir"])
     tables_dir = Path(config["paths"]["tables_dir"])
     screening_df = load_screening_pooled(tables_dir)
-    screening_by_sub = {str(r["subreddit"]): r for r in screening_df.to_dict(orient="records")}
-
-    if args.prune_family_copies:
-        family_dir = interim_dir / "cleaned_monthly_by_family"
-        if family_dir.is_dir():
-            import shutil
-
-            shutil.rmtree(family_dir)
-            print(f"[enrich_cleaned_chunks] removed {family_dir}", flush=True)
+    screening_by_sub = screening_by_subreddit(screening_df)
 
     metadata = load_subreddit_metadata(config, project_root=PROJECT_ROOT)
     meta_table = build_subreddit_metadata_table(config, project_root=PROJECT_ROOT)
     sub_to_family = subreddit_family_map(config, include_family_aliases=False)
+    parallel_csv = parallel_political_lexicon_path(config, project_root=PROJECT_ROOT)
 
+    subreddits = resolve_primary_subreddits(config)
     subreddit_stats: Dict[str, Dict[str, float]] = {}
-    for subreddit in resolve_primary_subreddits(config):
-        screen_row = screening_by_sub.get(subreddit, {})
-        action = str(screen_row.get("action", ""))
-        if action in ("excluded", "exclude_analysis") and not args.include_excluded:
+    print(f"[enrich_cleaned_chunks] phase=collect_political_stats subreddits={len(subreddits)}", flush=True)
+    for idx, subreddit in enumerate(subreddits, start=1):
+        action = subreddit_screening_action(screening_by_sub, subreddit)
+        if should_skip_screened_subreddit(action, include_excluded=args.include_excluded):
             continue
+        print(
+            f"[enrich_cleaned_chunks] stats_start {idx}/{len(subreddits)} subreddit={subreddit}",
+            flush=True,
+        )
         subreddit_stats[subreddit] = collect_subreddit_political_stats(
-            interim_dir, subreddit, meta_table[subreddit]
+            interim_dir, subreddit, meta_table[subreddit], parallel_csv
+        )
+        st = subreddit_stats[subreddit]
+        print(
+            f"[enrich_cleaned_chunks] stats_done subreddit={subreddit} "
+            f"lexicon={st.get('primary_lexicon', '')} ww={st.get('word_weighted_political_rate_100w', 0):.4f} "
+            f"n_comments={st.get('n_comments', 0)} shards_read={st.get('n_shards_read', 0)} "
+            f"shards_skipped={st.get('n_shards_skipped', 0)}",
+            flush=True,
         )
 
+    warn_zero_ww_control_forums(subreddit_stats, interim_dir)
+
+    print("[enrich_cleaned_chunks] phase=assign_topics", flush=True)
     assignments = assign_topics(config, subreddit_stats, screening, metadata)
     topic_to_family = topic_family_map(config, include_family_aliases=False)
-    family_month_parts: Dict[tuple[str, str], List[pd.DataFrame]] = defaultdict(list)
     thread_political_by_sub: Dict[str, List[bool]] = defaultdict(list)
 
-    for subreddit in resolve_primary_subreddits(config):
-        screen_row = screening_by_sub.get(subreddit, {})
-        action = str(screen_row.get("action", ""))
-        if action in ("excluded", "exclude_analysis") and not args.include_excluded:
+    print("[enrich_cleaned_chunks] phase=enrich_shards", flush=True)
+    for idx, subreddit in enumerate(subreddits, start=1):
+        action = subreddit_screening_action(screening_by_sub, subreddit)
+        if should_skip_screened_subreddit(action, include_excluded=args.include_excluded):
             continue
+        screen_row = screening_by_sub.get(subreddit, {})
         shard_dir = interim_dir / "cleaned_monthly_chunks" / subreddit
         if not shard_dir.exists():
             continue
@@ -542,10 +666,18 @@ def main() -> None:
             "topic", infer_subreddit_topic(config, subreddit, metadata=metadata)
         )
         if isinstance(topic, dict):
-            topic = topic.get("topic", "it_general")
-        family = topic_to_family.get(str(topic), sub_to_family.get(subreddit, "italian"))
-        for shard in sorted(shard_dir.glob("*.parquet")):
-            df = pd.read_parquet(shard)
+            topic = topic.get("topic", "it_others")
+        family = topic_to_family.get(str(topic), sub_to_family.get(subreddit, "it_others"))
+        shards = sorted(shard_dir.glob("*.parquet"))
+        print(
+            f"[enrich_cleaned_chunks] enrich_start {idx}/{len(subreddits)} "
+            f"subreddit={subreddit} topic={topic} shards={len(shards)}",
+            flush=True,
+        )
+        for shard in shards:
+            df = read_parquet_shard_safe(shard)
+            if df is None or df.empty:
+                continue
             enriched = enrich_dataframe(
                 df=df,
                 subreddit=subreddit,
@@ -554,17 +686,18 @@ def main() -> None:
                 topic_family=family,
                 screening_row=screen_row,
                 screening=screening,
+                parallel_csv=parallel_csv,
             )
             enriched.to_parquet(shard, index=False, engine="pyarrow", compression="snappy")
             thread_political_by_sub[subreddit].extend(thread_political_share_from_enriched(enriched))
-            if args.write_by_family:
-                family_month_parts[(family, shard.stem)].append(enriched)
+        print(f"[enrich_cleaned_chunks] enrich_done subreddit={subreddit}", flush=True)
 
+    print("[enrich_cleaned_chunks] phase=write_tables", flush=True)
     assignment_rows: List[Dict[str, Any]] = []
     profile_rows: List[Dict[str, Any]] = []
     for subreddit, info in assignments.items():
         topic = str(info["topic"])
-        family = topic_to_family.get(topic, sub_to_family.get(subreddit, "italian"))
+        family = topic_to_family.get(topic, sub_to_family.get(subreddit, "it_others"))
         stats = subreddit_stats.get(subreddit, {})
         screen_row = screening_by_sub.get(subreddit, {})
         flags = thread_political_by_sub.get(subreddit, [])
@@ -575,6 +708,8 @@ def main() -> None:
                 "topic": topic,
                 "topic_family": family,
                 "assignment_source": info["assignment_source"],
+                "political_soft_threshold": round(float(info["political_soft_threshold"]), 4),
+                "political_pure_threshold": round(float(info["political_pure_threshold"]), 4),
                 "political_threshold": round(float(info["political_threshold"]), 4),
                 "politicaITA_benchmark_median": round(float(info["politicaITA_benchmark_median"]), 4),
                 "assignment_metric_used": info["assignment_metric_used"],
@@ -588,7 +723,10 @@ def main() -> None:
                 "subreddit": subreddit,
                 "topic": topic,
                 "topic_family": family,
+                "primary_lexicon": str(stats.get("primary_lexicon", meta_table.get(subreddit, {}).get("primary_lexicon", ""))),
                 "assignment_source": info["assignment_source"],
+                "political_soft_threshold": round(float(info["political_soft_threshold"]), 4),
+                "political_pure_threshold": round(float(info["political_pure_threshold"]), 4),
                 "median_political_rate_100w": round(
                     float(stats.get("median_political_rate_100w", 0.0)), 4
                 ),
@@ -600,6 +738,7 @@ def main() -> None:
                 ),
                 "comment_hit_share": round(float(stats.get("comment_hit_share", 0.0)), 4),
                 "thread_political_share": round(thread_share, 4),
+                "n_comments_stats": int(stats.get("n_comments", 0)),
                 "volume_band": screen_row.get("volume_band", screen_row.get("analysis_tier", "")),
                 "action": screen_row.get("action", ""),
             }
@@ -624,18 +763,10 @@ def main() -> None:
             out_dir / "subreddit_topic_political_mismatches.csv", index=False
         )
 
-    if args.write_by_family:
-        for (family, year_month), parts in family_month_parts.items():
-            target_dir = interim_dir / "cleaned_monthly_by_family" / family
-            target_dir.mkdir(parents=True, exist_ok=True)
-            pd.concat(parts, ignore_index=True).to_parquet(
-                target_dir / f"{year_month}.parquet",
-                index=False,
-                engine="pyarrow",
-                compression="snappy",
-            )
-
     print("[enrich_cleaned_chunks] done", flush=True)
+
+    if not args.skip_pipeline_plots:
+        run_cleaning_pipeline_plots_if_ready(args.config)
 
 
 if __name__ == "__main__":

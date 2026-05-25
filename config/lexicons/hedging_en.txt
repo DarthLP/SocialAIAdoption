@@ -1,0 +1,15 @@
+# English hedging phrases (substring match, lowercase body)
+may not be
+might not be
+could be
+possibly
+perhaps
+likely that
+it seems
+appears to
+generally speaking
+in many cases
+to some extent
+not necessarily
+tends to
+often the case

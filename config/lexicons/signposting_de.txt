@@ -1,0 +1,13 @@
+# German signposting phrases
+erstens
+zweitens
+drittens
+andererseits
+mit anderen worten
+zusammenfassend
+kurz gesagt
+kurze antwort
+lange antwort
+meiner meinung nach
+insgesamt
+im kurzen

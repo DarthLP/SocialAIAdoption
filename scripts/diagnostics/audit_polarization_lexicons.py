@@ -28,26 +28,27 @@ BENCHMARKS = [
     ("Italia", "it"),
     ("Ask_Politics", "en"),
     ("de", "de"),
-    ("spain", "es"),
 ]
 
 
-def _resolve_project_root() -> Path:
-    """Function summary: load scripts/_project_root.py and return repository root Path."""
-    scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod", scripts_dir / "_project_root.py"
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import load_config  # noqa: E402
 from src.political_lexicon import (  # noqa: E402
@@ -77,7 +78,7 @@ def term_counts_table(project_root: Path) -> pd.DataFrame:
     - Summary dataframe.
     """
     rows: List[Dict[str, Any]] = []
-    for lang in ("it", "en", "de", "es"):
+    for lang in ("it", "en", "de"):
         for name in LEXICON_NAMES:
             lex = get_categorized_lexicon(project_root, lang, name)
             for cat, (singles, phrases) in lex.items():

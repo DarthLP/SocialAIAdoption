@@ -7,7 +7,7 @@ window) by enforcing temporal co-activity: author X is only counted if, on at
 least one specific UTC date, X commented in at least two distinct subreddits.
 
 Functionality:
-- Recursively scans `data/interim/political_forums/cleaned_monthly_chunks/<subreddit>/*.parquet`.
+- Recursively scans `paths.interim_dir/cleaned_monthly_chunks/<subreddit>/*.parquet`.
 - For each comment, builds a mapping (author, utc_date) -> set of subreddits.
 - Optionally excludes removed accounts (`[deleted]`) and known bot accounts.
 - Reports:
@@ -21,7 +21,7 @@ Functionality:
     * `user_same_day_cross_forum_pairwise.csv`
 
 How to run:
-- `.venv/bin/python scripts/diagnostics/user_same_day_cross_forum.py --config config/political_forums_setup.yaml`
+- `.venv/bin/python scripts/diagnostics/user_same_day_cross_forum.py --config config/italy_polarization_setup.yaml`
 - Add `--include-deleted` to count `[deleted]` as a pseudo-user.
 - Add `--include-bots` to keep known bot accounts.
 """
@@ -40,23 +40,24 @@ from pathlib import Path
 import importlib.util
 from typing import Dict, Iterable, Set, Tuple
 
-def _resolve_project_root() -> Path:
-    """Load scripts/_project_root.py and return the repository root Path."""
-    _scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod",
-        _scripts_dir / "_project_root.py",
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import load_config
 
@@ -81,7 +82,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--config",
-        default="config/political_forums_setup.yaml",
+        default="config/italy_polarization_setup.yaml",
         help="Path to project YAML config.",
     )
     parser.add_argument(

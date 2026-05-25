@@ -3,7 +3,6 @@ government
 parliament
 congress
 senate
-house
 president
 vice president
 prime minister
@@ -30,7 +29,6 @@ senator
 representative
 mp
 mps
-party
 parties
 coalition
 majority
@@ -45,7 +43,6 @@ conservative
 tories
 liberal
 liberals
-green
 greens
 independence
 brexit
@@ -53,9 +50,7 @@ immigration
 migrant
 migrants
 border
-eu
 european union
-european
 union
 nato
 war
@@ -63,12 +58,8 @@ ukraine
 russia
 inflation
 economy
-budget
-debt
 welfare
 healthcare
-education
-climate
 energy
 tax
 taxes
@@ -126,7 +117,6 @@ state department
 pentagon
 cia
 fbi
-sanctions
 tariff
 trade war
 inflation reduction
@@ -148,11 +138,8 @@ ecb
 eurozone
 sovereignty
 devolution
-scotland
-wales
 northern ireland
 good friday
-protocol
 human rights
 asylum
 refugee
@@ -167,7 +154,6 @@ disinformation
 media bias
 press freedom
 whistleblower
-transparency
 corruption
 lobbyist
 campaign finance

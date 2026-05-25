@@ -16,9 +16,9 @@ Functionality:
 
 How to apply/run:
 - Heuristic-only sampled robustness:
-  `.venv/bin/python scripts/diagnostics/run_llm_detector_sample.py --config config/political_forums_setup.yaml`
+  `.venv/bin/python scripts/archive/diagnostics/run_llm_detector_sample.py --config config/archive/ai_adoption_political_forums_setup.yaml`
 - Heuristic + optional HF classifier:
-  `.venv/bin/python scripts/diagnostics/run_llm_detector_sample.py --config config/political_forums_setup.yaml --use_hf_model`
+  `.venv/bin/python scripts/archive/diagnostics/run_llm_detector_sample.py --config config/archive/ai_adoption_political_forums_setup.yaml --use_hf_model`
 """
 
 from __future__ import annotations
@@ -35,23 +35,24 @@ from typing import Any, Dict, Iterable
 
 import pandas as pd
 
-def _resolve_project_root() -> Path:
-    """Load scripts/_project_root.py and return the repository root Path."""
-    _scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod",
-        _scripts_dir / "_project_root.py",
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import load_config, utc_ts
 
@@ -85,7 +86,7 @@ AI_WORDS = {
 def parse_args() -> argparse.Namespace:
     """Function summary: parse CLI options for sampling behavior and optional model usage."""
     parser = argparse.ArgumentParser(description="Run optional sampled LLM detector checks.")
-    parser.add_argument("--config", type=str, default="config/political_forums_setup.yaml")
+    parser.add_argument("--config", type=str, default="config/archive/ai_adoption_political_forums_setup.yaml")
     parser.add_argument("--sample_per_day_subreddit", type=int, default=200)
     parser.add_argument("--seed", type=int, default=20260423)
     parser.add_argument(

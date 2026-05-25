@@ -1,0 +1,251 @@
+# v4 valence export (dominant) from italian_political_lexicon_v4.csv
+negative:allarmismo climatico
+negative:antifa
+negative:antipolitica
+negative:assistenzialismo
+negative:austerità imposta
+negative:bamboccioni
+negative:bicameralismo perfetto
+negative:bruxelles
+negative:buonismo
+negative:capitalismo selvaggio
+negative:caporalato
+negative:casta
+negative:catastrofismo
+negative:cessione di sovranità
+negative:choosy
+negative:clandestini
+negative:complottismo
+negative:condono
+negative:costo del lavoro
+negative:cpr
+negative:criminalità organizzata
+negative:crisi climatica
+negative:cultura della cancellazione
+negative:cuneo fiscale
+negative:ddl eco-vandali
+negative:deindustrializzazione
+negative:delocalizzazione
+negative:disagio sociale
+negative:disinformazione
+negative:dittatura sanitaria
+negative:divani
+negative:eco-vandali
+negative:emergenza ambientale
+negative:emergenza climatica
+negative:emergenza migratoria
+negative:energia intermittente
+negative:esclusione sociale
+negative:esproprio
+negative:fake news
+negative:falsi richiedenti asilo
+negative:fascisti
+negative:femminicidio
+negative:foibe
+negative:fuga dal lavoro
+negative:governo tecnico
+negative:grandi opere inutili
+negative:guerra all'automobile
+negative:guerra civile
+negative:ideologia gender
+negative:ideologia green
+negative:immigrati irregolari
+negative:immigrazionisti
+negative:inciucio
+negative:inquinamento
+negative:invasione
+negative:islamizzazione
+negative:larghe intese
+negative:lasciapassare
+negative:legge bavaglio
+negative:libera circolazione
+negative:mafia
+negative:mainstream
+negative:mancia di stato
+negative:mascolinità tossica
+negative:memorandum italia-libia
+negative:multinazionali
+negative:nazionalismo
+negative:negazionisti climatici
+negative:neo-fascisti
+negative:neoliberismo
+negative:nomenklatura
+negative:nullafacenti
+negative:omofobia
+negative:omotransfobia
+negative:ong scafiste
+negative:palazzo
+negative:partitocrazia
+negative:patriarcato
+negative:persecuzione fiscale
+negative:piano kalergi
+negative:pizzo di stato
+negative:politichese
+negative:populismo
+negative:poteri forti
+negative:precariato
+negative:precarizzazione
+negative:razzismo di stato
+negative:razzismo strutturale
+negative:regime
+negative:secessione fiscale
+negative:sfruttamento
+negative:siero sperimentale
+negative:sistema
+negative:soppressione del nascituro
+negative:sostituzione etnica
+negative:sovranismo
+negative:spread
+negative:squadrismo
+negative:stampa di regime
+negative:sussidio statale
+negative:tangentopoli
+negative:tassa regressiva
+negative:tassazione punitiva
+negative:taxi del mare
+negative:teatrino
+negative:toghe rosse
+negative:transfobia
+negative:trivelle
+negative:troika
+negative:utero in affitto
+negative:vaffa
+negative:vincoli al mercato
+negative:xenofobia
+neutral:18app
+neutral:autonomia differenziata
+neutral:bossi-fini
+neutral:cassa integrazione
+neutral:classe politica
+neutral:coppia di fatto
+neutral:decreti sicurezza
+neutral:eni
+neutral:espulsioni di massa
+neutral:fit for 55
+neutral:flussi migratori
+neutral:fratelli d'italia
+neutral:frontex
+neutral:gestazione per altri
+neutral:giudici
+neutral:governo
+neutral:governo di unità
+neutral:green deal
+neutral:green pass
+neutral:hotspot
+neutral:ilva
+neutral:interruzione di gravidanza
+neutral:interventismo
+neutral:irpef
+neutral:ius sanguinis
+neutral:ius scholae
+neutral:iva
+neutral:jobs act
+neutral:lampedusa
+neutral:lega
+neutral:legge 194
+neutral:legge cirinnà
+neutral:m5s
+neutral:maggioritario
+neutral:mani pulite
+neutral:mes
+neutral:migranti
+neutral:naspi
+neutral:nato
+neutral:obbligo vaccinale
+neutral:omicidio
+neutral:opinione
+neutral:otto per mille
+neutral:patrimoniale
+neutral:piano mattei
+neutral:pnrr
+neutral:premierato
+neutral:protezionismo
+neutral:quota 100 (legge)
+neutral:riarmo
+neutral:richiedenti asilo
+neutral:rimpatri assistiti
+neutral:sanità di stato
+neutral:sbarchi
+neutral:spese militari
+neutral:superbonus 110%
+neutral:tasse
+neutral:vincoli di bilancio
+neutral:voucher lavoro
+neutral:élite
+positive:25 aprile
+positive:accoglienza
+positive:ammortizzatori sociali
+positive:antifascismo
+positive:antimafia
+positive:articolo 18
+positive:assegno unico
+positive:atlantismo
+positive:attivisti climatici
+positive:autonomia regionale
+positive:bonus 80 euro
+positive:cittadini onesti
+positive:classe lavoratrice
+positive:contratto a tutele crescenti
+positive:cooperazione europea
+positive:corridoi umanitari
+positive:ddl zan
+positive:decarbonizzazione
+positive:decoro urbano
+positive:democrazia diretta
+positive:democrazia rappresentativa
+positive:diritti civili
+positive:disarmo
+positive:europeismo
+positive:famiglia naturale
+positive:flat tax
+positive:flessibilità
+positive:fridays for future
+positive:garantismo
+positive:giustizia climatica
+positive:giustizialismo
+positive:integrazione
+positive:integrazione europea
+positive:italexit
+positive:italiani prima
+positive:ius soli
+positive:laicità
+positive:legalità
+positive:legge e ordine
+positive:libertà di stampa
+positive:lotta all'evasione
+positive:mare nostrum
+positive:merito
+positive:mobilità sostenibile
+positive:nazione
+positive:nextgenerationeu
+positive:onestà
+positive:ong umanitarie
+positive:pace fiscale
+positive:pacifismo
+positive:patria
+positive:patriottismo
+positive:presidenzialismo
+positive:profughi
+positive:progressività fiscale
+positive:proletariato
+positive:quota 100
+positive:reddito di cittadinanza
+positive:resistenza
+positive:rinnovabili
+positive:salario minimo
+positive:salvataggio in mare
+positive:sanità pubblica
+positive:scuola pubblica
+positive:scuole paritarie
+positive:solidarietà
+positive:sovranità
+positive:sovranità energetica
+positive:tav
+positive:transizione ecologica
+positive:tutele del lavoro
+positive:ultima generazione
+positive:unione europea
+positive:unioni civili
+positive:uno vale uno
+positive:vaccino
+positive:valori cristiani

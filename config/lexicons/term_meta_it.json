@@ -1,0 +1,3255 @@
+{
+  "source": "italian_political_lexicon_v4.csv",
+  "terms": {
+    "migranti": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 1
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "clandestini": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "profughi": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "immigrati irregolari": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "richiedenti asilo": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "falsi richiedenti asilo": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 0,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "accoglienza": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "invasione": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "integrazione": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "sostituzione etnica": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 0,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "ius soli": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "ius sanguinis": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 2,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "salvataggio in mare": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "taxi del mare": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "ong umanitarie": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "ong scafiste": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 0,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "rimpatri assistiti": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "espulsioni di massa": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 2,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "corridoi umanitari": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "libera circolazione": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 0,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "precariato": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "flessibilità": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "tutele del lavoro": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "vincoli al mercato": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "articolo 18": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "contratto a tutele crescenti": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "salario minimo": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "costo del lavoro": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "reddito di cittadinanza": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "sussidio statale": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "ammortizzatori sociali": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "assistenzialismo": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "quota 100": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "fuga dal lavoro": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "europeismo": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "sovranismo": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "unione europea": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "bruxelles": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "integrazione europea": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "cessione di sovranità": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "vincoli di bilancio": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 2
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "austerità imposta": {
+      "dominant_side": null,
+      "tie_rule": "left_right_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "cooperazione europea": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "italexit": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 0,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "autonomia regionale": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "secessione fiscale": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "tasse": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "pizzo di stato": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 0,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "flat tax": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "tassa regressiva": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "lotta all'evasione": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "persecuzione fiscale": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "patrimoniale": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "esproprio": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "progressività fiscale": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "tassazione punitiva": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "condono": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 2,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "pace fiscale": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 2,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "crisi climatica": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "allarmismo climatico": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "transizione ecologica": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "ideologia green": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "rinnovabili": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "energia intermittente": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 2,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "attivisti climatici": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "eco-vandali": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "emergenza climatica": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "catastrofismo": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "decarbonizzazione": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "deindustrializzazione": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "mobilità sostenibile": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "guerra all'automobile": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "trivelle": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "sovranità energetica": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "tav": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "grandi opere inutili": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "diritti civili": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "ideologia gender": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "omotransfobia": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "opinione": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "interruzione di gravidanza": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "soppressione del nascituro": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "gestazione per altri": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "utero in affitto": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "ddl zan": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "legge bavaglio": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 0,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "unioni civili": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "coppia di fatto": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "femminicidio": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "omicidio": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "green pass": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "lasciapassare": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "obbligo vaccinale": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "dittatura sanitaria": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 0,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "vaccino": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "siero sperimentale": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 0,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "sanità pubblica": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "sanità di stato": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "classe politica": {
+      "dominant_side": "center",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "casta": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "élite": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "poteri forti": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 2,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "governo": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "regime": {
+      "dominant_side": null,
+      "tie_rule": "left_right_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "democrazia rappresentativa": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "democrazia diretta": {
+      "dominant_side": null,
+      "tie_rule": "left_right_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "libertà di stampa": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "stampa di regime": {
+      "dominant_side": null,
+      "tie_rule": "left_right_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "patriottismo": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "nazionalismo": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "resistenza": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "guerra civile": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 2,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "antifascismo": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "antifa": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "giudici": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "toghe rosse": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "legalità": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "legge e ordine": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "solidarietà": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "merito": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "laicità": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "valori cristiani": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "disarmo": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "riarmo": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "pacifismo": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "interventismo": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "mafia": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "criminalità organizzata": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "giustizialismo": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "garantismo": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "islamizzazione": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 0,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "buonismo": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "immigrazionisti": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 0,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "piano kalergi": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 0,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 2
+    },
+    "italiani prima": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "patria": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "nazione": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "sovranità": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "foibe": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "mainstream": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 2,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "sistema": {
+      "dominant_side": null,
+      "tie_rule": "left_right_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "nomenklatura": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 2,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 2
+    },
+    "decoro urbano": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "nullafacenti": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "mancia di stato": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "divani": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "choosy": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "bamboccioni": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 0,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "famiglia naturale": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 0,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "cultura della cancellazione": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "fascisti": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 5
+    },
+    "neo-fascisti": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "squadrismo": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "xenofobia": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "razzismo di stato": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "razzismo strutturale": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 2
+    },
+    "omofobia": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "transfobia": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "patriarcato": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "mascolinità tossica": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "neoliberismo": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "capitalismo selvaggio": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "precarizzazione": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "sfruttamento": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "classe lavoratrice": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "proletariato": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 0,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 2
+    },
+    "caporalato": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "disagio sociale": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "esclusione sociale": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "giustizia climatica": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "negazionisti climatici": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "fridays for future": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "ultima generazione": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "vaffa": {
+      "dominant_side": null,
+      "tie_rule": "left_right_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "uno vale uno": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "onestà": {
+      "dominant_side": null,
+      "tie_rule": "left_right_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "cittadini onesti": {
+      "dominant_side": null,
+      "tie_rule": "left_right_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "partitocrazia": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "populismo": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "complottismo": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "disinformazione": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "troika": {
+      "dominant_side": null,
+      "tie_rule": "left_right_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "jobs act": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "voucher lavoro": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "naspi": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "cassa integrazione": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "assegno unico": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "superbonus 110%": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "quota 100 (legge)": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "irpef": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "iva": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "cuneo fiscale": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "mare nostrum": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "frontex": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "memorandum italia-libia": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "bossi-fini": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "decreti sicurezza": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "cpr": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "hotspot": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "ius scholae": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "lampedusa": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "green deal": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "fit for 55": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "ddl eco-vandali": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "eni": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "ilva": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "pnrr": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "nextgenerationeu": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "mes": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "spread": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "piano mattei": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "autonomia differenziata": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "premierato": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "presidenzialismo": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "governo tecnico": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "fake news": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "legge 194": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "legge cirinnà": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "25 aprile": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "m5s": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "lega": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "fratelli d'italia": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "politichese": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 2,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "teatrino": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 2,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "emergenza migratoria": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 0,
+        "center": 2,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 4
+    },
+    "delocalizzazione": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "multinazionali": {
+      "dominant_side": "left",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 3,
+        "center": 2,
+        "right": 0
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "palazzo": {
+      "dominant_side": "right",
+      "tie_rule": "single_max",
+      "use_scores": {
+        "left": 2,
+        "center": 0,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "yes",
+      "political_relevance": 3
+    },
+    "inciucio": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "antipolitica": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "larghe intese": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "governo di unità": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "tangentopoli": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "mani pulite": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "antimafia": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "atlantismo": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "nato": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "spese militari": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "otto per mille": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "scuola pubblica": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "scuole paritarie": {
+      "dominant_side": "right",
+      "tie_rule": "right_center_tie",
+      "use_scores": {
+        "left": 2,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "pro",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "18app": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "bonus 80 euro": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "positive",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "sbarchi": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 5
+    },
+    "flussi migratori": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "maggioritario": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "bicameralismo perfetto": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "inquinamento": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 4
+    },
+    "emergenza ambientale": {
+      "dominant_side": "left",
+      "tie_rule": "left_center_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 2
+      },
+      "stance": "contra",
+      "valence": "negative",
+      "polarized": "no",
+      "political_relevance": 3
+    },
+    "protezionismo": {
+      "dominant_side": "center",
+      "tie_rule": "triple_tie",
+      "use_scores": {
+        "left": 3,
+        "center": 3,
+        "right": 3
+      },
+      "stance": "ambiguous",
+      "valence": "neutral",
+      "polarized": "no",
+      "political_relevance": 3
+    }
+  }
+}

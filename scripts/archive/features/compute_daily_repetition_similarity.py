@@ -8,7 +8,7 @@ sorts rows by `created_utc` then `id` within each day for a time-ordered stream,
 writes a narrow CSV for `prepare_event_time_metrics.py` to left-merge.
 
 Functionality:
-- Loads `config/political_forums_setup.yaml` and scans `cleaned_monthly_chunks/`.
+- Loads `config/archive/ai_adoption_political_forums_setup.yaml` and scans `cleaned_monthly_chunks/`.
 - For each (subreddit, date_utc), sorts comments by `created_utc` ascending (stable
   tie-break on `id`); if `created_utc` is entirely missing for a shard, falls back
   to file order and logs once per monthly file.
@@ -17,9 +17,9 @@ Functionality:
 
 How to apply/run:
 - Full run:
-  `.venv/bin/python scripts/features/compute_daily_repetition_similarity.py --config config/political_forums_setup.yaml`
+  `.venv/bin/python scripts/archive/features/compute_daily_repetition_similarity.py --config config/archive/ai_adoption_political_forums_setup.yaml`
 - Bounded sample:
-  `.venv/bin/python scripts/features/compute_daily_repetition_similarity.py --config config/political_forums_setup.yaml --max_total_month_files 2 --max_days_per_month 10`
+  `.venv/bin/python scripts/archive/features/compute_daily_repetition_similarity.py --config config/archive/ai_adoption_political_forums_setup.yaml --max_total_month_files 2 --max_days_per_month 10`
 """
 
 from __future__ import annotations
@@ -34,23 +34,24 @@ from typing import Any, Iterable
 
 import pandas as pd
 
-def _resolve_project_root() -> Path:
-    """Load scripts/_project_root.py and return the repository root Path."""
-    _scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod",
-        _scripts_dir / "_project_root.py",
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import load_config
 
@@ -75,7 +76,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Compute daily repetition_template_similarity from cleaned monthly chunks."
     )
-    parser.add_argument("--config", type=str, default="config/political_forums_setup.yaml")
+    parser.add_argument("--config", type=str, default="config/archive/ai_adoption_political_forums_setup.yaml")
     parser.add_argument(
         "--similarity_window",
         type=int,

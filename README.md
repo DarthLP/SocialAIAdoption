@@ -9,11 +9,11 @@ Thesis study: **The Effects of AI Access on Online Political Polarization** — 
 **Comparison forums (fixed):**
 
 - **English political (discussion-style, not r/politics):** `Ask_Politics`, `NeutralPolitics`, `PoliticalDiscussion`, `moderatepolitics`
-- **EU hubs:** `de`, `spain`, `unitedkingdom`, `europe`
+- **EU hubs:** `de`, `unitedkingdom`, `europe`
 - **EU political:** `ukpolitics`
 - **Italian:** data-driven discovery + seeds (`Italia`, `politicaITA`)
 
-**Archived AI-adoption corpus:** [`config/archive/ai_adoption_political_forums_setup.yaml`](config/archive/ai_adoption_political_forums_setup.yaml) (Nov 2022–Apr 2023 cross-domain study). Old scripts under `scripts/features/`, `scripts/event_time/`, `scripts/user_week/` remain for reference.
+**Archived AI-adoption corpus:** [`config/archive/ai_adoption_political_forums_setup.yaml`](config/archive/ai_adoption_political_forums_setup.yaml) (Nov 2022–Apr 2023 cross-domain study). Legacy ML and event-time scripts live under [`scripts/archive/`](scripts/archive/README.md) only.
 
 ---
 
@@ -71,8 +71,7 @@ Review `extraction_size_preview.csv` (drop subs that project too large if needed
 .venv/bin/python scripts/filtering/filter_dump_comments.py \
   --config config/italy_polarization_setup.yaml \
   --source_dir "/Volumes/Expansion/Masterthesis/RawData/reddit/comments" \
-  --state_file results/logs/filter_dump/italy_polarization_state.json \
-  --log_file results/logs/filter_dump/italy_polarization.log
+  # state/log default to results/logs/italy_polarization/filter_dump/italy_polarization_state.json (and .log)
 ```
 
 Writes: `data/raw/italy_polarization/daily_chunks/<subreddit>/<YYYY-MM-DD>.ndjson`
@@ -92,20 +91,42 @@ Run in order (`.venv` active):
 # Stage 2 — forum gates (profile subs, URL-only forums, pooled Italian langid ≥70%, volume bands)
 .venv/bin/python scripts/cleaning/screen_subreddits.py --config config/italy_polarization_setup.yaml
 
+# Italian curated lexicon (local CSV → config/lexicons/*.txt); re-run after v4 edits
+.venv/bin/python scripts/devtools/export_italian_lexicon_v4.py --policy dominant
+
 # Stage 3 — taxonomy columns, language-matched political lexicon, thread roll-ups
+# (on success, auto-runs plot_cleaning_pipeline_trends.py unless --skip-pipeline-plots)
 .venv/bin/python scripts/cleaning/enrich_cleaned_chunks.py --config config/italy_polarization_setup.yaml
 
 # Lexicon QA + pipeline diagnostics
 .venv/bin/python scripts/diagnostics/audit_political_lexicon.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/diagnostics/plot_cleaning_pipeline_trends.py --config config/italy_polarization_setup.yaml
 
-# Stage 4 — polarization + AI features (after enrich)
-.venv/bin/python scripts/features/compute_ai_use_features.py --config config/italy_polarization_setup.yaml
+# Stage 4 — polarization + AI + style features (run only AFTER enrich finishes on all shards)
 .venv/bin/python scripts/features/compute_polarization_features.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/features/compute_ai_use_features.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/features/compute_comment_style_features.py --config config/italy_polarization_setup.yaml
+
+# Preflight: one shard must contain net_ideology and semicolon_count
+.venv/bin/python -c "import pandas as pd; from pathlib import Path; p=next(Path('data/interim/italy_polarization/cleaned_monthly_chunks').rglob('*.parquet')); d=pd.read_parquet(p); assert 'net_ideology' in d.columns and 'semicolon_count' in d.columns"
+
+# Optional — within-user pre/post (author × ISO week) on enriched shards
+.venv/bin/python scripts/user_week/prepare_user_week_style_panel.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/user_week/analyze_user_pre_post_shift.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/user_week/plot_user_pre_post_shift.py --config config/italy_polarization_setup.yaml
+
 .venv/bin/python scripts/diagnostics/audit_polarization_lexicons.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/diagnostics/prepare_polarization_descriptives.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/diagnostics/plot_polarization_descriptives.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/diagnostics/prepare_lexicon_descriptives.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/diagnostics/plot_lexicon_descriptives.py --config config/italy_polarization_setup.yaml
 ```
+
+Stage 4 adds columns **in-place** on enriched Parquet: polarization (`net_ideology` from **dominant** `ideology_it.txt`, pair framing `pair_framing_*`, stance/valence metadata, …), AI lexicon, and style counts. All shards share the same column schema (Italian-only scorers; non-`it` shards get zeros). Config requires `polarization.ideology_scoring: dominant_v1`.
+
+Lexicon descriptives (pair framing, stance, valence) live under `results/figures/italy_polarization/descriptives/{primary,ideology_dominant,pairs,stance,valence,polarized,trajectory_scatter}/`. Legacy polarization descriptives remain under `descriptives/daily/` and `descriptives/rolling_daily/`. Re-running **enrich** after stage 4 removes feature columns — run stage 4 again if that happens.
+
+**Results layout:** see [`results/README.md`](results/README.md).
 
 **Pre-registered thresholds** (`config/italy_polarization_setup.yaml` → `screening`):
 
@@ -114,7 +135,7 @@ Run in order (`.venv` active):
 - **large_volume**: ≥ **100** kept comments over the window; **low_volume** if only `LOW_VOLUME_WINDOW`; soft monthly floor **50** for sparse-month flags.
 - `r/europe` treated as **general English** (`primary_lexicon: en`).
 
-**Topic assignment priority** (first match wins): metadata `topic_overrides` → non-Italian control topics → explicit `topics` lists → NSFW/meme/creator lists → Italian lexicon auto (`politicaITA`-calibrated median threshold). Review mismatches in `subreddit_topic_political_audit.csv`.
+**Topic / family taxonomy:** Italian **topics** `it_political` / `it_pure_political` / `it_others` from graded word-weighted rate (WW); **family** `it_political` pools both political topics. Controls: `de`, `eu`, `us`, `uk` (`uk`, `uk_political`). **Salience:** [`data/raw/political_lexicon_parallel.csv`](data/raw/political_lexicon_parallel.csv) (grades 1–3 → points 1/2/3 per unique term; IT/EN/DE columns). **Assignment** (Italian arms): metadata overrides → controls → WW ≥ `forum_political_pure_threshold` → `it_pure_political` → WW ≥ `forum_political_soft_threshold` → `it_political` → else `it_others` (recalibrate thresholds after enrichment; placeholders **0.35** / **0.7**). **Thread political flag:** `thread_political_weighted_points >= 3` (`thread_political_min_points`). Audit: `subreddit_forum_political_profile.csv`; `political_threshold_sensitivity.csv`; QA under `cleaning_pipeline/political_qa/`.
 
 **Outputs:**
 
@@ -123,17 +144,19 @@ Run in order (`.venv` active):
 | 1 | `data/interim/italy_polarization/cleaned_monthly_chunks/` | `results/tables/italy_polarization/cleaning/` |
 | 2 | — | `screening/subreddit_screening_*.csv`, `subreddit_exclusion_summary.csv` |
 | 3 | enriched parquet in place (canonical) | `subreddit_topic_assignment.csv`, `subreddit_forum_political_profile.csv`, `subreddit_topic_political_audit.csv` |
-| plots | — | `results/tables/italy_polarization/cleaning_pipeline/`, `results/figures/italy_polarization/cleaning_pipeline/` |
-| 4 | enriched parquet + feature columns | `results/tables/italy_polarization/descriptives/`, `results/figures/italy_polarization/descriptives/` |
+| plots | — | `results/tables/italy_polarization/cleaning_pipeline/`, `results/figures/italy_polarization/cleaning_pipeline/{volume,stage1_drop_rates,political_qa}/` |
+| 4 | enriched parquet + feature columns | `results/tables/italy_polarization/descriptives/`, `results/figures/italy_polarization/descriptives/{daily,rolling_daily}/` |
 
 **Stage 0 (raw only):** `plot_data_quality_trends.py` counts all NDJSON rows — it does **not** drop comments.
 
 **Polarization lexicons:** `config/lexicons/ideology_{lang}.txt`, `other_side_{lang}.txt`, etc. Methods: `results/tables/italy_polarization/descriptives/polarization_metrics_notes.txt`.
 
-## Next steps (after descriptives)
+## Next steps (after measurement layer)
 
-1. Hand-label comments in `lexicon_validation_labels.csv` and re-run `audit_polarization_lexicons.py` for P/R
-2. Event-study / DiD around ban dates (`2023-03-31`, lift `2023-04-28`)
+1. Re-run stage 4 on all shards after `export_italian_lexicon_v4.py --policy dominant`
+2. Run `prepare_lexicon_descriptives.py` + `plot_lexicon_descriptives.py` (primary outcomes: `net_ideology`, `pair_framing_net_strict`, W0 launch, 7d rolling)
+3. **Then** hand-label P/R in `lexicon_validation_labels.csv` on the **new** lexicon
+4. Event-study / DiD (launch-primary windows; lift appendix only)
 
 ---
 
@@ -146,15 +169,19 @@ Run in order (`.venv` active):
 | `scripts/discovery/` | 3-day dump profiling and config apply |
 | `scripts/filtering/` | Monthly dump → daily NDJSON |
 | `data/raw/italy_polarization/daily_chunks/` | Filtered comments |
+| `data/raw/political_lexicon_parallel.csv` | Graded trilingual political salience (runtime source for enrichment) |
+| `data/raw/italian_political_lexicon_v4.csv` | Hand-checked Italian polarization lexicon (export → categorized `config/lexicons/` via `export_italian_lexicon_v4.py`) |
 | `data/interim/italy_polarization/cleaned_monthly_chunks/` | Stage-1 cleaned Parquet |
 | `data/interim/italy_polarization/cleaned_monthly_by_family/` | Deprecated optional copies (`--write-by-family`) |
 | `results/tables/italy_polarization/cleaning/` | Stage-1 audits |
 | `results/tables/italy_polarization/screening/` | Stage-2/3 screening and topic assignment |
 | `results/tables/italy_polarization/cleaning_pipeline/` | Pipeline diagnostic tables |
-| `results/figures/italy_polarization/cleaning_pipeline/` | Family/topic QA figures |
-| `config/lexicons/` | Political lexicons (IT/EN/DE/ES) |
+| `results/figures/italy_polarization/cleaning_pipeline/` | Nested QA figures (`volume/`, `stage1_drop_rates/`, `political_qa/`) |
+| `results/README.md` | Index of all tables, figures, logs |
+| `config/lexicons/` | Polarization/style lexicons (IT/EN/DE); salience from parallel CSV |
 | `results/tables/italy_polarization/discovery/` | Discovery CSVs |
-| `results/logs/filter_dump/italy_polarization_*` | Filter resume state |
+| `results/tables/italy_polarization/lexicon_export/` | v4 lexicon export audits |
+| `results/logs/italy_polarization/filter_dump/` | Filter resume state and logs |
 
 See [`scripts/README.md`](scripts/README.md) for script-level detail.
 
@@ -175,4 +202,4 @@ aria2c --dir "/Volumes/Expansion/Masterthesis/RawData" --seed-ratio=0 \
 
 ## Archived pipeline (AI-writing adoption)
 
-The previous README steps for `config/political_forums_setup.yaml` (comment features, event-time, user-week, Colab ML) applied to the cross-domain Nov 2022–Apr 2023 corpus. Config is archived under `config/archive/`. Re-enable only if you restore that study arm.
+The Nov 2022–Apr 2023 cross-domain study (comment features, HF detectors, calendar event-time plots) is archived under [`config/archive/`](config/archive/) and [`scripts/archive/`](scripts/archive/README.md). The active study uses only `italy_polarization_setup.yaml` and enriched shards (no `comment_features/` tree).

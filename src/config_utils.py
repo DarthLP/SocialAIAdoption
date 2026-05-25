@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -22,6 +22,120 @@ def load_config(config_path: str | Path) -> Dict[str, Any]:
     """Function summary: load YAML configuration from disk and return a dictionary."""
     with Path(config_path).open("r", encoding="utf-8") as handle:
         return yaml.safe_load(handle)
+
+
+DESCRIPTIVE_FIGURE_VIEWS = (
+    "by_family",
+    "by_topic",
+    "by_topic_italian",
+    "country_panel",
+    "ideology",
+)
+
+
+def study_id_from_config(config: Dict[str, Any]) -> str:
+    """Function summary: resolve study slug for results layout (explicit key or tables_dir leaf).
+
+    Parameters:
+    - config: loaded YAML with optional `study_id` and `paths.tables_dir`.
+
+    Returns:
+    - Study identifier string (e.g. `italy_polarization`).
+    """
+    explicit = config.get("study_id")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
+    tables_dir = (config.get("paths") or {}).get("tables_dir", "")
+    parts = Path(str(tables_dir)).parts
+    if parts:
+        return parts[-1]
+    return "unknown_study"
+
+
+def _resolve_path_from_config(config: Dict[str, Any], key: str) -> Path:
+    """Function summary: resolve a paths.* directory from config as an absolute or repo-relative Path."""
+    raw = (config.get("paths") or {}).get(key, "")
+    path = Path(str(raw))
+    if path.is_absolute():
+        return path
+    root = Path(__file__).resolve().parent.parent
+    return root / path
+
+
+def parallel_political_lexicon_path(
+    config: Dict[str, Any], project_root: Optional[Path] = None
+) -> Path:
+    """Function summary: resolve paths.political_lexicon_parallel CSV for graded salience.
+
+    Parameters:
+    - config: loaded study YAML.
+    - project_root: optional repo root override.
+
+    Returns:
+    - Path to political_lexicon_parallel.csv.
+    """
+    paths = config.get("paths") or {}
+    raw = paths.get("political_lexicon_parallel", "data/raw/political_lexicon_parallel.csv")
+    path = Path(str(raw))
+    if path.is_absolute():
+        return path
+    root = project_root or Path(__file__).resolve().parent.parent
+    return root / path
+
+
+def tables_subdir(config: Dict[str, Any], *parts: str) -> Path:
+    """Function summary: join paths.tables_dir with optional subfolders for CSV/parquet outputs.
+
+    Parameters:
+    - config: loaded YAML.
+    - parts: zero or more path segments under the study tables root.
+
+    Returns:
+    - Path under results/tables/<study_id>/...
+    """
+    return _resolve_path_from_config(config, "tables_dir").joinpath(*parts)
+
+
+def figures_subdir(config: Dict[str, Any], *parts: str) -> Path:
+    """Function summary: join paths.figures_dir with optional subfolders for PNG outputs.
+
+    Parameters:
+    - config: loaded YAML.
+    - parts: zero or more path segments under the study figures root.
+
+    Returns:
+    - Path under results/figures/<study_id>/...
+    """
+    return _resolve_path_from_config(config, "figures_dir").joinpath(*parts)
+
+
+def logs_subdir(config: Dict[str, Any], *parts: str) -> Path:
+    """Function summary: join paths.logs_dir with study-scoped log subfolders.
+
+    Parameters:
+    - config: loaded YAML.
+    - parts: zero or more path segments (e.g. study_id, filter_dump, runs).
+
+    Returns:
+    - Path under results/logs/...
+    """
+    base = _resolve_path_from_config(config, "logs_dir")
+    study = study_id_from_config(config)
+    if parts and parts[0] == study:
+        return base.joinpath(*parts)
+    return base.joinpath(study, *parts)
+
+
+def filter_dump_logs_dir(config: Dict[str, Any]) -> Path:
+    """Function summary: directory for filter_dump state JSON and log files for this study.
+
+    Parameters:
+    - config: loaded YAML.
+
+    Returns:
+    - Path results/logs/<study_id>/filter_dump/ (created by callers if needed).
+    """
+    return logs_subdir(config, "filter_dump")
 
 
 def utc_ts(iso_utc: str) -> int:
@@ -37,9 +151,9 @@ def plot_reference_dates_calendar_utc(config: Dict[str, Any]) -> List[datetime]:
 
     Returns:
     - Non-empty list of naive UTC datetimes. If the key is missing, not a list, empty, or parsing yields nothing,
-      returns ChatGPT (`2022-11-30`) and GPT-4 (`2023-03-14`) calendar dates for the main launch study.
+      returns Italy ChatGPT ban onset (`2023-03-31`) and lift (`2023-04-28`) calendar dates for the active study.
     """
-    default = [datetime(2022, 11, 30), datetime(2023, 3, 14)]
+    default = [datetime(2023, 3, 31), datetime(2023, 4, 28)]
     raw = config.get("plot_reference_dates_utc")
     if not isinstance(raw, list) or not raw:
         return default
@@ -165,9 +279,13 @@ def load_screening_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "langid_italian_threshold_pooled": 0.70,
         "langid_min_body_chars": 15,
         "langid_rng_seed": 20260318,
-        "thread_political_rate_threshold": 0.35,
-        "thread_political_min_hits": 2,
+        "thread_political_rate_threshold": 0.45,
+        "thread_political_min_hits": 0,
+        "thread_political_min_points": 3,
         "forum_political_rate_multiplier_vs_politicaita": 0.25,
+        "forum_political_soft_threshold": 0.35,
+        "forum_political_pure_threshold": 0.7,
+        "forum_political_word_weighted_rate_threshold": 0.7,
     }
     raw = config.get("screening", {})
     if isinstance(raw, dict):
@@ -176,6 +294,116 @@ def load_screening_config(config: Dict[str, Any]) -> Dict[str, Any]:
             merged["min_kept_window_large_volume"] = merged.pop("min_kept_window_tier_a")
         defaults.update(merged)
     return defaults
+
+
+def forum_political_thresholds(screening: Dict[str, Any]) -> Tuple[float, float]:
+    """Function summary: return soft and pure forum word-weighted rate cutoffs for Italian topic assignment.
+
+    Parameters:
+    - screening: screening config from load_screening_config().
+
+    Returns:
+    - Tuple (soft_threshold for it_political, pure_threshold for it_pure_political).
+    """
+    legacy = screening.get("forum_political_word_weighted_rate_threshold")
+    soft = float(screening.get("forum_political_soft_threshold", legacy if legacy is not None else 0.35))
+    pure = float(
+        screening.get(
+            "forum_political_pure_threshold",
+            legacy if legacy is not None else 0.7,
+        )
+    )
+    return soft, pure
+
+
+EXCLUDED_SCREENING_ACTIONS = frozenset({"excluded", "exclude_analysis"})
+ENRICHMENT_MARKER_COLUMNS = frozenset(
+    {"primary_lexicon", "n_words", "political_weighted_points"}
+)
+
+
+def load_screening_pooled(tables_dir: Path) -> Any:
+    """Function summary: load pooled subreddit screening CSV from Stage-2 screening.
+
+    Parameters:
+    - tables_dir: study tables directory (e.g. results/tables/italy_polarization).
+
+    Returns:
+    - DataFrame with one row per subreddit from subreddit_screening_pooled.csv.
+
+    Raises:
+    - FileNotFoundError: if screening has not been run yet.
+    """
+    import pandas as pd
+
+    path = tables_dir / "screening" / "subreddit_screening_pooled.csv"
+    if not path.is_file():
+        raise FileNotFoundError(f"Run screen_subreddits.py first: missing {path}")
+    return pd.read_csv(path)
+
+
+def screening_by_subreddit(screening_df: Any) -> Dict[str, Dict[str, Any]]:
+    """Function summary: index pooled screening rows by subreddit name.
+
+    Parameters:
+    - screening_df: output of load_screening_pooled.
+
+    Returns:
+    - Mapping subreddit -> screening record dict.
+    """
+    return {str(row["subreddit"]): row for row in screening_df.to_dict(orient="records")}
+
+
+def subreddit_screening_action(screening_by_sub: Dict[str, Dict[str, Any]], subreddit: str) -> str:
+    """Function summary: return screening action for a subreddit (empty if unknown).
+
+    Parameters:
+    - screening_by_sub: indexed screening table.
+    - subreddit: subreddit name.
+
+    Returns:
+    - Action string (e.g. keep, excluded).
+    """
+    row = screening_by_sub.get(subreddit, {})
+    return str(row.get("action", ""))
+
+
+def should_skip_screened_subreddit(action: str, include_excluded: bool = False) -> bool:
+    """Function summary: whether feature/enrich passes should skip this subreddit.
+
+    Parameters:
+    - action: screening action from pooled table.
+    - include_excluded: when True, process excluded forums too.
+
+    Returns:
+    - True if the subreddit should be skipped.
+    """
+    return action in EXCLUDED_SCREENING_ACTIONS and not include_excluded
+
+
+def shard_dir_is_enriched(shard_dir: Path) -> bool:
+    """Function summary: check whether cleaned monthly shards have Stage-3 enrichment columns.
+
+    Parameters:
+    - shard_dir: directory with monthly Parquet files for one subreddit.
+
+    Returns:
+    - True if the first shard contains primary_lexicon and n_words.
+    """
+    import pyarrow.parquet as pq
+
+    shards = sorted(shard_dir.glob("*.parquet"))
+    if not shards:
+        return False
+    for shard in shards:
+        if shard.stat().st_size < 8:
+            continue
+        try:
+            names = set(pq.read_schema(shard).names)
+        except Exception:
+            continue
+        return ENRICHMENT_MARKER_COLUMNS <= names
+    return False
 
 
 def load_polarization_config(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -188,6 +416,7 @@ def load_polarization_config(config: Dict[str, Any]) -> Dict[str, Any]:
     - Polarization settings dictionary.
     """
     defaults: Dict[str, Any] = {
+        "ideology_scoring": "dominant_v1",
         "eps": 1.0e-6,
         "negation_window_tokens": 3,
         "lang_match_filter": False,
@@ -198,6 +427,23 @@ def load_polarization_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(raw, dict):
         defaults.update(raw)
     return defaults
+
+
+def require_dominant_v1_ideology_scoring(config: Dict[str, Any]) -> None:
+    """Function summary: assert study config uses mandatory dominant_v1 ideology scoring.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - None; raises AssertionError if ideology_scoring is not dominant_v1.
+    """
+    pol = load_polarization_config(config)
+    scoring = pol.get("ideology_scoring")
+    assert scoring == "dominant_v1", (
+        f"polarization.ideology_scoring must be 'dominant_v1' (got {scoring!r}). "
+        "Re-export lexicons with export_italian_lexicon_v4.py --policy dominant and re-run features."
+    )
 
 
 def load_ai_use_config(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -217,6 +463,134 @@ def load_ai_use_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(raw, dict):
         defaults.update(raw)
     return defaults
+
+
+def load_comment_style_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Function summary: return comment-style feature settings with defaults.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - Comment-style settings dictionary.
+    """
+    defaults: Dict[str, Any] = {
+        "lang_match_filter": False,
+        "enable_phrase_lexicons": True,
+    }
+    raw = config.get("comment_style", {})
+    if isinstance(raw, dict):
+        defaults.update(raw)
+    return defaults
+
+
+def user_week_section(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Function summary: return the user_week config block if present.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - Dict (possibly empty).
+    """
+    raw = config.get("user_week")
+    return raw if isinstance(raw, dict) else {}
+
+
+def user_week_default_features(config: Dict[str, Any]) -> List[str]:
+    """Function summary: default feature list for within-user pre/post analysis.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - List of feature column names.
+    """
+    uw = user_week_section(config)
+    feats = uw.get("default_features")
+    if isinstance(feats, list) and feats:
+        return [str(f) for f in feats]
+    return []
+
+
+def user_week_composites(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Function summary: composite definitions for user-week shift analysis.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - List of dicts with keys ``name`` and ``components`` (list of {feature, sign}).
+    """
+    uw = user_week_section(config)
+    out: List[Dict[str, Any]] = []
+    for key in ("polarization_composite", "style_composite"):
+        block = uw.get(key)
+        if not isinstance(block, dict):
+            continue
+        name = str(block.get("name", "")).strip()
+        comps = block.get("components")
+        if not name or not isinstance(comps, list):
+            continue
+        parsed: List[Tuple[str, int]] = []
+        for item in comps:
+            if not isinstance(item, dict):
+                continue
+            feat = str(item.get("feature", "")).strip()
+            if not feat:
+                continue
+            sign = int(item.get("sign", 1))
+            parsed.append((feat, -1 if sign < 0 else 1))
+        if parsed:
+            out.append({"name": name, "components": parsed})
+    return out
+
+
+def user_week_drop_ban_week_default(config: Dict[str, Any]) -> bool:
+    """Function summary: whether to drop the ISO week containing the ban anchor by default.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - True if drop_ban_week is set in YAML.
+    """
+    return bool(user_week_section(config).get("drop_ban_week", False))
+
+
+def user_week_placebo_offset_weeks_default(config: Dict[str, Any]) -> int:
+    """Function summary: default placebo offset in weeks from config.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - Non-negative integer week offset.
+    """
+    raw = user_week_section(config).get("placebo_offset_weeks", 8)
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 8
+
+
+def infer_user_week_input_mode(config: Dict[str, Any]) -> str:
+    """Function summary: infer user-week panel input layout from study config (archive scripts only).
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - ``enriched_shards`` for Italy-style in-place shards, else ``comment_features``.
+      Active Italy scripts always use enriched shards; see ``scripts/archive/user_week/``.
+    """
+    explicit = config.get("user_week", {}).get("input_mode") if isinstance(config.get("user_week"), dict) else None
+    if explicit in {"enriched_shards", "comment_features"}:
+        return str(explicit)
+    project_name = str(config.get("project", {}).get("name", ""))
+    if "ItalyPolarization" in project_name or "italy_polarization" in str(config.get("paths", {}).get("interim_dir", "")):
+        return "enriched_shards"
+    return "comment_features"
 
 
 def italian_arms_for_langid(config: Dict[str, Any]) -> set[str]:
@@ -249,30 +623,26 @@ def infer_subreddit_topic(config: Dict[str, Any], subreddit: str, metadata: Opti
 
     arm = subreddit_arm_map(config).get(subreddit, "")
     if arm == "control_english_political":
-        return "en_us_political"
+        return "us"
     if arm == "control_europe_political":
         return "uk_political"
     if subreddit == "de":
-        return "de_hub"
-    if subreddit == "spain":
-        return "es_hub"
+        return "de"
     if subreddit == "unitedkingdom":
-        return "uk_hub"
+        return "uk"
     if subreddit == "europe":
-        return "europe_hub"
+        return "eu"
 
     nsfw = set(meta.get("nsfw_subreddits", []) or [])
     memes = set(meta.get("meme_humor_subreddits", []) or [])
     creators = set(meta.get("creator_celebrity_subreddits", []) or [])
-    if subreddit in nsfw:
-        return "it_nsfw_sensitivity"
-    if subreddit in memes:
-        return "it_meme_humor"
-    if subreddit in creators or any(subreddit.endswith(sfx) for sfx in CREATOR_NAME_SUFFIXES):
-        return "it_creator_celebrity"
+    if subreddit in nsfw or subreddit in memes or subreddit in creators:
+        return "it_others"
+    if any(subreddit.endswith(sfx) for sfx in CREATOR_NAME_SUFFIXES):
+        return "it_others"
     if PROFILE_USER_PATTERN.match(subreddit):
-        return "it_general"
-    return "it_general"
+        return "it_others"
+    return "it_others"
 
 
 def infer_subreddit_forum_type(config: Dict[str, Any], subreddit: str, metadata: Optional[Dict[str, Any]] = None) -> str:
@@ -292,14 +662,10 @@ def infer_subreddit_forum_type(config: Dict[str, Any], subreddit: str, metadata:
         return str(overrides[subreddit])
 
     topic = infer_subreddit_topic(config, subreddit, metadata=meta)
-    if topic in {"en_us_political", "uk_political", "it_political"}:
+    if topic in {"us", "uk_political", "it_pure_political"}:
         return "dedicated_political"
-    if topic in {"de_hub", "es_hub", "uk_hub", "europe_hub"}:
+    if topic in {"de", "eu", "uk", "it_political", "it_others"}:
         return "general_hub"
-    if topic == "it_creator_celebrity":
-        return "creator_celebrity"
-    if topic == "it_nsfw_sensitivity":
-        return "nsfw_sensitivity"
     if PROFILE_USER_PATTERN.match(subreddit):
         return "profile_user"
     return "general_hub"
@@ -308,7 +674,7 @@ def infer_subreddit_forum_type(config: Dict[str, Any], subreddit: str, metadata:
 def infer_subreddit_primary_lexicon(
     config: Dict[str, Any], subreddit: str, metadata: Optional[Dict[str, Any]] = None
 ) -> str:
-    """Function summary: infer primary political lexicon language code (it, en, de, es).
+    """Function summary: infer primary political lexicon language code (it, en, de).
 
     Parameters:
     - config: loaded study YAML.
@@ -324,12 +690,10 @@ def infer_subreddit_primary_lexicon(
         return str(overrides[subreddit])
 
     topic = infer_subreddit_topic(config, subreddit, metadata=meta)
-    if topic in {"en_us_political", "uk_political", "europe_hub", "uk_hub"}:
+    if topic in {"us", "uk_political", "eu", "uk"}:
         return "en"
-    if topic == "de_hub":
+    if topic == "de":
         return "de"
-    if topic == "es_hub":
-        return "es"
     return "it"
 
 
@@ -357,7 +721,7 @@ def subreddit_primary_lexicon(config: Dict[str, Any], subreddit: str, project_ro
     - project_root: optional repo root for metadata path.
 
     Returns:
-    - Lexicon language code (`it`, `en`, `de`, `es`).
+    - Lexicon language code (`it`, `en`, `de`).
     """
     meta = load_subreddit_metadata(config, project_root=project_root)
     return infer_subreddit_primary_lexicon(config, subreddit, metadata=meta)

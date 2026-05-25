@@ -47,43 +47,63 @@ READ_COLUMNS = [
     "right_hits",
     "ai_style_rate_100w",
     "thread_has_both_ideology_sides",
+    "ai_sentence_length_variance",
+    "em_dash_count",
+    "exclamation_count",
+    "semicolon_count",
+    "colon_count",
+    "hedging_phrase_hits",
+    "sentence_count_comment",
+    "total_word_chars_comment",
+    "avg_words_per_sentence_comment",
 ]
 
+REQUIRED_FEATURE_COLUMNS = (
+    "net_ideology",
+    "other_side_salience_rate_100w",
+    "aggression_rate_100w",
+    "left_hits",
+)
+
 COUNTRY_PANEL_FAMILIES = {
-    "italian": "Italy",
-    "german_hub": "Germany",
-    "spanish_hub": "Spain",
-    "english_us_political": "US_political",
-    "uk_political": "UK_political",
-    "uk_hub": "UK_hub",
-    "europe_hub_english": "EU_hub_en",
+    "it_political": "Italy_political",
+    "it_others": "Italy_others",
+    "de": "Germany",
+    "us": "US_political",
+    "uk": "UK",
+    "eu": "EU_hub_en",
 }
 
 
-def _resolve_project_root() -> Path:
-    """Function summary: load scripts/_project_root.py and return repository root Path."""
-    scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod", scripts_dir / "_project_root.py"
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import (  # noqa: E402
     load_config,
     load_polarization_config,
+    require_dominant_v1_ideology_scoring,
     resolve_primary_subreddits,
     subreddit_family_map,
+    subreddit_topic_map,
     utc_ts,
 )
+from src.comment_style import compute_complexity_index  # noqa: E402
 from src.political_lexicon import bimodality_coefficient, esteban_ray_index  # noqa: E402
 
 
@@ -132,11 +152,12 @@ def ban_phase(date_utc: str, launch: str, lift: str) -> str:
     return "post"
 
 
-def load_comment_frame(interim_dir: Path, subreddits: List[str]) -> pd.DataFrame:
+def load_comment_frame(shard_root: Path, subreddits: List[str]) -> pd.DataFrame:
     """Function summary: load enriched/feature parquet for all subreddits in window columns.
 
     Parameters:
-    - interim_dir: interim root.
+    - shard_root: directory containing per-subreddit monthly Parquet folders
+      (e.g. data/interim/italy_polarization/cleaned_monthly_chunks).
     - subreddits: subreddit names.
 
     Returns:
@@ -144,7 +165,7 @@ def load_comment_frame(interim_dir: Path, subreddits: List[str]) -> pd.DataFrame
     """
     parts: List[pd.DataFrame] = []
     for sub in subreddits:
-        shard_dir = interim_dir / "cleaned_monthly_chunks" / sub
+        shard_dir = shard_root / sub
         if not shard_dir.is_dir():
             continue
         for shard in sorted(shard_dir.glob("*.parquet")):
@@ -163,6 +184,112 @@ def load_comment_frame(interim_dir: Path, subreddits: List[str]) -> pd.DataFrame
     return pd.concat(parts, ignore_index=True)
 
 
+def validate_feature_columns_present(shard_root: Path, sample_shards: int = 5) -> None:
+    """Function summary: fail fast if polarization features were not written to Parquet.
+
+    Parameters:
+    - shard_root: path to cleaned_monthly_chunks.
+    - sample_shards: number of shards to inspect.
+
+    Raises:
+    - SystemExit: when no shard contains required feature columns.
+    """
+    paths = [p for p in sorted(shard_root.rglob("*.parquet")) if p.stat().st_size >= 8][:sample_shards]
+    if not paths:
+        raise SystemExit(
+            f"No Parquet under {shard_root}. Run clean_daily_chunks.py and enrich_cleaned_chunks.py first."
+        )
+    ok = 0
+    for path in paths:
+        if path.stat().st_size < 8:
+            continue
+        try:
+            cols = set(pd.read_parquet(path).columns)
+        except Exception:
+            continue
+        if all(c in cols for c in REQUIRED_FEATURE_COLUMNS):
+            ok += 1
+    if ok == 0:
+        raise SystemExit(
+            "Polarization/AI features missing on interim Parquet. After enrich finishes, run:\n"
+            "  .venv/bin/python scripts/features/compute_ai_use_features.py "
+            "--config config/italy_polarization_setup.yaml\n"
+            "  .venv/bin/python scripts/features/compute_polarization_features.py "
+            "--config config/italy_polarization_setup.yaml\n"
+            "  .venv/bin/python scripts/features/compute_comment_style_features.py "
+            "--config config/italy_polarization_setup.yaml\n"
+            "Then re-run this script."
+        )
+
+
+def enrich_style_helper_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Function summary: unify em-dash and style fields for aggregation.
+
+    Parameters:
+    - df: comment-level frame.
+
+    Returns:
+    - Copy with _em_dash_count helper column.
+    """
+    out = df.copy()
+    if "em_dash_count" in out.columns:
+        out["_em_dash_count"] = out["em_dash_count"].astype(float)
+    elif "ai_em_dash_count" in out.columns:
+        out["_em_dash_count"] = out["ai_em_dash_count"].astype(float)
+    elif "pol_em_dash_count" in out.columns:
+        out["_em_dash_count"] = out["pol_em_dash_count"].astype(float)
+    else:
+        out["_em_dash_count"] = 0.0
+    return out
+
+
+def style_aggregate_fields(grp: pd.DataFrame) -> Dict[str, float]:
+    """Function summary: aggregate em-dash and related style metrics for one group.
+
+    Parameters:
+    - grp: comment rows sharing a day/family/subreddit.
+
+    Returns:
+    - Dict of style metric means/rates for descriptives tables.
+    """
+    nw = grp["n_words"].astype(float)
+    total_words = float(nw.sum())
+    out: Dict[str, float] = {}
+    if "_em_dash_count" in grp.columns and total_words > 0:
+        out["em_dash_rate_100w"] = 100.0 * float(grp["_em_dash_count"].sum()) / total_words
+    else:
+        out["em_dash_rate_100w"] = 0.0
+    if total_words > 0:
+        if "semicolon_count" in grp.columns:
+            out["semicolon_rate_100w"] = 100.0 * float(grp["semicolon_count"].sum()) / total_words
+        if "colon_count" in grp.columns:
+            out["colon_rate_100w"] = 100.0 * float(grp["colon_count"].sum()) / total_words
+        if "hedging_phrase_hits" in grp.columns:
+            out["hedging_phrase_rate_100w"] = 100.0 * float(grp["hedging_phrase_hits"].sum()) / total_words
+        if "exclamation_count" in grp.columns:
+            out["exclamation_rate_100w_mean"] = 100.0 * float(grp["exclamation_count"].sum()) / total_words
+    if "avg_words_per_sentence_comment" in grp.columns:
+        out["avg_words_per_sentence_mean"] = weighted_mean(grp["avg_words_per_sentence_comment"], nw)
+    elif "ai_avg_words_per_sentence" in grp.columns:
+        out["avg_words_per_sentence_mean"] = weighted_mean(grp["ai_avg_words_per_sentence"], nw)
+    elif "pol_avg_words_per_sentence" in grp.columns:
+        out["avg_words_per_sentence_mean"] = weighted_mean(grp["pol_avg_words_per_sentence"], nw)
+    if "ai_sentence_length_variance" in grp.columns:
+        out["sentence_length_variance_mean"] = weighted_mean(grp["ai_sentence_length_variance"], nw)
+    if (
+        "sentence_count_comment" in grp.columns
+        and "total_word_chars_comment" in grp.columns
+        and total_words > 0
+    ):
+        out["complexity_index"] = compute_complexity_index(
+            int(grp["sentence_count_comment"].sum()),
+            int(total_words),
+            int(grp["total_word_chars_comment"].sum()),
+            int(len(grp)),
+        )
+    return out
+
+
 def weighted_mean(series: pd.Series, weights: pd.Series) -> float:
     """Function summary: compute weighted mean with zero-weight guard.
 
@@ -177,6 +304,38 @@ def weighted_mean(series: pd.Series, weights: pd.Series) -> float:
     if w.sum() <= 0:
         return float("nan")
     return float((series.astype(float) * w).sum() / w.sum())
+
+
+def ideology_bucket_aggregate_fields(grp: pd.DataFrame, eps: float = 1.0e-6) -> Dict[str, float]:
+    """Function summary: pool ideology hit sums into per-100w rates and pole share.
+
+    Parameters:
+    - grp: comment rows for one day and aggregation group.
+    - eps: stabilizer for pole_share when ideology hits are zero.
+
+    Returns:
+    - Dict with left/center/right_rate_100w_mean and pole_share.
+    """
+    nw = float(grp["n_words"].astype(float).sum())
+    left = float(grp["left_hits"].sum())
+    center = float(grp["center_hits"].sum())
+    right = float(grp["right_hits"].sum())
+    ideology_total = left + center + right
+    if nw <= 0:
+        rate_nan = float("nan")
+        return {
+            "left_rate_100w_mean": rate_nan,
+            "center_rate_100w_mean": rate_nan,
+            "right_rate_100w_mean": rate_nan,
+            "pole_share": float("nan"),
+        }
+    pole_share = float((left + right) / (ideology_total + eps)) if ideology_total > 0 else float("nan")
+    return {
+        "left_rate_100w_mean": 100.0 * left / nw,
+        "center_rate_100w_mean": 100.0 * center / nw,
+        "right_rate_100w_mean": 100.0 * right / nw,
+        "pole_share": pole_share,
+    }
 
 
 def daily_subreddit_table(df: pd.DataFrame, pol_cfg: Dict[str, Any]) -> pd.DataFrame:
@@ -222,6 +381,8 @@ def daily_subreddit_table(df: pd.DataFrame, pol_cfg: Dict[str, Any]) -> pd.DataF
                 if len(grp) >= dip_min
                 else float("nan"),
                 "coverage_bimodality": float(len(grp) >= dip_min),
+                **ideology_bucket_aggregate_fields(grp),
+                **style_aggregate_fields(grp),
             }
         )
     return pd.DataFrame(rows)
@@ -256,7 +417,78 @@ def daily_family_table(df: pd.DataFrame, family_map: Dict[str, str]) -> pd.DataF
                 "extremity_mean": weighted_mean(grp["extremity"], nw),
                 "other_side_salience_rate_100w_mean": weighted_mean(grp["other_side_salience_rate_100w"], nw),
                 "aggression_rate_100w_mean": weighted_mean(grp["aggression_rate_100w"], nw),
-                "ai_style_rate_100w_mean": weighted_mean(grp.get("ai_style_rate_100w", pd.Series(0.0)), nw),
+                "ai_style_rate_100w_mean": weighted_mean(grp["ai_style_rate_100w"], nw)
+                if "ai_style_rate_100w" in grp.columns
+                else float("nan"),
+                "political_rate_100w_mean": weighted_mean(grp["political_rate_100w"], nw)
+                if "political_rate_100w" in grp.columns
+                else float("nan"),
+                **ideology_bucket_aggregate_fields(grp),
+                **style_aggregate_fields(grp),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def daily_topic_table(
+    df: pd.DataFrame,
+    family_map: Dict[str, str],
+    topic_map: Dict[str, str],
+    pol_cfg: Dict[str, Any],
+) -> pd.DataFrame:
+    """Function summary: pool daily metrics by assigned topic (e.g. it_political).
+
+    Parameters:
+    - df: comment frame with topic or subreddit for mapping.
+    - family_map: subreddit -> topic_family.
+    - topic_map: subreddit -> topic.
+    - pol_cfg: polarization config for Esteban–Ray alpha.
+
+    Returns:
+    - Topic-day aggregates with topic_family for faceting.
+    """
+    if df.empty:
+        return pd.DataFrame()
+    work = df.copy()
+    if "topic" not in work.columns:
+        work["topic"] = work["subreddit"].map(topic_map)
+    if "topic_family" not in work.columns:
+        work["topic_family"] = work["subreddit"].map(family_map)
+    work = work.dropna(subset=["topic"])
+    er_alpha = float(pol_cfg.get("er_alpha", 1.6))
+    rows: List[Dict[str, Any]] = []
+    for (topic, day), grp in work.groupby(["topic", "date_utc"], sort=True):
+        authors: Set[str] = set(grp["author"].astype(str))
+        nw = grp["n_words"].astype(float)
+        family = grp["topic_family"].iloc[0] if "topic_family" in grp.columns else ""
+        rows.append(
+            {
+                "topic": topic,
+                "topic_family": family,
+                "date_utc": day,
+                "n_comments": len(grp),
+                "n_authors_union": len(authors),
+                "net_ideology_mean": weighted_mean(grp["net_ideology"], nw),
+                "extremity_mean": weighted_mean(grp["extremity"], nw),
+                "other_side_salience_rate_100w_mean": weighted_mean(grp["other_side_salience_rate_100w"], nw),
+                "aggression_rate_100w_mean": weighted_mean(grp["aggression_rate_100w"], nw),
+                "ai_style_rate_100w_mean": weighted_mean(grp["ai_style_rate_100w"], nw)
+                if "ai_style_rate_100w" in grp.columns
+                else float("nan"),
+                "political_rate_100w_mean": weighted_mean(grp["political_rate_100w"], nw)
+                if "political_rate_100w" in grp.columns
+                else float("nan"),
+                "political_thread_share": float(grp["thread_is_political"].astype(float).mean())
+                if "thread_is_political" in grp.columns
+                else float("nan"),
+                "esteban_ray_index": esteban_ray_index(
+                    float(grp["left_hits"].sum()),
+                    float(grp["center_hits"].sum()),
+                    float(grp["right_hits"].sum()),
+                    alpha=er_alpha,
+                ),
+                **ideology_bucket_aggregate_fields(grp),
+                **style_aggregate_fields(grp),
             }
         )
     return pd.DataFrame(rows)
@@ -381,6 +613,7 @@ def country_panel_daily(df: pd.DataFrame) -> pd.DataFrame:
                     float(grp["center_hits"].sum()),
                     float(grp["right_hits"].sum()),
                 ),
+                **style_aggregate_fields(grp),
             }
         )
     return pd.DataFrame(rows)
@@ -437,26 +670,32 @@ def main() -> None:
     """Function summary: write all descriptives tables."""
     args = parse_args()
     config = load_config(PROJECT_ROOT / args.config)
+    require_dominant_v1_ideology_scoring(config)
     pol_cfg = load_polarization_config(config)
-    interim_dir = Path(config["paths"]["interim_dir"])
+    shard_root = Path(config["paths"]["interim_dir"]) / "cleaned_monthly_chunks"
     tables_dir = Path(config["paths"]["tables_dir"])
     out_dir = tables_dir / "descriptives"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    validate_feature_columns_present(shard_root)
+
     start, end_excl, launch, lift = event_dates(config)
     subs = resolve_primary_subreddits(config)
     family_map = subreddit_family_map(config)
+    topic_map = subreddit_topic_map(config, include_topic_aliases=False)
 
-    df = load_comment_frame(interim_dir, subs)
+    df = load_comment_frame(shard_root, subs)
     if df.empty:
         print("[prepare_polarization_descriptives] no parquet data found", flush=True)
         return
     df = df[(df["date_utc"] >= start) & (df["date_utc"] < end_excl)].copy()
+    df = enrich_style_helper_columns(df)
     if "topic_family" not in df.columns:
         df["topic_family"] = df["subreddit"].map(family_map)
 
     daily_subreddit_table(df, pol_cfg).to_csv(out_dir / "daily_by_subreddit.csv", index=False)
     daily_family_table(df, family_map).to_csv(out_dir / "daily_by_topic_family.csv", index=False)
+    daily_topic_table(df, family_map, topic_map, pol_cfg).to_csv(out_dir / "daily_by_topic.csv", index=False)
     country = country_panel_daily(df)
     country.to_csv(out_dir / "daily_country_panel.csv", index=False)
     author_retention(df, launch, lift).to_csv(out_dir / "author_retention_by_subreddit.csv", index=False)

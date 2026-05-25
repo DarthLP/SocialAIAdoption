@@ -19,13 +19,13 @@ Functionality:
 
 How to apply/run (from repository root):
 - Default paths match the Drive-style export name used in this project:
-  `.venv/bin/python scripts/diagnostics/describe_ml_zip_time_trends.py`
+  `.venv/bin/python scripts/archive/diagnostics/describe_ml_zip_time_trends.py`
 - Custom zip / outputs:
-  `.venv/bin/python scripts/diagnostics/describe_ml_zip_time_trends.py \\
+  `.venv/bin/python scripts/archive/diagnostics/describe_ml_zip_time_trends.py \\
       --zip-path data/interim/my_export.zip --internal-prefix production_run/ \\
       --tables-dir results/tables/ml_zip_time_trends \\
       --figures-dir results/figures/ml_zip_time_trends`
-- Launch markers default from `config/political_forums_setup.yaml` (`launch_day_utc`) plus GPT-4 date; disable second line with `--no-gpt4-marker`.
+- Launch markers default from `config/archive/ai_adoption_political_forums_setup.yaml` (`launch_day_utc`) plus GPT-4 date; disable second line with `--no-gpt4-marker`.
 """
 
 from __future__ import annotations
@@ -49,23 +49,24 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 
-def _resolve_project_root() -> Path:
-    """Load scripts/_project_root.py and return the repository root Path."""
-    _scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod",
-        _scripts_dir / "_project_root.py",
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import load_config, utc_ts
 
@@ -481,7 +482,7 @@ def main() -> None:
     parser.add_argument(
         "--config",
         type=Path,
-        default=PROJECT_ROOT / "config/political_forums_setup.yaml",
+        default=PROJECT_ROOT / "config/archive/ai_adoption_political_forums_setup.yaml",
         help="YAML with event_window.launch_day_utc; used when the file exists (otherwise --launch-day-utc).",
     )
     parser.add_argument(

@@ -1,0 +1,13 @@
+# English signposting phrases
+firstly
+secondly
+thirdly
+on the other hand
+in other words
+to recap
+to summarize
+short answer
+long answer
+my take
+overall
+in short

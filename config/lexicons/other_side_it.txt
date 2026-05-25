@@ -1,4 +1,5 @@
 # Italian other-side salience (partisan labels, derogatory nicknames)
+# v4 export (broad) from italian_political_lexicon_v4.csv — other-side salience (stance=contra)
 other_side:grillini
 other_side:grillino
 other_side:leghisti
@@ -28,3 +29,99 @@ other_side:idioti
 other_side:cretini
 other_side:venduti
 other_side:venduto
+# v4 additions (broad)
+other_side:allarmismo climatico
+other_side:antifa
+other_side:assistenzialismo
+other_side:austerità imposta
+other_side:bamboccioni
+other_side:Bruxelles
+other_side:buonismo
+other_side:capitalismo selvaggio
+other_side:casta
+other_side:catastrofismo
+other_side:cessione di sovranità
+other_side:choosy
+other_side:clandestini
+other_side:complottismo
+other_side:condono
+other_side:costo del lavoro
+other_side:criminalità organizzata
+other_side:crisi climatica
+other_side:cultura della cancellazione
+other_side:Ddl eco-vandali
+other_side:deindustrializzazione
+other_side:delocalizzazione
+other_side:disinformazione
+other_side:dittatura sanitaria
+other_side:divani
+other_side:eco-vandali
+other_side:emergenza climatica
+other_side:emergenza migratoria
+other_side:energia intermittente
+other_side:esproprio
+other_side:fake news
+other_side:falsi richiedenti asilo
+other_side:femminicidio
+other_side:fuga dal lavoro
+other_side:grandi opere inutili
+other_side:guerra all'automobile
+other_side:guerra civile
+other_side:ideologia gender
+other_side:ideologia green
+other_side:immigrati irregolari
+other_side:immigrazionisti
+other_side:inciucio
+other_side:invasione
+other_side:islamizzazione
+other_side:ius sanguinis
+other_side:lasciapassare
+other_side:legge bavaglio
+other_side:libera circolazione
+other_side:mafia
+other_side:mainstream
+other_side:mancia di stato
+other_side:mascolinità tossica
+other_side:multinazionali
+other_side:nazionalismo
+other_side:neo-fascisti
+other_side:neoliberismo
+other_side:nomenklatura
+other_side:nullafacenti
+other_side:omofobia
+other_side:omotransfobia
+other_side:ONG scafiste
+other_side:palazzo
+other_side:partitocrazia
+other_side:patriarcato
+other_side:persecuzione fiscale
+other_side:piano Kalergi
+other_side:pizzo di stato
+other_side:politichese
+other_side:populismo
+other_side:poteri forti
+other_side:precariato
+other_side:razzismo di stato
+other_side:razzismo strutturale
+other_side:regime
+other_side:secessione fiscale
+other_side:siero sperimentale
+other_side:sistema
+other_side:soppressione del nascituro
+other_side:sostituzione etnica
+other_side:sovranismo
+other_side:squadrismo
+other_side:stampa di regime
+other_side:sussidio statale
+other_side:Tangentopoli
+other_side:tassa regressiva
+other_side:tassazione punitiva
+other_side:taxi del mare
+other_side:teatrino
+other_side:toghe rosse
+other_side:transfobia
+other_side:trivelle
+other_side:utero in affitto
+other_side:vaffa
+other_side:vincoli al mercato
+other_side:xenofobia

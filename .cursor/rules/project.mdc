@@ -46,8 +46,8 @@ Before finishing substantial work, verify whether these files need updates and u
 - `TODO.md`
 
 ## Scripts layout
-- New runnable pipeline scripts belong under `scripts/<domain>/` (exactly one level: `scripts/<domain>/<name>.py`). Domains are defined in `scripts/README.md` (`filtering`, `cleaning`, `diagnostics`, `features`, `event_time`, `user_week`, `devtools`).
-- Run from the repository root, for example: `.venv/bin/python scripts/features/compute_comment_features.py --config config/political_forums_setup.yaml`.
+- New runnable pipeline scripts belong under `scripts/<domain>/` (exactly one level: `scripts/<domain>/<name>.py`). Domains are defined in `scripts/README.md` (`filtering`, `cleaning`, `diagnostics`, `features`, `user_week`, `devtools`, `discovery`). Legacy `event_time` and ML paths live under `scripts/archive/` only.
+- Run from the repository root, for example: `.venv/bin/python scripts/features/compute_polarization_features.py --config config/italy_polarization_setup.yaml`.
 - Domain scripts resolve the repo root via `scripts/_project_root.py` (marker: `MasterSystemPrompt.md`); do not assume `Path(__file__).parents[1]` is the repo root.
 
 ## Output Subfolder Rule

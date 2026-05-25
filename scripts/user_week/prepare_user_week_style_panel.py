@@ -1,22 +1,20 @@
 """
 Script summary:
-This script builds a per-author, per-ISO-week style panel from the reusable
-`comment_features/` Parquet shards. Each row in the panel represents one user's
-writing in one calendar week (UTC ISO week, Monday start) across all configured
-forums they posted in.
+This script builds a per-author, per-ISO-week panel from enriched monthly Parquet
+shards on `cleaned_monthly_chunks/` (Italy polarization study).
+Each row represents one user's writing in one calendar week (UTC ISO week,
+Monday start) across all configured forums they posted in.
 
-It is the foundation for the within-user pre/post analysis: rather than
-aggregating to subreddit-day (the existing event-time pipeline), we aggregate
-to (author, iso_week) so we can later compare each user's post-launch writing
-to their own pre-launch baseline.
+Foundation for within-user pre/post analysis around the Italy ChatGPT ban
+(`event_window.launch_day_utc`): aggregate to (author, iso_week) and compare
+each user's post-ban writing to their own pre-ban baseline.
 
-The panel keeps both display-friendly weekly aggregates (rates per 100 words,
-weighted means) AND the precision-preserving raw fields (hit counts, sums,
-sums-of-squares, comment counts) needed downstream to compute pooled, volume-
-aware standard errors without rereading the original shards.
+The panel keeps display-friendly weekly aggregates (rates per 100 words, weighted
+means) and precision-preserving raw fields (hit counts, sums, sums-of-squares,
+comment counts) for pooled standard errors downstream.
 
 Functionality:
-- Reads `data/interim/political_forums/comment_features/<subreddit>/<YYYY-MM>.parquet`.
+- Reads `paths.interim_dir/cleaned_monthly_chunks/`.
 - Filters out empty/deleted authors, AutoModerator, and bot-name heuristic accounts.
 - Skips rows with missing `created_utc` or `n_words_comment <= 0`.
 - Computes per-row `iso_week_start` (Monday in UTC, ISO 8601 date string).
@@ -24,18 +22,17 @@ Functionality:
   pools intermediate rows across shards and collapses across subreddit to one
   row per (author, iso_week_start). Subreddit mix survives as `top_subreddit`,
   `subreddit_concentration`, and `top_topic`.
-- Writes one Parquet shard per month under
-  `data/interim/political_forums/user_week_style_panel/<YYYY-MM>.parquet`
-  and a merged panel at `results/tables/user_week/user_week_panel.parquet`.
+- Writes monthly shards under `paths.interim_dir/user_week_panel/` and a merged panel at
+  `paths.tables_dir/user_week/user_week_panel.parquet` (Italy: under `italy_polarization/`).
 - Optional bounded controls (`--max_total_month_files`, `--max_days_per_month`)
   and a soft post-aggregation filter `--min_words_per_week_for_keep` (default 0
   so the same panel can serve strict and loose downstream cohorts).
 
 How to apply/run:
 - Full run:
-  `.venv/bin/python scripts/user_week/prepare_user_week_style_panel.py --config config/political_forums_setup.yaml`
+  `.venv/bin/python scripts/user_week/prepare_user_week_style_panel.py --config config/italy_polarization_setup.yaml`
 - Bounded benchmark:
-  `.venv/bin/python scripts/user_week/prepare_user_week_style_panel.py --config config/political_forums_setup.yaml --max_total_month_files 2 --max_days_per_month 10 --profile`
+  `.venv/bin/python scripts/user_week/prepare_user_week_style_panel.py --config config/italy_polarization_setup.yaml --max_total_month_files 2 --max_days_per_month 10 --profile`
 """
 
 from __future__ import annotations
@@ -52,40 +49,37 @@ from typing import Any, Dict, Iterable, List
 
 import pandas as pd
 
-def _resolve_project_root() -> Path:
-    """Load scripts/_project_root.py and return the repository root Path."""
-    _scripts_dir = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "_socialai_scripts_project_root_mod",
-        _scripts_dir / "_project_root.py",
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load scripts/_project_root.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.project_root()
+
+def _setup_project_root() -> Path:
+    """Function summary: resolve repo root via scripts/_bootstrap.py."""
+    caller = Path(__file__).resolve()
+    for parent in caller.parents:
+        if parent.name == "scripts" and (parent / "_bootstrap.py").is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_socialai_bootstrap_mod", parent / "_bootstrap.py"
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Failed to load scripts/_bootstrap.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.setup_project_path(caller)
+    raise RuntimeError("Could not locate scripts/_bootstrap.py")
 
 
-PROJECT_ROOT = _resolve_project_root()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = _setup_project_root()
 
-from src.config_utils import load_config, subreddit_topic_map, topic_groups
+from src.config_utils import (
+    load_config,
+    resolve_primary_subreddits,
+    subreddit_topic_map,
+    topic_groups,
+)
 
 
 # ----------------------------- Topic / hygiene helpers -----------------------------
 
-# Rate features stored as `<base>_rate_100w` per 100 words, with the underlying
-# integer `hits` count also persisted so pooled rates can be recomputed.
-# Mapping: panel_rate_column_name -> (raw_hits_source_column_in_shards, raw_hits_panel_column).
-RATE_FEATURES: Dict[str, tuple[str, str]] = {
-    "ai_word_rate_100w": ("strict_ai_word_hits_total", "strict_ai_word_hits_total"),
-    "ai_word_extended_rate_100w": ("extended_ai_word_hits_total", "extended_ai_word_hits_total"),
-    "assistant_tone_rate_100w": ("assistant_tone_phrase_count", "assistant_tone_phrase_count"),
-    "contraction_rate_100w": ("contraction_count", "contraction_count"),
-    "full_form_rate_100w": ("full_form_count", "full_form_count"),
-    "passive_rate_100w": ("passive_count", "passive_count"),
-    "toxic_lexicon_rate_100w": ("toxic_lexicon_hits", "toxic_lexicon_hits"),
+# Rate features: panel_rate_column -> (shard_hits_col, panel_hits_col).
+ENRICHED_RATE_FEATURES: Dict[str, tuple[str, str]] = {
     "semicolon_rate_100w": ("semicolon_count", "semicolon_count"),
     "em_dash_rate_100w": ("em_dash_count", "em_dash_count"),
     "en_dash_rate_100w": ("en_dash_count", "en_dash_count"),
@@ -98,6 +92,12 @@ RATE_FEATURES: Dict[str, tuple[str, str]] = {
     "hedging_phrase_rate_100w": ("hedging_phrase_hits", "hedging_phrase_hits"),
     "polite_closer_rate_100w": ("polite_closer_hits", "polite_closer_hits"),
     "signposting_phrase_rate_100w": ("signposting_phrase_hits", "signposting_phrase_hits"),
+    "ai_style_rate_100w": ("ai_style_hits", "ai_style_hits"),
+    "other_side_salience_rate_100w": ("other_side_salience_hits", "other_side_salience_hits"),
+    "aggression_rate_100w": ("aggression_hits", "aggression_hits"),
+    "left_rate_100w": ("left_hits", "left_hits"),
+    "right_rate_100w": ("right_hits", "right_hits"),
+    "center_rate_100w": ("center_hits", "center_hits"),
 }
 
 # Mean features stored as `<feat>_mean`, with `<feat>_sum`, `<feat>_sumsq`,
@@ -108,22 +108,20 @@ MEAN_FEATURES_REQUIRED: List[str] = [
     "avg_words_per_sentence_comment",
 ]
 
-MEAN_FEATURES_OPTIONAL: List[str] = [
-    "vader_compound",
-    "toxicity_score_comment",
-    "detector_primary_human_score",
-    "detector_secondary_human_score",
-    "hostility_score",
-    "perplexity",
-    "log_perplexity",
-    "emotion_anger",
-    "emotion_fear",
-    "emotion_sadness",
-    "emotion_surprise",
+ENRICHED_MEAN_FEATURES: List[str] = [
+    "net_ideology",
+    "extremity",
+    "ambivalence",
+    "negative_rate_100w",
+    "anger_rate_100w",
+    "issue_eu_rate_100w",
+    "issue_migration_rate_100w",
+    "issue_economy_rate_100w",
+    "issue_culture_rate_100w",
 ]
 
 # Complexity is a ratio-of-sums metric (matches `compute_complexity_index` in
-# `prepare_event_time_metrics.py`); we keep the three raw totals per week so
+# ratio-of-sums complexity); we keep the three raw totals per week so
 # pooled pre/post complexity can be recomputed downstream.
 COMPLEXITY_RAW_COLUMNS: List[str] = [
     "n_words_comment",
@@ -149,7 +147,8 @@ def is_bot_name_heuristic(author: str) -> bool:
 class RuntimePaths:
     """Function summary: store resolved runtime input and output paths for the user-week panel build."""
 
-    comment_features_dir: Path
+    input_shards_dir: Path
+    input_mode: str
     interim_panel_dir: Path
     tables_dir: Path
     user_week_tables_dir: Path
@@ -188,8 +187,10 @@ class ProfilingStats:
 
 def parse_args() -> argparse.Namespace:
     """Function summary: parse command line options for config path and bounded benchmark controls."""
-    parser = argparse.ArgumentParser(description="Build per-author per-ISO-week style panel from comment_features shards.")
-    parser.add_argument("--config", type=str, default="config/political_forums_setup.yaml")
+    parser = argparse.ArgumentParser(
+        description="Build per-author per-ISO-week panel from enriched cleaned_monthly_chunks."
+    )
+    parser.add_argument("--config", type=str, default="config/italy_polarization_setup.yaml")
     parser.add_argument(
         "--max_total_month_files",
         type=int,
@@ -234,18 +235,80 @@ def build_paths(config: Dict[str, Any]) -> RuntimePaths:
     tables_dir = Path(config["paths"]["tables_dir"])
     logs_dir = Path(config["paths"]["logs_dir"])
     user_week_tables_dir = tables_dir / "user_week"
-    interim_panel_dir = interim_dir / "user_week_style_panel"
+    interim_panel_dir = interim_dir / "user_week_panel"
     user_week_logs_dir = logs_dir / "user_week"
     user_week_tables_dir.mkdir(parents=True, exist_ok=True)
     interim_panel_dir.mkdir(parents=True, exist_ok=True)
     user_week_logs_dir.mkdir(parents=True, exist_ok=True)
     return RuntimePaths(
-        comment_features_dir=interim_dir / "comment_features",
+        input_shards_dir=interim_dir / "cleaned_monthly_chunks",
+        input_mode="enriched_shards",
         interim_panel_dir=interim_panel_dir,
         tables_dir=tables_dir,
         user_week_tables_dir=user_week_tables_dir,
         logs_dir=user_week_logs_dir,
     )
+
+
+def rate_features_for_config(config: Dict[str, Any]) -> Dict[str, tuple[str, str]]:
+    """Function summary: return rate-feature map for enriched-shard input.
+
+    Parameters:
+    - config: study YAML (unused; kept for API stability).
+
+    Returns:
+    - Mapping panel_rate_column -> (shard_hits_col, panel_hits_col).
+    """
+    _ = config
+    return dict(ENRICHED_RATE_FEATURES)
+
+
+def mean_features_for_config(config: Dict[str, Any]) -> List[str]:
+    """Function summary: return mean features to aggregate for enriched shards.
+
+    Parameters:
+    - config: study YAML (unused; kept for API stability).
+
+    Returns:
+    - List of mean feature column names on shards.
+    """
+    _ = config
+    return list(MEAN_FEATURES_REQUIRED) + list(ENRICHED_MEAN_FEATURES)
+
+
+def normalize_input_shard(frame: pd.DataFrame) -> pd.DataFrame:
+    """Function summary: align Italy enriched shard column names with panel expectations.
+
+    Parameters:
+    - frame: raw shard rows.
+
+    Returns:
+    - Frame with n_words_comment and derived hit columns when needed.
+    """
+    out = frame.copy()
+    if "n_words" in out.columns and "n_words_comment" not in out.columns:
+        out["n_words_comment"] = pd.to_numeric(out["n_words"], errors="coerce")
+    elif "n_words_comment" not in out.columns and "n_words" not in out.columns:
+        out["n_words_comment"] = 0.0
+    if "n_words_comment" in out.columns:
+        nw = pd.to_numeric(out["n_words_comment"], errors="coerce").fillna(0.0)
+    else:
+        nw = pd.Series(0.0, index=out.index)
+    derived: List[tuple[str, str]] = [
+        ("ai_style_hits", "ai_style_rate_100w"),
+        ("other_side_salience_hits", "other_side_salience_rate_100w"),
+        ("aggression_hits", "aggression_rate_100w"),
+        ("left_hits", "left_rate_100w"),
+        ("right_hits", "right_rate_100w"),
+        ("center_hits", "center_rate_100w"),
+    ]
+    for hits_col, rate_col in derived:
+        if hits_col in out.columns:
+            continue
+        if rate_col in out.columns:
+            rate = pd.to_numeric(out[rate_col], errors="coerce").fillna(0.0)
+            out[hits_col] = (rate * nw / 100.0).round().astype(float)
+    return out
 
 
 def iter_monthly_files(
@@ -283,8 +346,9 @@ def iso_week_start_from_unix(created_utc: int) -> date:
 # ----------------------------- Per-shard aggregation -----------------------------
 
 
-def select_shard_columns(frame: pd.DataFrame) -> pd.DataFrame:
-    """Function summary: keep only columns we need from a comment_features shard for memory efficiency."""
+def select_shard_columns(frame: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
+    """Function summary: keep only columns we need from an input shard for memory efficiency."""
+    frame = normalize_input_shard(frame)
     needed = {
         "id",
         "subreddit",
@@ -314,9 +378,15 @@ def select_shard_columns(frame: pd.DataFrame) -> pd.DataFrame:
         "polite_closer_hits",
         "signposting_phrase_hits",
         "avg_words_per_sentence_comment",
+        "ai_style_hits",
+        "other_side_salience_hits",
+        "aggression_hits",
+        "left_hits",
+        "right_hits",
+        "center_hits",
     }
     needed.update(MEAN_FEATURES_REQUIRED)
-    needed.update(MEAN_FEATURES_OPTIONAL)
+    needed.update(mean_features_for_config(config))
     keep = [c for c in needed if c in frame.columns]
     return frame[keep].copy()
 
@@ -345,7 +415,9 @@ def filter_valid_authors(frame: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def aggregate_shard_to_user_week_subreddit(frame: pd.DataFrame, subreddit: str) -> pd.DataFrame:
+def aggregate_shard_to_user_week_subreddit(
+    frame: pd.DataFrame, subreddit: str, config: Dict[str, Any]
+) -> pd.DataFrame:
     """Function summary: collapse a filtered per-comment shard into per (author, iso_week_start, subreddit) sums for later merge across shards."""
     if frame.empty:
         return pd.DataFrame()
@@ -378,6 +450,12 @@ def aggregate_shard_to_user_week_subreddit(frame: pd.DataFrame, subreddit: str) 
         "polite_closer_hits",
         "signposting_phrase_hits",
         "list_structure_flag",
+        "ai_style_hits",
+        "other_side_salience_hits",
+        "aggression_hits",
+        "left_hits",
+        "right_hits",
+        "center_hits",
     ]
     integer_sum_cols = [c for c in integer_sum_cols if c in df.columns]
     for col in integer_sum_cols:
@@ -386,7 +464,7 @@ def aggregate_shard_to_user_week_subreddit(frame: pd.DataFrame, subreddit: str) 
     sum_specs: Dict[str, str] = {col: "sum" for col in integer_sum_cols}
     sum_specs["__one"] = "sum"
 
-    for feat in MEAN_FEATURES_REQUIRED + MEAN_FEATURES_OPTIONAL:
+    for feat in mean_features_for_config(config):
         if feat not in df.columns:
             continue
         s = pd.to_numeric(df[feat], errors="coerce")
@@ -410,7 +488,7 @@ def aggregate_shard_to_user_week_subreddit(frame: pd.DataFrame, subreddit: str) 
         rename_map["n_words_comment"] = "n_words"
     if "list_structure_flag" in out.columns:
         rename_map["list_structure_flag"] = "list_structure_flag_sum"
-    for feat in MEAN_FEATURES_REQUIRED + MEAN_FEATURES_OPTIONAL:
+    for feat in mean_features_for_config(config):
         if f"__{feat}_val" in out.columns:
             rename_map[f"__{feat}_val"] = f"{feat}_sum"
             rename_map[f"__{feat}_sq"] = f"{feat}_sumsq"
@@ -422,7 +500,9 @@ def aggregate_shard_to_user_week_subreddit(frame: pd.DataFrame, subreddit: str) 
 # ----------------------------- Cross-shard merge into final panel -----------------------------
 
 
-def merge_user_week_subreddit_rows(intermediate: pd.DataFrame, subreddit_to_topic: Dict[str, str]) -> pd.DataFrame:
+def merge_user_week_subreddit_rows(
+    intermediate: pd.DataFrame, subreddit_to_topic: Dict[str, str], config: Dict[str, Any]
+) -> pd.DataFrame:
     """Function summary: collapse (author, iso_week_start, subreddit) rows to one row per user-week with topic labels."""
     if intermediate.empty:
         return pd.DataFrame()
@@ -452,11 +532,17 @@ def merge_user_week_subreddit_rows(intermediate: pd.DataFrame, subreddit_to_topi
         "signposting_phrase_hits",
         "list_structure_flag_sum",
         "n_comments",
+        "ai_style_hits",
+        "other_side_salience_hits",
+        "aggression_hits",
+        "left_hits",
+        "right_hits",
+        "center_hits",
     ]
     sum_columns_int = [c for c in sum_columns_int if c in intermediate.columns]
 
     sum_columns_mean: List[str] = []
-    for feat in MEAN_FEATURES_REQUIRED + MEAN_FEATURES_OPTIONAL:
+    for feat in mean_features_for_config(config):
         for suffix in ("_sum", "_sumsq", "_n"):
             col = f"{feat}{suffix}"
             if col in intermediate.columns:
@@ -501,7 +587,7 @@ def merge_user_week_subreddit_rows(intermediate: pd.DataFrame, subreddit_to_topi
 
     # Derived display rates per 100 words.
     n_words = panel["n_words"].astype(float).where(panel["n_words"].astype(float) > 0)
-    for rate_col, (raw_hits_src, raw_hits_panel) in RATE_FEATURES.items():
+    for rate_col, (raw_hits_src, raw_hits_panel) in rate_features_for_config(config).items():
         if raw_hits_panel in panel.columns:
             panel[rate_col] = (panel[raw_hits_panel].astype(float) / n_words) * 100.0
             panel[rate_col] = panel[rate_col].fillna(0.0)
@@ -525,7 +611,7 @@ def merge_user_week_subreddit_rows(intermediate: pd.DataFrame, subreddit_to_topi
         panel["complexity_index"] = complexity.astype(float)
 
     # Mean-feature display means from sum / n (only counts non-NaN comments).
-    for feat in MEAN_FEATURES_REQUIRED + MEAN_FEATURES_OPTIONAL:
+    for feat in mean_features_for_config(config):
         sum_col = f"{feat}_sum"
         n_col = f"{feat}_n"
         if sum_col in panel.columns and n_col in panel.columns:
@@ -543,8 +629,9 @@ def process_shard(
     subreddit: str,
     max_days_per_month: int,
     stats: ProfilingStats,
+    config: Dict[str, Any],
 ) -> pd.DataFrame:
-    """Function summary: read one comment_features shard and emit (author, iso_week, subreddit) intermediate rows."""
+    """Function summary: read one enriched shard and emit (author, iso_week, subreddit) intermediate rows."""
     print(
         f"[prepare_user_week_style_panel] shard_start subreddit={subreddit} month={file_path.stem}",
         flush=True,
@@ -568,13 +655,13 @@ def process_shard(
         frame = frame[frame["date_utc"].isin(keep_days)].copy()
     if frame.empty:
         return pd.DataFrame()
-    frame = select_shard_columns(frame)
+    frame = select_shard_columns(frame, config)
     frame = filter_valid_authors(frame)
     if frame.empty:
         return pd.DataFrame()
     stats.rows_kept += int(len(frame))
     t1 = time.perf_counter()
-    intermediate = aggregate_shard_to_user_week_subreddit(frame, subreddit=subreddit)
+    intermediate = aggregate_shard_to_user_week_subreddit(frame, subreddit=subreddit, config=config)
     stats.phase_aggregate_s += time.perf_counter() - t1
     stats.files_processed += 1
     print(
@@ -650,8 +737,7 @@ def write_notes(path: Path, groups: Dict[str, List[str]]) -> None:
         "  ascii double-hyphen, colon/paren/curly-quote, markdown bold/heading, hedging/polite/signposting phrase rates.",
         "- formality_balance_100w computed from full_form_count and contraction_count.",
         "- list_structure_intensity = list_structure_flag_sum / n_comments (mean of binary flag).",
-        "- complexity_index from weekly totals (n_words, total_word_chars_comment, sentence_count_comment),",
-        "  matching the ratio-of-sums formula used in prepare_event_time_metrics.py.",
+        "- complexity_index from weekly totals (n_words, total_word_chars_comment, sentence_count_comment).",
         "- mean features: <feat>_mean (display), <feat>_sum, <feat>_sumsq, <feat>_n; n counts only",
         "  comments with non-NaN values so coverage stays honest.",
         "- subreddit mix: top_subreddit, subreddit_concentration (Herfindahl), n_subreddits, top_topic.",
@@ -660,8 +746,8 @@ def write_notes(path: Path, groups: Dict[str, List[str]]) -> None:
         "- other: any subreddit not in the map (should not occur with the configured primary list).",
         "",
         "Outputs:",
-        "- data/interim/political_forums/user_week_style_panel/<YYYY-MM>.parquet (one shard per month).",
-        "- results/tables/user_week/user_week_panel.parquet (merged panel for downstream).",
+        "- paths.interim_dir/user_week_panel/<YYYY-MM>.parquet (one shard per month).",
+        "- paths.tables_dir/user_week/user_week_panel.parquet (merged panel for downstream).",
     ]
     for topic_name in sorted(groups.keys()):
         sub_list = ", ".join(groups[topic_name]) if groups[topic_name] else "(none)"
@@ -678,18 +764,19 @@ def main() -> None:
     config = load_config(args.config)
     config_topic_map = subreddit_topic_map(config, include_topic_aliases=False)
     config_topic_groups = topic_groups(config)
-    subreddits = list(config["subreddits"]["primary"])
+    subreddits = resolve_primary_subreddits(config)
     paths = build_paths(config)
 
-    if not paths.comment_features_dir.is_dir():
-        raise FileNotFoundError(
-            f"comment_features directory not found: {paths.comment_features_dir}. "
-            "Run scripts/features/compute_comment_features.py or scripts/features/merge_ml_shards_into_comment_features.py first."
+    if not paths.input_shards_dir.is_dir():
+        hint = (
+            "Run enrich + compute_enriched_shard_features --pass all "
+            "(or compute_polarization/ai_use/comment_style) first."
         )
+        raise FileNotFoundError(f"Input shards directory not found: {paths.input_shards_dir}. {hint}")
 
     month_jobs = list(
         iter_monthly_files(
-            paths.comment_features_dir,
+            paths.input_shards_dir,
             subreddits,
             max_month_files_per_subreddit=int(args.max_month_files_per_subreddit),
             max_total_month_files=int(args.max_total_month_files),
@@ -697,8 +784,7 @@ def main() -> None:
     )
     if not month_jobs:
         raise FileNotFoundError(
-            f"No comment_features parquet files found under: {paths.comment_features_dir}. "
-            "Run scripts/features/compute_comment_features.py or scripts/features/merge_ml_shards_into_comment_features.py first."
+            f"No parquet files found under: {paths.input_shards_dir} (input_mode={paths.input_mode})."
         )
 
     print(
@@ -714,6 +800,7 @@ def main() -> None:
             subreddit=subreddit,
             max_days_per_month=int(args.max_days_per_month),
             stats=stats,
+            config=config,
         )
         if not part.empty:
             intermediate_parts.append(part)
@@ -729,7 +816,7 @@ def main() -> None:
         flush=True,
     )
 
-    panel = merge_user_week_subreddit_rows(intermediate, config_topic_map)
+    panel = merge_user_week_subreddit_rows(intermediate, config_topic_map, config)
     if int(args.min_words_per_week_for_keep) > 0:
         before = int(len(panel))
         panel = panel[panel["n_words"].astype(float) >= float(args.min_words_per_week_for_keep)].copy()

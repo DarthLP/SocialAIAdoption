@@ -1,0 +1,251 @@
+# v4 stance export (dominant) from italian_political_lexicon_v4.csv
+ambiguous:18app
+ambiguous:antipolitica
+ambiguous:autonomia differenziata
+ambiguous:bicameralismo perfetto
+ambiguous:bonus 80 euro
+ambiguous:bossi-fini
+ambiguous:cassa integrazione
+ambiguous:classe politica
+ambiguous:coppia di fatto
+ambiguous:cpr
+ambiguous:decreti sicurezza
+ambiguous:eni
+ambiguous:fit for 55
+ambiguous:flussi migratori
+ambiguous:foibe
+ambiguous:fratelli d'italia
+ambiguous:frontex
+ambiguous:governo
+ambiguous:governo di unità
+ambiguous:governo tecnico
+ambiguous:green deal
+ambiguous:hotspot
+ambiguous:ilva
+ambiguous:irpef
+ambiguous:iva
+ambiguous:jobs act
+ambiguous:lampedusa
+ambiguous:larghe intese
+ambiguous:lega
+ambiguous:legge 194
+ambiguous:legge cirinnà
+ambiguous:m5s
+ambiguous:maggioritario
+ambiguous:mani pulite
+ambiguous:memorandum italia-libia
+ambiguous:mes
+ambiguous:naspi
+ambiguous:nato
+ambiguous:omicidio
+ambiguous:otto per mille
+ambiguous:piano mattei
+ambiguous:pnrr
+ambiguous:premierato
+ambiguous:presidenzialismo
+ambiguous:protezionismo
+ambiguous:quota 100 (legge)
+ambiguous:sanità di stato
+ambiguous:sbarchi
+ambiguous:spese militari
+ambiguous:superbonus 110%
+ambiguous:vincoli di bilancio
+ambiguous:voucher lavoro
+ambiguous:élite
+contra:allarmismo climatico
+contra:antifa
+contra:assistenzialismo
+contra:austerità imposta
+contra:bamboccioni
+contra:bruxelles
+contra:buonismo
+contra:capitalismo selvaggio
+contra:caporalato
+contra:casta
+contra:catastrofismo
+contra:cessione di sovranità
+contra:choosy
+contra:clandestini
+contra:complottismo
+contra:condono
+contra:costo del lavoro
+contra:criminalità organizzata
+contra:crisi climatica
+contra:cultura della cancellazione
+contra:cuneo fiscale
+contra:ddl eco-vandali
+contra:deindustrializzazione
+contra:delocalizzazione
+contra:disagio sociale
+contra:disinformazione
+contra:dittatura sanitaria
+contra:divani
+contra:eco-vandali
+contra:emergenza ambientale
+contra:emergenza climatica
+contra:emergenza migratoria
+contra:energia intermittente
+contra:esclusione sociale
+contra:esproprio
+contra:fake news
+contra:falsi richiedenti asilo
+contra:fascisti
+contra:femminicidio
+contra:fuga dal lavoro
+contra:grandi opere inutili
+contra:guerra all'automobile
+contra:guerra civile
+contra:ideologia gender
+contra:ideologia green
+contra:immigrati irregolari
+contra:immigrazionisti
+contra:inciucio
+contra:inquinamento
+contra:invasione
+contra:islamizzazione
+contra:ius sanguinis
+contra:lasciapassare
+contra:legge bavaglio
+contra:libera circolazione
+contra:mafia
+contra:mainstream
+contra:mancia di stato
+contra:mascolinità tossica
+contra:multinazionali
+contra:nazionalismo
+contra:negazionisti climatici
+contra:neo-fascisti
+contra:neoliberismo
+contra:nomenklatura
+contra:nullafacenti
+contra:omofobia
+contra:omotransfobia
+contra:ong scafiste
+contra:palazzo
+contra:partitocrazia
+contra:patriarcato
+contra:persecuzione fiscale
+contra:piano kalergi
+contra:pizzo di stato
+contra:politichese
+contra:populismo
+contra:poteri forti
+contra:precariato
+contra:precarizzazione
+contra:razzismo di stato
+contra:razzismo strutturale
+contra:regime
+contra:secessione fiscale
+contra:sfruttamento
+contra:siero sperimentale
+contra:sistema
+contra:soppressione del nascituro
+contra:sostituzione etnica
+contra:sovranismo
+contra:spread
+contra:squadrismo
+contra:stampa di regime
+contra:sussidio statale
+contra:tangentopoli
+contra:tassa regressiva
+contra:tassazione punitiva
+contra:taxi del mare
+contra:teatrino
+contra:toghe rosse
+contra:transfobia
+contra:trivelle
+contra:troika
+contra:utero in affitto
+contra:vaffa
+contra:vincoli al mercato
+contra:xenofobia
+pro:25 aprile
+pro:accoglienza
+pro:ammortizzatori sociali
+pro:antifascismo
+pro:antimafia
+pro:articolo 18
+pro:assegno unico
+pro:atlantismo
+pro:attivisti climatici
+pro:autonomia regionale
+pro:cittadini onesti
+pro:classe lavoratrice
+pro:contratto a tutele crescenti
+pro:cooperazione europea
+pro:corridoi umanitari
+pro:ddl zan
+pro:decarbonizzazione
+pro:decoro urbano
+pro:democrazia diretta
+pro:democrazia rappresentativa
+pro:diritti civili
+pro:disarmo
+pro:espulsioni di massa
+pro:europeismo
+pro:famiglia naturale
+pro:flat tax
+pro:flessibilità
+pro:fridays for future
+pro:garantismo
+pro:gestazione per altri
+pro:giudici
+pro:giustizia climatica
+pro:giustizialismo
+pro:green pass
+pro:integrazione
+pro:integrazione europea
+pro:interruzione di gravidanza
+pro:interventismo
+pro:italexit
+pro:italiani prima
+pro:ius scholae
+pro:ius soli
+pro:laicità
+pro:legalità
+pro:legge e ordine
+pro:libertà di stampa
+pro:lotta all'evasione
+pro:mare nostrum
+pro:merito
+pro:migranti
+pro:mobilità sostenibile
+pro:nazione
+pro:nextgenerationeu
+pro:obbligo vaccinale
+pro:onestà
+pro:ong umanitarie
+pro:opinione
+pro:pace fiscale
+pro:pacifismo
+pro:patria
+pro:patrimoniale
+pro:patriottismo
+pro:profughi
+pro:progressività fiscale
+pro:proletariato
+pro:quota 100
+pro:reddito di cittadinanza
+pro:resistenza
+pro:riarmo
+pro:richiedenti asilo
+pro:rimpatri assistiti
+pro:rinnovabili
+pro:salario minimo
+pro:salvataggio in mare
+pro:sanità pubblica
+pro:scuola pubblica
+pro:scuole paritarie
+pro:solidarietà
+pro:sovranità
+pro:sovranità energetica
+pro:tasse
+pro:tav
+pro:transizione ecologica
+pro:tutele del lavoro
+pro:ultima generazione
+pro:unione europea
+pro:unioni civili
+pro:uno vale uno
+pro:vaccino
+pro:valori cristiani

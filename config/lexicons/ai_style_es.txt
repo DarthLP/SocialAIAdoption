@@ -1,9 +1,0 @@
-ai_discourse:en resumen
-ai_discourse:en conclusión
-ai_discourse:sin embargo
-ai_discourse:además
-ai_discourse:por otro lado
-ai_discourse:en general
-ai_discourse:es importante señalar
-ai_discourse:significativo
-ai_discourse:crucial
