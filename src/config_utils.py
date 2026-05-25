@@ -133,6 +133,18 @@ def emotion_cognition_parallel_path(
     )
 
 
+def aggression_parallel_path(
+    config: Dict[str, Any], project_root: Optional[Path] = None
+) -> Path:
+    """Function summary: resolve paths.aggression_parallel CSV for semantic-axis insult seeds."""
+    return _parallel_path_from_config(
+        config,
+        "aggression_parallel",
+        "data/raw/seeds/aggression_parallel.csv",
+        project_root,
+    )
+
+
 def style_phrase_parallel_path(
     config: Dict[str, Any], project_root: Optional[Path] = None
 ) -> Path:
@@ -480,6 +492,31 @@ def shard_dir_is_enriched(shard_dir: Path) -> bool:
     return False
 
 
+def load_political_universe_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Function summary: return political-universe definition settings with defaults.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - Political universe settings (mode, thresholds, tree options).
+    """
+    defaults: Dict[str, Any] = {
+        "mode": "tree",
+        "comment_political_min_points": 3,
+        "tree_include_parent": True,
+        "tree_max_depth": None,
+        "political_cos_threshold": 0.55,
+    }
+    raw = config.get("political_universe", {})
+    if isinstance(raw, dict):
+        merged = dict(raw)
+        if merged.get("tree_max_depth") in ("", "none", "None"):
+            merged["tree_max_depth"] = None
+        defaults.update(merged)
+    return defaults
+
+
 def load_polarization_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """Function summary: return polarization feature settings with defaults.
 
@@ -491,6 +528,7 @@ def load_polarization_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     defaults: Dict[str, Any] = {
         "ideology_scoring": "dominant_v1",
+        "restrict_to_political_comments": True,
         "eps": 1.0e-6,
         "negation_window_tokens": 3,
         "lang_match_filter": False,
@@ -500,6 +538,42 @@ def load_polarization_config(config: Dict[str, Any]) -> Dict[str, Any]:
     raw = config.get("polarization", {})
     if isinstance(raw, dict):
         defaults.update(raw)
+    return defaults
+
+
+def load_semantic_axis_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Function summary: return semantic-axis feature settings with defaults.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - Semantic axis settings (vector paths, seeds_dir, thresholds, lang_match_filter).
+    """
+    defaults: Dict[str, Any] = {
+        "lang_match_filter": False,
+        "seeds_dir": "data/raw/seeds",
+        "vector_paths": {
+            "it": "data/external/embeddings/cc.it.300.bin",
+            "en": "data/external/embeddings/cc.en.300.bin",
+            "de": "data/external/embeddings/cc.de.300.bin",
+        },
+        "pole_thresholds": {
+            "ideology": 0.25,
+            "emotion": 0.25,
+            "aggression": 0.25,
+        },
+        "write_vector_cache": True,
+    }
+    raw = config.get("semantic_axis", {})
+    if isinstance(raw, dict):
+        for key, val in raw.items():
+            if key == "vector_paths" and isinstance(val, dict):
+                defaults["vector_paths"].update(val)
+            elif key == "pole_thresholds" and isinstance(val, dict):
+                defaults["pole_thresholds"].update(val)
+            else:
+                defaults[key] = val
     return defaults
 
 

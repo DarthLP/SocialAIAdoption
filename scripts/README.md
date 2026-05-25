@@ -83,11 +83,20 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
 ### 4e) Cleaning pipeline diagnostics
 - Script: `plot_cleaning_pipeline_trends.py`
 - Why: Stage-1 drop time-series, volume-band window summaries, langid by topic, word-weighted political metrics.
-- Output: `results/tables/italy_polarization/cleaning_pipeline/`, `results/figures/italy_polarization/cleaning_pipeline/{volume,stage1_drop_rates,political_qa}/` (political audit: boxplot, subreddit bars, `by_subreddit_political_rate_vs_topic.png` name-axis scatter, `by_subreddit_political_rate_vs_thread_share.png` bubble; screened-in only)
+- Output: `results/tables/italy_polarization/cleaning_pipeline/`, `results/figures/italy_polarization/cleaning_pipeline/{volume,stage1_drop_rates,political_qa}/` (political audit: boxplot, subreddit bars, `by_subreddit_political_rate_vs_topic.png` scatter, `by_subreddit_political_rate_vs_thread_share.png` and `by_subreddit_political_rate_vs_comment_share.png` bubbles; screened-in only)
 
-### 4f–4g) Enriched-shard features (polarization, AI-use, style)
+### 4f-bis) Political universe (comment-level scope)
+- Script: `apply_political_universe.py`
+- Why: Default `tree` universe (lexical seed + reply subtree + one-up parent); frozen Mar–Apr per `link_id`; comparison modes on shards.
+- Input: enriched shards with `political_weighted_points` from `data/raw/political_lexicon_parallel.csv`
+- Output: `comment_in_political_universe`, `in_political_universe_*` on Parquet; stats `results/tables/italy_polarization/political_coverage/`
+- Run: `.venv/bin/python scripts/features/apply_political_universe.py --config config/italy_polarization_setup.yaml`
+- Compare: `political_universe_compare.py` → agreement, coverage by family, P/R vs `data/raw/political_universe_labels.csv`
+- Re-run `enrich_cleaned_chunks.py --assign-only` to refresh `political_universe_share` in forum profile
+
+### 4f–4g) Enriched-shard features (polarization, semantic axis, AI-use, style)
 - Canonical: `compute_enriched_shard_features.py --pass all` (single parquet read/write per shard when all passes run).
-- Wrappers (same behavior): `compute_polarization_features.py`, `compute_ai_use_features.py`, `compute_comment_style_features.py`.
+- Wrappers (same behavior): `compute_polarization_features.py`, `compute_semantic_axis_features.py`, `compute_ai_use_features.py`, `compute_comment_style_features.py`.
 - Input/output: enriched `cleaned_monthly_chunks/*.parquet` (in place).
 - Parallelism: `--workers N` (default `min(8, cpu_count-1)`; `1` = sequential). Logs include per-shard `elapsed=` seconds.
 - Scoring: module-level caches for `pairs_it.json` / `term_meta_it.json`; one tokenize per comment for IT polarization.
@@ -95,6 +104,11 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
   `.venv/bin/python scripts/features/compute_enriched_shard_features.py --config config/italy_polarization_setup.yaml --pass all --workers 8`
 - Run (polarization only):
   `.venv/bin/python scripts/features/compute_polarization_features.py --config config/italy_polarization_setup.yaml --workers 8`
+- Semantic axis (fastText; one-time model download):
+  `.venv/bin/python scripts/devtools/download_fasttext_models.py` (or `--lang it` first)
+  `.venv/bin/python scripts/devtools/generate_semantic_axis_seed_poles.py`
+  `.venv/bin/python scripts/features/compute_semantic_axis_features.py --config config/italy_polarization_setup.yaml --workers 8`
+- Columns: `sem_axis_ideology`, `sem_axis_emotion`, `sem_axis_aggression`, `sem_axis_coverage`, `has_sem_axis`; vector cache `{interim_dir}/embeddings/<sub>/<month>.npz`
 - Polarization lexicons: `ideology_it.txt` (dominant v4), `pairs_it.json`, `stance_it.txt`, `valence_it.txt`, `polarized_it.txt`; EN/DE ideology lists hand-curated
 - `_polarization_score_row` copies all `POLARIZATION_COMMENT_COLUMNS` from scorer (KeyError if missing)
 
@@ -103,14 +117,21 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
 - Output: `results/tables/italy_polarization/descriptives/lexicon_audit_*.csv`, optional `lexicon_validation_pr.csv`
 - Run: `.venv/bin/python scripts/diagnostics/audit_polarization_lexicons.py --config config/italy_polarization_setup.yaml`
 
+### 4i-bis) Semantic-axis descriptives
+- Prepare: `prepare_semantic_axis_descriptives.py` → `results/tables/italy_polarization/semantic_axis/` (`semantic_axis_panel.csv`, `semantic_axis_validation.csv`, `semantic_axis_examples.csv`, `semantic_axis_seed_coverage.csv`, `semantic_axis_axis_sanity.csv`)
+- Seeds: `data/raw/seeds/aggression_parallel.csv` (25 aligned insult concepts × IT/EN/DE)
+- Plot: `plot_semantic_axis_descriptives.py` → `results/figures/italy_polarization/semantic_axis/`
+
 ### 4i) Polarization descriptives tables
 - Script: `prepare_polarization_descriptives.py`
 - Output: `results/tables/italy_polarization/descriptives/` (daily by subreddit/topic/topic_family, country panel, author retention, balanced panel, attrition)
+- Universe slices (requires `comment_in_political_universe` on shards): `daily_country_panel_by_universe_slice.csv`, `daily_italy_all_by_universe_slice.csv`, `daily_it_political_by_universe_slice.csv`, `daily_it_others_by_universe_slice.csv` (`universe_slice`: `in_political_tree` / `out_political_tree`; includes `share_of_panel_comments`)
 - Run: `.venv/bin/python scripts/diagnostics/prepare_polarization_descriptives.py --config config/italy_polarization_setup.yaml`
 
 ### 4j) Polarization descriptives plots
 - Script: `plot_polarization_descriptives.py`
 - Output: `results/figures/italy_polarization/descriptives/daily/{by_family,by_topic,by_topic_italian,country_panel,ideology}/` and the same view tree under `descriptives/rolling_daily/` (7-day trailing past-only default)
+- Dual-universe overlays (thick in-tree, translucent non-tree): `descriptives/{daily,rolling_daily}/{country_panel_dual_universe,italy_all_dual_universe,italy_it_political_dual_universe,italy_it_others_dual_universe}/`
 - Run: `.venv/bin/python scripts/diagnostics/plot_polarization_descriptives.py --config config/italy_polarization_setup.yaml`
 - Optional: `--rolling_window N` (days) for `rolling_daily/` figures
 - Run: `.venv/bin/python scripts/diagnostics/plot_cleaning_pipeline_trends.py --config config/italy_polarization_setup.yaml`
@@ -175,7 +196,9 @@ The Nov 2022–Apr 2023 cross-domain study (comment features, HF detectors, even
 
 - External `RC_*.zst` → `filter_dump_comments.py` → `data/raw/italy_polarization/daily_chunks/`
 - Raw chunks → `clean_daily_chunks.py` → `screen_subreddits.py` → `enrich_cleaned_chunks.py` → `data/interim/italy_polarization/cleaned_monthly_chunks/`
-- Enriched shards → `compute_polarization_features.py` → `compute_ai_use_features.py` → `compute_comment_style_features.py` (in place)
+- Enriched shards → `compute_polarization_features.py` → `compute_semantic_axis_features.py` → `compute_ai_use_features.py` → `compute_comment_style_features.py` (in place; or `--pass all`)
+- One-time: `scripts/devtools/download_fasttext_models.py`; `scripts/devtools/generate_semantic_axis_seed_poles.py` (after editing `data/raw/seeds/aggression_parallel.csv`, re-run to refresh `poles/aggression_pos_*.txt`, 25 terms each)
+- Seed validation (no shards): `scripts/diagnostics/validate_semantic_axis_seeds.py` → `semantic_axis_seed_coverage.csv`, `semantic_axis_axis_sanity.csv`
 - Enriched shards → `prepare_polarization_descriptives.py` → `plot_polarization_descriptives.py` → `results/figures/italy_polarization/descriptives/{daily,rolling_daily}/`
 - Enriched shards → `prepare_user_week_style_panel.py` → `analyze_user_pre_post_shift.py` → `plot_user_pre_post_shift.py` → `results/*/italy_polarization/user_week/`
 

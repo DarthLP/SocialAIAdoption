@@ -1,4 +1,6 @@
 requests
+numpy
+gensim
 pandas
 pyarrow
 matplotlib

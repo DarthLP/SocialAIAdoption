@@ -3,7 +3,7 @@ Script summary:
 Shared runner for in-place feature passes on enriched `cleaned_monthly_chunks/` Parquet.
 
 Functionality:
-- Dispatches polarization, AI-use, and comment-style passes with common screening/subreddit iteration.
+- Dispatches polarization, semantic-axis, AI-use, and comment-style passes with common screening/subreddit iteration.
 - Used by `compute_enriched_shard_features.py` and thin wrapper scripts.
 
 How to apply/run:
@@ -63,6 +63,7 @@ from src.config_utils import (  # noqa: E402
     load_comment_style_config,
     load_config,
     load_polarization_config,
+    load_semantic_axis_config,
     load_screening_pooled,
     resolve_primary_subreddits,
     screening_by_subreddit,
@@ -70,6 +71,15 @@ from src.config_utils import (  # noqa: E402
     should_skip_screened_subreddit,
     subreddit_primary_lexicon,
     subreddit_screening_action,
+)
+from src.embeddings import (  # noqa: E402
+    SEMAXIS_SCORE_KEYS,
+    build_comment_vectors_for_texts,
+    get_axes_for_language,
+    load_shard_vector_cache,
+    save_shard_vector_cache,
+    score_vectors_against_axes,
+    shard_embedding_cache_path,
 )
 from src.political_lexicon import (  # noqa: E402
     score_comment_ai_style,
@@ -79,8 +89,10 @@ from src.political_lexicon import (  # noqa: E402
 from src.feature_shard_worker import feature_shard_worker  # noqa: E402
 from src.v4_lexicon import all_pair_framing_column_names, get_pairs_registry  # noqa: E402
 
-PassName = Literal["polarization", "ai", "style"]
-PASS_ORDER: tuple[PassName, ...] = ("polarization", "ai", "style")
+PassName = Literal["polarization", "semaxis", "ai", "style"]
+PASS_ORDER: tuple[PassName, ...] = ("polarization", "semaxis", "ai", "style")
+
+SEMAXIS_COLUMNS: tuple[str, ...] = tuple(SEMAXIS_SCORE_KEYS)
 
 POLARIZATION_COMMENT_COLUMNS: tuple[str, ...] = (
     "left_hits",
@@ -161,7 +173,7 @@ def parse_args(
             dest="pass_name",
             choices=list(PASS_ORDER) + ["all"],
             default="all",
-            help="Feature pass: polarization, ai, style, or all (default all).",
+            help="Feature pass: polarization, semaxis, ai, style, or all (default all).",
         )
     return parser.parse_args()
 
@@ -315,39 +327,160 @@ def _style_score_row(
     )
 
 
-def _process_all_features_shard(
-    path: Path,
+def _semaxis_score_row(
+    body: str,
     lex_lang: str,
-    pol_cfg: Dict[str, Any],
-    ai_cfg: Dict[str, Any],
-    style_cfg: Dict[str, Any],
+    lang_comment: str,
+    sem_cfg: Dict[str, Any],
     project_root: Path,
+    precomputed: Dict[str, float] | None = None,
+) -> Dict[str, float]:
+    """Function summary: semantic-axis scores for one comment (optional precomputed)."""
+    row = {col: 0.0 for col in SEMAXIS_COLUMNS}
+    if sem_cfg.get("lang_match_filter") and lang_comment != lex_lang:
+        return row
+    if precomputed is not None:
+        for col in SEMAXIS_COLUMNS:
+            row[col] = float(precomputed.get(col, 0.0))
+        return row
+    from src.embeddings import score_comment_semantic_axis
+
+    return score_comment_semantic_axis(body, lex_lang, project_root, sem_cfg)
+
+
+def _process_semaxis_shard(
+    path: Path,
+    subreddit: str,
+    lex_lang: str,
+    sem_cfg: Dict[str, Any],
+    project_root: Path,
+    interim_dir: Path,
 ) -> int:
-    """Function summary: add polarization, AI, and style columns in one parquet read/write."""
-    warm_polarization_lexicons(project_root, lex_lang)
-    if lex_lang.lower() == "it":
-        get_pairs_registry(project_root)
+    """Function summary: add semantic-axis columns and optional vector cache for one shard."""
+    get_axes_for_language(lex_lang, project_root, sem_cfg)
     df = read_parquet_shard_safe(path)
     if df is None or df.empty:
         return 0
-    required = {"body", "primary_lexicon", "n_words"}
+    required = {"body", "primary_lexicon", "n_words", "id"}
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"Missing columns {sorted(missing)} in {path}; run enrich first.")
-    drop_cols = list(POLARIZATION_COLUMNS) + list(AI_USE_COLUMNS) + list(STYLE_COUNT_COLUMNS)
+    out = df.drop(columns=[c for c in SEMAXIS_COLUMNS if c in df.columns], errors="ignore").copy()
+    lang_series = (
+        out["lang_comment"].astype(str) if "lang_comment" in out.columns else pd.Series([lex_lang] * len(out))
+    )
+    bodies = out["body"].astype(str).tolist()
+    langs = lang_series.tolist()
+    ids = out["id"].astype(str).tolist()
+    comment_vecs = None
+    coverages = None
+    if sem_cfg.get("write_vector_cache", True):
+        cache_path = shard_embedding_cache_path(interim_dir, subreddit, path.stem)
+        comment_vecs, coverages = load_shard_vector_cache(cache_path, ids)
+    if comment_vecs is None:
+        active_bodies: List[str] = []
+        active_idx: List[int] = []
+        for i, (body, lang_c) in enumerate(zip(bodies, langs, strict=True)):
+            if sem_cfg.get("lang_match_filter") and lang_c != lex_lang:
+                continue
+            active_bodies.append(body)
+            active_idx.append(i)
+        vecs, covs = build_comment_vectors_for_texts(active_bodies, lex_lang, project_root, sem_cfg)
+        comment_vecs = [None] * len(bodies)
+        coverages = [0.0] * len(bodies)
+        for j, idx in enumerate(active_idx):
+            comment_vecs[idx] = vecs[j]
+            coverages[idx] = covs[j]
+        if sem_cfg.get("write_vector_cache", True):
+            cache_path = shard_embedding_cache_path(interim_dir, subreddit, path.stem)
+            save_shard_vector_cache(cache_path, ids, comment_vecs, coverages)
+    axes = get_axes_for_language(lex_lang, project_root, sem_cfg)
+    sem_rows = score_vectors_against_axes(comment_vecs, coverages, axes)
+    for i, (lang_c, row) in enumerate(zip(langs, sem_rows, strict=True)):
+        if sem_cfg.get("lang_match_filter") and lang_c != lex_lang:
+            sem_rows[i] = {col: 0.0 for col in SEMAXIS_COLUMNS}
+    for col in SEMAXIS_COLUMNS:
+        out[col] = [r[col] for r in sem_rows]
+    out.to_parquet(path, index=False, engine="pyarrow", compression="snappy")
+    return len(out)
+
+
+def _process_all_features_shard(
+    path: Path,
+    subreddit: str,
+    lex_lang: str,
+    pol_cfg: Dict[str, Any],
+    sem_cfg: Dict[str, Any],
+    ai_cfg: Dict[str, Any],
+    style_cfg: Dict[str, Any],
+    project_root: Path,
+    interim_dir: Path,
+) -> int:
+    """Function summary: add polarization, semaxis, AI, and style columns in one parquet read/write."""
+    warm_polarization_lexicons(project_root, lex_lang)
+    if lex_lang.lower() == "it":
+        get_pairs_registry(project_root)
+    get_axes_for_language(lex_lang, project_root, sem_cfg)
+    df = read_parquet_shard_safe(path)
+    if df is None or df.empty:
+        return 0
+    required = {"body", "primary_lexicon", "n_words", "id"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing columns {sorted(missing)} in {path}; run enrich first.")
+    drop_cols = (
+        list(POLARIZATION_COLUMNS)
+        + list(SEMAXIS_COLUMNS)
+        + list(AI_USE_COLUMNS)
+        + list(STYLE_COUNT_COLUMNS)
+    )
     out = df.drop(columns=[c for c in drop_cols if c in df.columns], errors="ignore").copy()
     lang_series = (
         out["lang_comment"].astype(str) if "lang_comment" in out.columns else pd.Series([lex_lang] * len(out))
     )
     bodies = out["body"].astype(str).tolist()
     langs = lang_series.tolist()
+    ids = out["id"].astype(str).tolist()
     pol_rows = [_polarization_score_row(b, lex_lang, lc, pol_cfg, project_root) for b, lc in zip(bodies, langs, strict=True)]
+    comment_vecs = None
+    coverages = None
+    if sem_cfg.get("write_vector_cache", True):
+        cache_path = shard_embedding_cache_path(interim_dir, subreddit, path.stem)
+        comment_vecs, coverages = load_shard_vector_cache(cache_path, ids)
+    if comment_vecs is None:
+        active_bodies: List[str] = []
+        active_idx: List[int] = []
+        for i, (body, lang_c) in enumerate(zip(bodies, langs, strict=True)):
+            if sem_cfg.get("lang_match_filter") and lang_c != lex_lang:
+                continue
+            active_bodies.append(body)
+            active_idx.append(i)
+        vecs, covs = build_comment_vectors_for_texts(active_bodies, lex_lang, project_root, sem_cfg)
+        comment_vecs = [None] * len(bodies)
+        coverages = [0.0] * len(bodies)
+        for j, idx in enumerate(active_idx):
+            comment_vecs[idx] = vecs[j]
+            coverages[idx] = covs[j]
+        if sem_cfg.get("write_vector_cache", True):
+            save_shard_vector_cache(
+                shard_embedding_cache_path(interim_dir, subreddit, path.stem),
+                ids,
+                comment_vecs,
+                coverages,
+            )
+    axes = get_axes_for_language(lex_lang, project_root, sem_cfg)
+    sem_rows = score_vectors_against_axes(comment_vecs, coverages, axes)
+    for i, lang_c in enumerate(langs):
+        if sem_cfg.get("lang_match_filter") and lang_c != lex_lang:
+            sem_rows[i] = {col: 0.0 for col in SEMAXIS_COLUMNS}
     ai_rows = [_ai_score_row(b, lex_lang, lc, ai_cfg, project_root) for b, lc in zip(bodies, langs, strict=True)]
     style_rows = [_style_score_row(b, lex_lang, lc, style_cfg, project_root) for b, lc in zip(bodies, langs, strict=True)]
     for col in POLARIZATION_COLUMNS:
         if col.startswith("thread_"):
             continue
         out[col] = [r[col] for r in pol_rows]
+    for col in SEMAXIS_COLUMNS:
+        out[col] = [r[col] for r in sem_rows]
     for col in AI_USE_COLUMNS:
         out[col] = [r[col] for r in ai_rows]
     for col in STYLE_COUNT_COLUMNS:
@@ -403,7 +536,7 @@ def _passes_to_run(pass_name: str) -> Sequence[PassName]:
 
 
 def _is_combined_all_pass(passes: Sequence[PassName]) -> bool:
-    """Function summary: True when all three feature passes should use single parquet I/O."""
+    """Function summary: True when all feature passes should use single parquet I/O."""
     return len(passes) == len(PASS_ORDER) and set(passes) == set(PASS_ORDER)
 
 
@@ -421,7 +554,7 @@ def _feature_shard_worker(
     - shard_str: absolute parquet path.
     - subreddit: subreddit name for logging.
     - lex_lang: primary lexicon language.
-    - pass_name: polarization, ai, style, or all.
+    - pass_name: polarization, semaxis, ai, style, or all.
     - config_path_str: study YAML path.
     - project_root_str: repository root path.
 
@@ -432,13 +565,21 @@ def _feature_shard_worker(
     project_root = Path(project_root_str)
     config = load_config(Path(config_path_str))
     pol_cfg = load_polarization_config(config)
+    sem_cfg = load_semantic_axis_config(config)
     ai_cfg = load_ai_use_config(config)
     style_cfg = load_comment_style_config(config)
+    interim_dir = Path(config["paths"]["interim_dir"])
+    if not interim_dir.is_absolute():
+        interim_dir = project_root / interim_dir
     path = Path(shard_str)
     if pass_name == "all":
-        n = _process_all_features_shard(path, lex_lang, pol_cfg, ai_cfg, style_cfg, project_root)
+        n = _process_all_features_shard(
+            path, subreddit, lex_lang, pol_cfg, sem_cfg, ai_cfg, style_cfg, project_root, interim_dir
+        )
     elif pass_name == "polarization":
         n = _process_polarization_shard(path, lex_lang, pol_cfg, project_root)
+    elif pass_name == "semaxis":
+        n = _process_semaxis_shard(path, subreddit, lex_lang, sem_cfg, project_root, interim_dir)
     elif pass_name == "ai":
         n = _process_ai_shard(path, lex_lang, ai_cfg, project_root)
     else:
@@ -463,9 +604,12 @@ def run_passes(
     """
     config = load_config(project_root / args.config)
     pol_cfg = load_polarization_config(config)
+    sem_cfg = load_semantic_axis_config(config)
     ai_cfg = load_ai_use_config(config)
     style_cfg = load_comment_style_config(config)
     interim_dir = Path(config["paths"]["interim_dir"])
+    if not interim_dir.is_absolute():
+        interim_dir = project_root / interim_dir
     tables_dir = Path(config["paths"]["tables_dir"])
     screening_by_sub = screening_by_subreddit(load_screening_pooled(tables_dir))
     subs = [args.subreddit] if args.subreddit else resolve_primary_subreddits(config)

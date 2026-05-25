@@ -124,7 +124,18 @@ def grouped_trailing_daily_rolling(
         return pd.DataFrame()
     if rolling_window_days <= 1:
         return df_daily.copy()
-    exclude_cols = {date_col, "topic_family", "topic", "country_panel", "subreddit", group_col, "n_comments"}
+    exclude_cols = {
+        date_col,
+        "topic_family",
+        "topic",
+        "country_panel",
+        "subreddit",
+        "universe_slice",
+        "series_id",
+        group_col,
+        "n_comments",
+        "share_of_panel_comments",
+    }
     d = df_daily.copy()
     d[date_col] = pd.to_datetime(d[date_col])
     d = d.sort_values([group_col, date_col])

@@ -4,6 +4,7 @@ Plot polarization and AI-use descriptives from prepared CSV tables.
 
 Functionality:
 - Family-level daily trends for primary polarization metrics (raw daily and trailing rolling).
+- Dual-line country/Italy views: thick in-political-tree vs translucent non-tree on the same axes.
 - Topic- and country-panel overlays; Italian-topic subset plots.
 - Italian ideology bucket rates (left/center/right per 100w) and pole-share comparison figures.
 - Vertical ban reference lines from config.
@@ -70,6 +71,24 @@ TOPIC_DISPLAY_LABELS = {
 }
 
 ITALIAN_TOPICS = frozenset({"it_political", "it_pure_political", "it_others"})
+
+UNIVERSE_SLICE_IN = "in_political_tree"
+UNIVERSE_SLICE_OUT = "out_political_tree"
+
+DUAL_UNIVERSE_METRIC_PLOTS = [
+    ("net_ideology_mean", "net_ideology"),
+    ("extremity_mean", "extremity"),
+    ("other_side_salience_rate_100w_mean", "other_side_salience"),
+    ("aggression_rate_100w_mean", "aggression"),
+    ("ai_style_rate_100w_mean", "ai_style"),
+    ("em_dash_rate_100w", "em_dash_rate"),
+    ("exclamation_rate_100w_mean", "exclamation_rate"),
+    ("avg_words_per_sentence_mean", "avg_words_per_sentence"),
+    ("semicolon_rate_100w", "semicolon_rate"),
+    ("colon_rate_100w", "colon_rate"),
+    ("hedging_phrase_rate_100w", "hedging_phrase"),
+    ("complexity_index", "complexity_index"),
+]
 
 IDEOLOGY_BUCKET_METRICS = (
     ("left_rate_100w_mean", "Left"),
@@ -181,6 +200,152 @@ def plot_family_metric(family_df: pd.DataFrame, metric: str, out_path: Path, con
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
+
+
+def roll_slice_table(
+    slice_df: pd.DataFrame,
+    entity_col: str | None,
+    rolling_window_days: int,
+) -> pd.DataFrame:
+    """Function summary: trailing rolling on slice tables via composite series_id.
+
+    Parameters:
+    - slice_df: daily *_by_universe_slice table.
+    - entity_col: entity column (e.g. country_panel) or None for single-panel Italy views.
+    - rolling_window_days: trailing window length.
+
+    Returns:
+    - Rolled table with series_id grouping.
+    """
+    if slice_df.empty:
+        return pd.DataFrame()
+    work = slice_df.copy()
+    if entity_col and entity_col in work.columns:
+        work["series_id"] = work[entity_col].astype(str) + "|" + work["universe_slice"].astype(str)
+    else:
+        work["series_id"] = work["universe_slice"].astype(str)
+    return grouped_trailing_daily_rolling(work, "series_id", rolling_window_days)
+
+
+def plot_dual_universe_metric(
+    slice_df: pd.DataFrame,
+    entity_col: str | None,
+    metric: str,
+    out_path: Path,
+    config: dict,
+    title: str,
+    entity_label: str | None = None,
+) -> None:
+    """Function summary: plot in-tree (thick) vs out-tree (translucent) lines per entity.
+
+    Parameters:
+    - slice_df: daily slice table with universe_slice column.
+    - entity_col: grouping column for multiple entities, or None for one pooled panel.
+    - metric: metric column to plot.
+    - out_path: PNG path.
+    - config: study YAML for ban reference lines.
+    - title: plot title.
+    - entity_label: legend prefix when entity_col is None (e.g. Italy all).
+
+    Returns:
+    - None; skips when data or metric missing.
+    """
+    if slice_df.empty or metric not in slice_df.columns or "universe_slice" not in slice_df.columns:
+        return
+    fig, ax = plt.subplots(figsize=(10, 5))
+    work = slice_df.copy()
+    work["date_utc"] = pd.to_datetime(work["date_utc"])
+    cmap = plt.get_cmap("tab10")
+    if entity_col and entity_col in work.columns:
+        entities = sorted(work[entity_col].dropna().unique())
+        for idx, entity in enumerate(entities):
+            color = cmap(idx % 10)
+            ent_work = work[work[entity_col] == entity]
+            for slice_id, style, suffix in (
+                (UNIVERSE_SLICE_IN, {"linewidth": 2.5, "alpha": 1.0}, "political tree"),
+                (UNIVERSE_SLICE_OUT, {"linewidth": 1.0, "alpha": 0.35}, "non-tree"),
+            ):
+                grp = ent_work[ent_work["universe_slice"] == slice_id].sort_values("date_utc")
+                if grp.empty:
+                    continue
+                ax.plot(
+                    grp["date_utc"],
+                    grp[metric],
+                    color=color,
+                    label=f"{entity} ({suffix})",
+                    **style,
+                )
+    else:
+        prefix = entity_label or "Italy"
+        color = cmap(0)
+        for slice_id, style, suffix in (
+            (UNIVERSE_SLICE_IN, {"linewidth": 2.5, "alpha": 1.0}, "political tree"),
+            (UNIVERSE_SLICE_OUT, {"linewidth": 1.0, "alpha": 0.35}, "non-tree"),
+        ):
+            grp = work[work["universe_slice"] == slice_id].sort_values("date_utc")
+            if grp.empty:
+                continue
+            ax.plot(
+                grp["date_utc"],
+                grp[metric],
+                color=color,
+                label=f"{prefix} ({suffix})",
+                **style,
+            )
+    add_ref_lines(ax, config)
+    ax.set_title(title)
+    ax.set_xlabel("date_utc")
+    ax.set_ylabel(metric)
+    ax.legend(loc="best", fontsize=7)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+
+
+def write_dual_universe_figures(
+    country_slice_df: pd.DataFrame,
+    italy_all_df: pd.DataFrame,
+    it_political_df: pd.DataFrame,
+    it_others_df: pd.DataFrame,
+    fig_dir: Path,
+    config: dict,
+    title_suffix: str,
+) -> None:
+    """Function summary: write dual-line universe slice figures for country and Italy views.
+
+    Parameters:
+    - country_slice_df: daily_country_panel_by_universe_slice table.
+    - italy_all_df: daily_italy_all_by_universe_slice table.
+    - it_political_df: daily_it_political_by_universe_slice table.
+    - it_others_df: daily_it_others_by_universe_slice table.
+    - fig_dir: base figure directory (daily or rolling_daily).
+    - config: study YAML.
+    - title_suffix: appended to plot titles.
+
+    Returns:
+    - None.
+    """
+    views = [
+        (country_slice_df, "country_panel", "country_panel_dual_universe", "Country panel"),
+        (italy_all_df, None, "italy_all_dual_universe", "Italy all (it_political + it_others)"),
+        (it_political_df, None, "italy_it_political_dual_universe", "Italy it_political"),
+        (it_others_df, None, "italy_it_others_dual_universe", "Italy it_others"),
+    ]
+    for slice_df, entity_col, subdir, panel_title in views:
+        if slice_df.empty:
+            continue
+        out_dir = fig_dir / subdir
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for metric, slug in DUAL_UNIVERSE_METRIC_PLOTS:
+            plot_dual_universe_metric(
+                slice_df,
+                entity_col,
+                metric,
+                out_dir / f"{slug}.png",
+                config,
+                f"{panel_title}: {metric}{title_suffix}",
+                entity_label=panel_title if entity_col is None else None,
+            )
 
 
 def plot_country_panel(
@@ -478,6 +643,32 @@ def main() -> None:
     write_all_descriptive_figures(
         family_roll, topic_roll, country_roll, fig_roll_dir, config, title_suffix=roll_title_suffix
     )
+
+    country_slice_path = tables_dir / "daily_country_panel_by_universe_slice.csv"
+    italy_all_path = tables_dir / "daily_italy_all_by_universe_slice.csv"
+    it_pol_path = tables_dir / "daily_it_political_by_universe_slice.csv"
+    it_oth_path = tables_dir / "daily_it_others_by_universe_slice.csv"
+    if country_slice_path.is_file():
+        country_slice_df = pd.read_csv(country_slice_path)
+        italy_all_df = pd.read_csv(italy_all_path) if italy_all_path.is_file() else pd.DataFrame()
+        it_pol_df = pd.read_csv(it_pol_path) if it_pol_path.is_file() else pd.DataFrame()
+        it_oth_df = pd.read_csv(it_oth_path) if it_oth_path.is_file() else pd.DataFrame()
+        write_dual_universe_figures(
+            country_slice_df, italy_all_df, it_pol_df, it_oth_df, fig_dir, config, title_suffix=""
+        )
+        country_slice_roll = roll_slice_table(country_slice_df, "country_panel", rolling_days)
+        italy_all_roll = roll_slice_table(italy_all_df, None, rolling_days)
+        it_pol_roll = roll_slice_table(it_pol_df, None, rolling_days)
+        it_oth_roll = roll_slice_table(it_oth_df, None, rolling_days)
+        write_dual_universe_figures(
+            country_slice_roll,
+            italy_all_roll,
+            it_pol_roll,
+            it_oth_roll,
+            fig_roll_dir,
+            config,
+            title_suffix=roll_title_suffix,
+        )
 
     print(
         f"[plot_polarization_descriptives] wrote figures to {fig_dir} and {fig_roll_dir} "

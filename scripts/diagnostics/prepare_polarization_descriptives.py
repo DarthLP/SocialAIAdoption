@@ -3,7 +3,8 @@ Script summary:
 Aggregate polarization and AI-use features into Mar–Apr descriptives tables.
 
 Functionality:
-- Daily subreddit/family/country-panel series; ban-phase summaries; author retention and balanced panel.
+- Daily subreddit/family/country-panel series; political-universe slice tables (in-tree vs out-tree).
+- Ban-phase summaries; author retention and balanced panel.
 - Distributional metrics (Esteban–Ray, bimodality coefficient); attrition from cleaning audits.
 - AI first-stage diagnostic text for Italy vs control families.
 
@@ -32,6 +33,8 @@ READ_COLUMNS = [
     "n_words",
     "political_rate_100w",
     "thread_is_political",
+    "comment_in_political_universe",
+    "link_id",
     "topic_family",
     "topic",
     "primary_lexicon",
@@ -73,6 +76,10 @@ COUNTRY_PANEL_FAMILIES = {
     "uk": "UK",
     "eu": "EU_hub_en",
 }
+
+UNIVERSE_SLICE_IN = "in_political_tree"
+UNIVERSE_SLICE_OUT = "out_political_tree"
+ITALY_TOPIC_FAMILIES = frozenset({"it_political", "it_others"})
 
 
 
@@ -371,6 +378,9 @@ def daily_subreddit_table(df: pd.DataFrame, pol_cfg: Dict[str, Any]) -> pd.DataF
                 "political_thread_share": float(grp["thread_is_political"].astype(float).mean())
                 if "thread_is_political" in grp.columns
                 else float("nan"),
+                "political_comment_share": float(grp["comment_in_political_universe"].astype(float).mean())
+                if "comment_in_political_universe" in grp.columns
+                else float("nan"),
                 "esteban_ray_index": esteban_ray_index(
                     float(grp["left_hits"].sum()),
                     float(grp["center_hits"].sum()),
@@ -422,6 +432,12 @@ def daily_family_table(df: pd.DataFrame, family_map: Dict[str, str]) -> pd.DataF
                 else float("nan"),
                 "political_rate_100w_mean": weighted_mean(grp["political_rate_100w"], nw)
                 if "political_rate_100w" in grp.columns
+                else float("nan"),
+                "political_thread_share": float(grp["thread_is_political"].astype(float).mean())
+                if "thread_is_political" in grp.columns
+                else float("nan"),
+                "political_comment_share": float(grp["comment_in_political_universe"].astype(float).mean())
+                if "comment_in_political_universe" in grp.columns
                 else float("nan"),
                 **ideology_bucket_aggregate_fields(grp),
                 **style_aggregate_fields(grp),
@@ -480,6 +496,9 @@ def daily_topic_table(
                 else float("nan"),
                 "political_thread_share": float(grp["thread_is_political"].astype(float).mean())
                 if "thread_is_political" in grp.columns
+                else float("nan"),
+                "political_comment_share": float(grp["comment_in_political_universe"].astype(float).mean())
+                if "comment_in_political_universe" in grp.columns
                 else float("nan"),
                 "esteban_ray_index": esteban_ray_index(
                     float(grp["left_hits"].sum()),
@@ -582,6 +601,106 @@ def window_summary(df: pd.DataFrame, launch: str, lift: str) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows)
+
+
+def _universe_slice_label(in_universe: bool) -> str:
+    """Function summary: map boolean political-universe flag to slice label string.
+
+    Parameters:
+    - in_universe: comment_in_political_universe value.
+
+    Returns:
+    - Slice id for grouping and CSV output.
+    """
+    return UNIVERSE_SLICE_IN if in_universe else UNIVERSE_SLICE_OUT
+
+
+def _slice_metrics_row(grp: pd.DataFrame, pol_cfg: Dict[str, Any]) -> Dict[str, float]:
+    """Function summary: compute weighted daily metrics for one universe slice group.
+
+    Parameters:
+    - grp: comment rows for one panel-day-slice.
+    - pol_cfg: polarization config (Esteban–Ray alpha).
+
+    Returns:
+    - Metric fields shared with daily_family_table.
+    """
+    nw = grp["n_words"].astype(float)
+    er_alpha = float(pol_cfg.get("er_alpha", 1.6))
+    row: Dict[str, Any] = {
+        "n_comments": len(grp),
+        "n_authors_union": grp["author"].nunique(),
+        "net_ideology_mean": weighted_mean(grp["net_ideology"], nw),
+        "extremity_mean": weighted_mean(grp["extremity"], nw),
+        "other_side_salience_rate_100w_mean": weighted_mean(grp["other_side_salience_rate_100w"], nw),
+        "aggression_rate_100w_mean": weighted_mean(grp["aggression_rate_100w"], nw),
+        "ai_style_rate_100w_mean": weighted_mean(grp["ai_style_rate_100w"], nw)
+        if "ai_style_rate_100w" in grp.columns
+        else float("nan"),
+        "political_rate_100w_mean": weighted_mean(grp["political_rate_100w"], nw)
+        if "political_rate_100w" in grp.columns
+        else float("nan"),
+        "political_thread_share": float(grp["thread_is_political"].astype(float).mean())
+        if "thread_is_political" in grp.columns
+        else float("nan"),
+        "esteban_ray_index": esteban_ray_index(
+            float(grp["left_hits"].sum()),
+            float(grp["center_hits"].sum()),
+            float(grp["right_hits"].sum()),
+            alpha=er_alpha,
+        ),
+        **ideology_bucket_aggregate_fields(grp),
+        **style_aggregate_fields(grp),
+    }
+    return row
+
+
+def daily_metrics_by_slice(
+    df: pd.DataFrame,
+    group_cols: List[str],
+    pol_cfg: Dict[str, Any],
+) -> pd.DataFrame:
+    """Function summary: daily aggregates split by political-tree membership.
+
+    Parameters:
+    - df: comment frame with comment_in_political_universe.
+    - group_cols: extra grouping keys (e.g. country_panel); may be empty for pooled Italy.
+    - pol_cfg: polarization config.
+
+    Returns:
+    - Daily table with universe_slice and share_of_panel_comments.
+    """
+    if df.empty or "comment_in_political_universe" not in df.columns:
+        return pd.DataFrame()
+    work = df.copy()
+    work["universe_slice"] = work["comment_in_political_universe"].astype(bool).map(_universe_slice_label)
+    group_keys = list(group_cols) + ["date_utc", "universe_slice"]
+    panel_keys = list(group_cols) + ["date_utc"]
+    totals = (
+        work.groupby(panel_keys, sort=True)
+        .size()
+        .reset_index(name="panel_n_comments")
+    )
+    rows: List[Dict[str, Any]] = []
+    for key_tuple, grp in work.groupby(group_keys, sort=True):
+        if not isinstance(key_tuple, tuple):
+            key_tuple = (key_tuple,)
+        key_dict = dict(zip(group_keys, key_tuple))
+        nw = grp["n_words"].astype(float)
+        row = {
+            **{c: key_dict[c] for c in group_cols},
+            "date_utc": key_dict["date_utc"],
+            "universe_slice": key_dict["universe_slice"],
+            **_slice_metrics_row(grp, pol_cfg),
+        }
+        rows.append(row)
+    if not rows:
+        return pd.DataFrame()
+    out = pd.DataFrame(rows)
+    out = out.merge(totals, on=panel_keys, how="left")
+    out["share_of_panel_comments"] = out["n_comments"] / out["panel_n_comments"].replace(0, float("nan"))
+    out = out.drop(columns=["panel_n_comments"])
+    return out
 
 
 def country_panel_daily(df: pd.DataFrame) -> pd.DataFrame:
@@ -705,7 +824,45 @@ def main() -> None:
     if "thread_is_political" in df.columns:
         pol_threads = df[df["thread_is_political"].astype(bool)]
         daily_family_table(pol_threads, family_map).to_csv(
-            out_dir / "stratified_political_threads_daily.csv", index=False
+            out_dir / "stratified_political_threads_daily_legacy.csv", index=False
+        )
+
+    if "comment_in_political_universe" in df.columns:
+        pol_comments = df[df["comment_in_political_universe"].astype(bool)]
+        daily_family_table(pol_comments, family_map).to_csv(
+            out_dir / "stratified_political_comments_daily.csv", index=False
+        )
+
+    if pol_cfg.get("restrict_to_political_comments") and "comment_in_political_universe" in df.columns:
+        pol_only = df[df["comment_in_political_universe"].astype(bool)]
+        daily_subreddit_table(pol_only, pol_cfg).to_csv(
+            out_dir / "daily_by_subreddit_political_universe.csv", index=False
+        )
+        daily_family_table(pol_only, family_map).to_csv(
+            out_dir / "daily_by_topic_family_political_universe.csv", index=False
+        )
+        daily_topic_table(pol_only, family_map, topic_map, pol_cfg).to_csv(
+            out_dir / "daily_by_topic_political_universe.csv", index=False
+        )
+
+    if "comment_in_political_universe" in df.columns:
+        cp_work = df.copy()
+        cp_work["country_panel"] = cp_work["topic_family"].map(COUNTRY_PANEL_FAMILIES)
+        cp_work = cp_work[cp_work["country_panel"].notna()]
+        daily_metrics_by_slice(cp_work, ["country_panel"], pol_cfg).to_csv(
+            out_dir / "daily_country_panel_by_universe_slice.csv", index=False
+        )
+        italy_all = cp_work[cp_work["topic_family"].isin(ITALY_TOPIC_FAMILIES)]
+        daily_metrics_by_slice(italy_all, [], pol_cfg).to_csv(
+            out_dir / "daily_italy_all_by_universe_slice.csv", index=False
+        )
+        it_pol = cp_work[cp_work["topic_family"] == "it_political"]
+        daily_metrics_by_slice(it_pol, [], pol_cfg).to_csv(
+            out_dir / "daily_it_political_by_universe_slice.csv", index=False
+        )
+        it_oth = cp_work[cp_work["topic_family"] == "it_others"]
+        daily_metrics_by_slice(it_oth, [], pol_cfg).to_csv(
+            out_dir / "daily_it_others_by_universe_slice.csv", index=False
         )
 
     attrition_table(tables_dir, subs).to_csv(out_dir / "attrition_by_subreddit.csv", index=False)

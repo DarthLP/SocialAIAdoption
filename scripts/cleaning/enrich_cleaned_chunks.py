@@ -722,6 +722,31 @@ def thread_political_share_from_enriched(enriched: pd.DataFrame) -> List[bool]:
     return per_thread["thread_is_political"].astype(bool).tolist()
 
 
+def political_universe_share_from_shards(interim_dir: Path, subreddit: str) -> float:
+    """Function summary: mean comment_in_political_universe across enriched shards.
+
+    Parameters:
+    - interim_dir: interim data root.
+    - subreddit: subreddit name.
+
+    Returns:
+    - Share in [0, 1], or 0.0 if column missing or no rows.
+    """
+    shard_dir = interim_dir / "cleaned_monthly_chunks" / subreddit
+    if not shard_dir.is_dir():
+        return 0.0
+    n_in = 0
+    n_total = 0
+    for shard in sorted(shard_dir.glob("*.parquet")):
+        df = read_parquet_shard_safe(shard, columns=["comment_in_political_universe"])
+        if df is None or df.empty or "comment_in_political_universe" not in df.columns:
+            continue
+        flags = df["comment_in_political_universe"].astype(bool)
+        n_in += int(flags.sum())
+        n_total += len(flags)
+    return (n_in / n_total) if n_total else 0.0
+
+
 def _score_shard_worker(
     shard_str: str,
     subreddit: str,
@@ -863,6 +888,7 @@ def main() -> None:
     assignments = assign_topics(config, subreddit_stats, screening, metadata)
     topic_to_family = topic_family_map(config, include_family_aliases=False)
     thread_political_by_sub: Dict[str, List[bool]] = defaultdict(list)
+    universe_comment_flags_by_sub: Dict[str, List[bool]] = defaultdict(list)
 
     print("[enrich_cleaned_chunks] phase=finalize_shards", flush=True)
     for idx, subreddit in enumerate(subreddits, start=1):
@@ -908,6 +934,10 @@ def main() -> None:
             )
             enriched.to_parquet(shard, index=False, engine="pyarrow", compression="snappy")
             thread_political_by_sub[subreddit].extend(thread_political_share_from_enriched(enriched))
+            if "comment_in_political_universe" in enriched.columns:
+                universe_comment_flags_by_sub[subreddit].extend(
+                    enriched["comment_in_political_universe"].astype(bool).tolist()
+                )
         print(f"[enrich_cleaned_chunks] finalize_done subreddit={subreddit}", flush=True)
 
     print("[enrich_cleaned_chunks] phase=write_tables", flush=True)
@@ -920,6 +950,11 @@ def main() -> None:
         screen_row = screening_by_sub.get(subreddit, {})
         flags = thread_political_by_sub.get(subreddit, [])
         thread_share = (sum(flags) / len(flags)) if flags else 0.0
+        uflags = universe_comment_flags_by_sub.get(subreddit, [])
+        if uflags:
+            universe_share = sum(uflags) / len(uflags)
+        else:
+            universe_share = political_universe_share_from_shards(interim_dir, subreddit)
         assignment_rows.append(
             {
                 "subreddit": subreddit,
@@ -955,6 +990,7 @@ def main() -> None:
                     float(stats.get("word_weighted_political_rate_100w", 0.0)), 4
                 ),
                 "comment_hit_share": round(float(stats.get("comment_hit_share", 0.0)), 4),
+                "political_universe_share": round(float(universe_share), 4),
                 "thread_political_share": round(thread_share, 4),
                 "n_comments_stats": int(stats.get("n_comments", 0)),
                 "volume_band": screen_row.get("volume_band", screen_row.get("analysis_tier", "")),

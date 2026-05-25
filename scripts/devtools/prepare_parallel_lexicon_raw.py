@@ -154,7 +154,7 @@ def export_style_phrase_parallel(
     """Function summary: write style_phrase_parallel.csv from config phrase txt files.
 
     Parameters:
-    - lex_dir: config/lexicons directory.
+    - lex_dir: config/archive/lexicons (categorized/ for gap report).
     - out_path: output CSV path.
 
     Returns:
@@ -195,7 +195,7 @@ def write_gap_report(
     """Function summary: list ideology_it.txt terms missing from polarization IT ideology.
 
     Parameters:
-    - lex_dir: config/lexicons.
+    - lex_dir: config/archive/lexicons root.
     - polarization_path: merged polarization CSV.
     - tables_dir: output directory.
 

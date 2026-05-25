@@ -102,6 +102,12 @@ Run in order (`.venv` active):
 .venv/bin/python scripts/diagnostics/audit_political_lexicon.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/diagnostics/plot_cleaning_pipeline_trends.py --config config/italy_polarization_setup.yaml
 
+# Political universe (tree default; Mar–Apr cross-month per subreddit; after enrich, before or after stage 4)
+.venv/bin/python scripts/features/apply_political_universe.py --config config/italy_polarization_setup.yaml
+# Refresh forum profile column political_universe_share (or full enrich --assign-only after universe pass)
+.venv/bin/python scripts/cleaning/enrich_cleaned_chunks.py --config config/italy_polarization_setup.yaml --assign-only
+.venv/bin/python scripts/diagnostics/political_universe_compare.py --config config/italy_polarization_setup.yaml
+
 # Stage 4 — polarization + AI + style features (run only AFTER enrich finishes on all shards)
 # --workers: parallel shards (default min(8, cpu_count-1)); --pass all uses one parquet read/write per shard
 .venv/bin/python scripts/features/compute_enriched_shard_features.py \
@@ -109,6 +115,14 @@ Run in order (`.venv` active):
 # Or single pass:
 .venv/bin/python scripts/features/compute_polarization_features.py \
   --config config/italy_polarization_setup.yaml --workers 8
+
+# Semantic axis (requires fastText .bin models; download once)
+.venv/bin/python scripts/devtools/download_fasttext_models.py
+.venv/bin/python scripts/devtools/generate_semantic_axis_seed_poles.py   # uses data/raw/seeds/*.csv including aggression_parallel (25×3)
+.venv/bin/python scripts/diagnostics/validate_semantic_axis_seeds.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/features/compute_semantic_axis_features.py \
+  --config config/italy_polarization_setup.yaml --workers 8
+
 .venv/bin/python scripts/features/compute_ai_use_features.py --config config/italy_polarization_setup.yaml --workers 8
 .venv/bin/python scripts/features/compute_comment_style_features.py --config config/italy_polarization_setup.yaml --workers 8
 
@@ -123,13 +137,15 @@ Run in order (`.venv` active):
 .venv/bin/python scripts/diagnostics/audit_polarization_lexicons.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/diagnostics/prepare_polarization_descriptives.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/diagnostics/plot_polarization_descriptives.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/diagnostics/prepare_semantic_axis_descriptives.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/diagnostics/plot_semantic_axis_descriptives.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/diagnostics/prepare_lexicon_descriptives.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/diagnostics/plot_lexicon_descriptives.py --config config/italy_polarization_setup.yaml
 ```
 
-Stage 4 adds columns **in-place** on enriched Parquet: polarization (`net_ideology` from `polarization_lexicon_parallel.csv`, pair framing `pair_framing_*` from v4 pairs CSV, emotion/cognition rates, …), AI lexicon, and style counts from `style_phrase_parallel.csv`. All shards share the same column schema (Italian pair framing only on `it` shards). Config requires `polarization.ideology_scoring: dominant_v1`.
+Stage 4 adds columns **in-place** on enriched Parquet: polarization (`net_ideology` from `polarization_lexicon_parallel.csv`, pair framing `pair_framing_*` from v4 pairs CSV, emotion/cognition rates, …), **semantic axes** (`sem_axis_*` from fastText + `data/raw/seeds/`), AI lexicon, and style counts from `style_phrase_parallel.csv`. All shards share the same column schema (Italian pair framing only on `it` shards). Config requires `polarization.ideology_scoring: dominant_v1`.
 
-Lexicon descriptives (pair framing, stance, valence) live under `results/figures/italy_polarization/descriptives/{primary,ideology_dominant,pairs,stance,valence,polarized,trajectory_scatter}/`. Legacy polarization descriptives remain under `descriptives/daily/` and `descriptives/rolling_daily/`. Re-running **enrich** after stage 4 removes feature columns — run stage 4 again if that happens.
+Lexicon descriptives (pair framing, stance, valence) live under `results/figures/italy_polarization/descriptives/{primary,ideology_dominant,pairs,stance,valence,polarized,trajectory_scatter}/`. Legacy polarization descriptives remain under `descriptives/daily/` and `descriptives/rolling_daily/` (all comments). **Universe-sliced** tables (`daily_*_by_universe_slice.csv`) and dual-line figures (`*_dual_universe/`) overlay **in political tree** (thick) vs **non-tree** (translucent) per country panel, pooled Italy, and `it_political` / `it_others` separately. Re-running **enrich** after stage 4 removes feature columns — run stage 4 again if that happens.
 
 **Results layout:** see [`results/README.md`](results/README.md).
 
@@ -140,7 +156,7 @@ Lexicon descriptives (pair framing, stance, valence) live under `results/figures
 - **large_volume**: ≥ **100** kept comments over the window; **low_volume** if only `LOW_VOLUME_WINDOW`; soft monthly floor **50** for sparse-month flags.
 - `r/europe` treated as **general English** (`primary_lexicon: en`).
 
-**Topic / family taxonomy:** Italian **topics** `it_political` / `it_pure_political` / `it_others` from graded word-weighted rate (WW); **family** `it_political` pools both political topics. Controls: `de`, `eu`, `us`, `uk` (`uk`, `uk_political`). **Salience:** [`data/raw/political_lexicon_parallel.csv`](data/raw/political_lexicon_parallel.csv) (grades 1–3 → points 1/2/3 per unique term; IT/EN/DE columns). **Assignment** (Italian arms): metadata overrides → controls → WW ≥ `forum_political_pure_threshold` → `it_pure_political` → WW ≥ `forum_political_soft_threshold` → `it_political` → else `it_others` (recalibrate thresholds after enrichment; current **0.6** / **1.2**). **Thread political flag:** `thread_political_weighted_points >= 3` (`thread_political_min_points`). Audit: `subreddit_forum_political_profile.csv`; `political_threshold_sensitivity.csv`; QA under `cleaning_pipeline/political_qa/`.
+**Topic / family taxonomy:** Italian **topics** `it_political` / `it_pure_political` / `it_others` from graded word-weighted rate (WW); **family** `it_political` pools both political topics. Controls: `de`, `eu`, `us`, `uk` (`uk`, `uk_political`). **Salience:** [`data/raw/political_lexicon_parallel.csv`](data/raw/political_lexicon_parallel.csv) (grades 1–3 → points 1/2/3 per unique term; IT/EN/DE columns). **Assignment** (Italian arms): metadata overrides → controls → WW ≥ `forum_political_pure_threshold` → `it_pure_political` → WW ≥ `forum_political_soft_threshold` → `it_political` → else `it_others` (recalibrate thresholds after enrichment; current **0.6** / **1.2**). **Headline political scope:** share of comments in the **political universe** (`political_universe.mode: tree` by default — political comment, reply subtree, optional one-up parent; frozen over Mar–Apr per `link_id`). Column: `comment_in_political_universe`; forum audit: `political_universe_share`. **Thread political flag** (comparison): `thread_political_weighted_points >= 3` per monthly shard (`thread_is_political`); `thread_political_share` retained. P/R labels: `data/raw/political_universe_labels.csv`. Coverage tables/figures: `results/.../political_coverage/`.
 
 **Outputs:**
 

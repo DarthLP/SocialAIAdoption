@@ -351,7 +351,14 @@ comment_features:
   hostility_model: ''
   emotion_model: ''
   perplexity_model: ''
+political_universe:
+  mode: tree
+  comment_political_min_points: 3
+  tree_include_parent: true
+  tree_max_depth: null
+  political_cos_threshold: 0.55
 polarization:
+  restrict_to_political_comments: true
   ideology_scoring: dominant_v1
   use_score_map:
     yes: 3
@@ -375,6 +382,18 @@ ai_use:
 comment_style:
   lang_match_filter: false
   enable_phrase_lexicons: true
+semantic_axis:
+  lang_match_filter: false
+  seeds_dir: data/raw/seeds
+  write_vector_cache: true
+  vector_paths:
+    it: data/external/embeddings/cc.it.300.bin
+    en: data/external/embeddings/cc.en.300.bin
+    de: data/external/embeddings/cc.de.300.bin
+  pole_thresholds:
+    ideology: 0.25
+    emotion: 0.25
+    aggression: 0.25
 user_week:
   input_mode: enriched_shards
   # Pre/post split uses event_window.launch_day_utc (Italy ChatGPT ban onset, 2023-03-31 UTC).
@@ -416,6 +435,7 @@ paths:
   political_lexicon_parallel: data/raw/political_lexicon_parallel.csv
   polarization_lexicon_parallel: data/raw/polarization_lexicon_parallel.csv
   emotion_cognition_parallel: data/raw/emotion_cognition_parallel.csv
+  aggression_parallel: data/raw/seeds/aggression_parallel.csv
   style_phrase_parallel: data/raw/style_phrase_parallel.csv
   italian_lexicon_v4_pairs: data/raw/italian_political_lexicon_v4.csv
   raw_dir: data/raw/italy_polarization

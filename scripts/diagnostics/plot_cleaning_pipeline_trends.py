@@ -76,6 +76,8 @@ STAGE1_RATE_METRICS = [
 
 POLITICAL_RATE_COL = "word_weighted_political_rate_100w"
 THREAD_SHARE_COL = "thread_political_share"
+UNIVERSE_SHARE_COL = "political_universe_share"
+COMMENT_HIT_SHARE_COL = "comment_hit_share"
 THRESHOLD_SENSITIVITY_CANDIDATES = (
     0.05,
     0.10,
@@ -561,7 +563,8 @@ def _merge_political_plot_data(audit_df: pd.DataFrame, tables_dir: Path) -> pd.D
             "action",
             "volume_band",
             THREAD_SHARE_COL,
-            "comment_hit_share",
+            UNIVERSE_SHARE_COL,
+            COMMENT_HIT_SHARE_COL,
             POLITICAL_RATE_COL,
         ]
         merge_cols = [c for c in want if c in profile.columns]
@@ -1013,6 +1016,74 @@ def plot_political_rate_vs_thread_share_bubble(
     plt.close(fig)
 
 
+def plot_political_rate_vs_comment_share_bubble(
+    audit_df: pd.DataFrame,
+    out_path: Path,
+    config: Dict[str, Any],
+) -> None:
+    """Function summary: bubble scatter of political rate vs comment political-universe share.
+
+    Parameters:
+    - audit_df: merged audit table (screened-in; includes universe share and n_kept_window).
+    - out_path: PNG path.
+    - config: study config (unused; kept for API consistency).
+    """
+    del config
+    if audit_df.empty:
+        return
+    if POLITICAL_RATE_COL not in audit_df.columns or UNIVERSE_SHARE_COL not in audit_df.columns:
+        return
+    d = _analysis_sample_political_audit(audit_df)
+    d = d.dropna(subset=[POLITICAL_RATE_COL, UNIVERSE_SHARE_COL])
+    if d.empty:
+        return
+    topics = _ordered_political_topics(d["topic"])
+    colors = _political_topic_colors(topics)
+    soft, pure = _political_assignment_thresholds(audit_df)
+    threshold = pure
+    if "n_kept_window" in d.columns:
+        sizes = _political_bubble_sizes(d["n_kept_window"])
+    else:
+        sizes = np.full(len(d), 80.0)
+
+    fig, ax = plt.subplots(figsize=(10, 6.5))
+    for topic in topics:
+        mask = d["topic"].astype(str) == topic
+        if not mask.any():
+            continue
+        ax.scatter(
+            d.loc[mask, UNIVERSE_SHARE_COL],
+            d.loc[mask, POLITICAL_RATE_COL],
+            s=sizes[mask.to_numpy()],
+            c=[colors[topic]],
+            label=topic,
+            alpha=0.78,
+            edgecolors="white",
+            linewidths=0.5,
+        )
+    _draw_political_threshold_lines(ax, audit_df, vertical=False)
+    label_mask = _interesting_political_label_mask(d, threshold)
+    for row in d.loc[label_mask].itertuples(index=False):
+        ax.annotate(
+            str(row.subreddit),
+            (float(getattr(row, UNIVERSE_SHARE_COL)), float(getattr(row, POLITICAL_RATE_COL))),
+            fontsize=7,
+            alpha=0.92,
+            xytext=(5, 5),
+            textcoords="offset points",
+        )
+    ax.set_title(
+        "Word-weighted political rate vs share of comments in political universe (screened-in forums)"
+    )
+    ax.set_xlabel("Share of comments in political universe")
+    ax.set_ylabel("Political rate per 100 words")
+    ax.margins(x=0.04, y=0.04)
+    ax.legend(fontsize=8, loc="upper left", framealpha=0.9)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150, bbox_inches="tight", pad_inches=0.05)
+    plt.close(fig)
+
+
 def plot_political_audit_figures(
     audit_df: pd.DataFrame,
     out_dir: Path,
@@ -1033,6 +1104,7 @@ def plot_political_audit_figures(
         (plot_political_by_subreddit_bars, "by_subreddit_political_rate_bars.png"),
         (plot_political_by_subreddit_scatter, "by_subreddit_political_rate_vs_topic.png"),
         (plot_political_rate_vs_thread_share_bubble, "by_subreddit_political_rate_vs_thread_share.png"),
+        (plot_political_rate_vs_comment_share_bubble, "by_subreddit_political_rate_vs_comment_share.png"),
     ):
         try:
             plot_fn(merged, out_dir / out_name, config)
@@ -1204,16 +1276,18 @@ def run_cleaning_pipeline_plots(config: Dict[str, Any], project_root: Path | Non
         if ww_col in prof.columns:
             topic_agg = prof.groupby("topic", as_index=False).agg(
                 political_rate_100w_mean=(ww_col, "mean"),
-                political_comment_share=("comment_hit_share", "mean"),
-                thread_political_share=("thread_political_share", "mean"),
+                comment_hit_share=(COMMENT_HIT_SHARE_COL, "mean"),
+                political_universe_share=(UNIVERSE_SHARE_COL, "mean"),
+                thread_political_share=(THREAD_SHARE_COL, "mean"),
                 n_subreddits=("subreddit", "nunique"),
             )
             topic_agg.to_csv(out_tables / "political_metrics_by_topic.csv", index=False)
             prof["topic_family"] = prof["subreddit"].map(sub_to_family)
             family_agg = prof.groupby("topic_family", as_index=False).agg(
                 political_rate_100w_mean=(ww_col, "mean"),
-                political_comment_share=("comment_hit_share", "mean"),
-                thread_political_share=("thread_political_share", "mean"),
+                comment_hit_share=(COMMENT_HIT_SHARE_COL, "mean"),
+                political_universe_share=(UNIVERSE_SHARE_COL, "mean"),
+                thread_political_share=(THREAD_SHARE_COL, "mean"),
             )
             family_agg.to_csv(out_tables / "political_metrics_by_family.csv", index=False)
             plot_political_topic_bar(
@@ -1225,11 +1299,19 @@ def run_cleaning_pipeline_plots(config: Dict[str, Any], project_root: Path | Non
             )
             plot_political_topic_bar(
                 topic_agg,
-                "political_comment_share",
+                "comment_hit_share",
                 "Political comment hit share by topic",
                 fig_political / "by_topic_political_comment_hit_share.png",
                 ylabel="Share of comments with ≥1 lexicon hit",
             )
+            if "political_universe_share" in topic_agg.columns:
+                plot_political_topic_bar(
+                    topic_agg,
+                    "political_universe_share",
+                    "Political universe share by topic",
+                    fig_political / "by_topic_political_universe_share.png",
+                    ylabel="Share of comments in political universe",
+                )
 
     audit_path = tables_dir / "screening" / "subreddit_topic_political_audit.csv"
     if audit_path.is_file():
