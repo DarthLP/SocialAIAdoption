@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
 from src.v4_lexicon import (  # noqa: E402
     PairEntry,
     dominant_side_from_uses,
+    get_pairs_registry,
     score_pair_framing,
 )
 
@@ -69,6 +70,12 @@ def test_pair_both_hits() -> None:
     scored = score_pair_framing("migranti e clandestini", pairs, "strict", n_words=5)
     assert scored["pair_framing_net_strict"] == 0.0
     assert scored["pair_both_strict"] == 1.0
+
+
+def test_registry_caches_return_same_object() -> None:
+    """Function summary: pairs loader reuses in-process cache."""
+    assert get_pairs_registry(ROOT) is get_pairs_registry(ROOT)
+    assert len(get_pairs_registry(ROOT)) >= 60
 
 
 def test_polarization_row_requires_scorer_keys() -> None:

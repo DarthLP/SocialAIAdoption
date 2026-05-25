@@ -280,8 +280,8 @@ screening:
   thread_political_rate_threshold: 0.45  # diagnostic only; thread flag uses thread_political_min_points
   thread_political_min_hits: 0  # legacy; unused when min_points is set
   thread_political_min_points: 3
-  forum_political_soft_threshold: 0.35  # recalibrate from political_threshold_sensitivity.csv after enrich
-  forum_political_pure_threshold: 0.7
+  forum_political_soft_threshold: 0.6  # recalibrate from political_threshold_sensitivity.csv after enrich
+  forum_political_pure_threshold: 1.2
 topics:
   it_political: []
   it_pure_political: []
@@ -414,6 +414,10 @@ user_week:
         sign: 1
 paths:
   political_lexicon_parallel: data/raw/political_lexicon_parallel.csv
+  polarization_lexicon_parallel: data/raw/polarization_lexicon_parallel.csv
+  emotion_cognition_parallel: data/raw/emotion_cognition_parallel.csv
+  style_phrase_parallel: data/raw/style_phrase_parallel.csv
+  italian_lexicon_v4_pairs: data/raw/italian_political_lexicon_v4.csv
   raw_dir: data/raw/italy_polarization
   interim_dir: data/interim/italy_polarization
   processed_dir: data/processed/italy_polarization

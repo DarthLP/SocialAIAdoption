@@ -1,10 +1,11 @@
 """
 Script summary:
-Load graded parallel political salience from CSV and polarization lexicons from config text files.
+Load graded parallel political salience and polarization lexicons from raw CSV files.
 
 Functionality:
 - Political salience: `data/raw/political_lexicon_parallel.csv` (grades 1–3, unique term hits, weighted points).
-- Categorized polarization lists (`ideology_{lang}.txt`, etc.) with optional negation masking.
+- Categorized polarization: `data/raw/polarization_lexicon_parallel.csv` with optional negation masking.
+- Emotion/cognition: `data/raw/emotion_cognition_parallel.csv`.
 - Derived ideology indices and distributional helpers (Esteban–Ray, bimodality coefficient).
 
 How to apply/run:
@@ -16,11 +17,15 @@ from __future__ import annotations
 import csv
 import math
 import re
+from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
-TOKEN_PATTERN = re.compile(r"[a-z0-9']+", re.IGNORECASE)
+import pandas as pd
+
+TOKEN_PATTERN = re.compile(r"[\w']+", re.UNICODE)
 _GRADED_LEXICON_CACHE: Dict[str, List[Tuple[Tuple[str, ...], int, str]]] = {}
+_GRADED_MATCHER_CACHE: Dict[str, "GradedPoliticalMatcher"] = {}
 _CATEGORIZED_CACHE: Dict[str, Dict[str, Tuple[List[str], List[Tuple[str, ...]]]]] = {}
 
 PARALLEL_LANG_COLUMNS: Dict[str, Tuple[str, str]] = {
@@ -30,8 +35,10 @@ PARALLEL_LANG_COLUMNS: Dict[str, Tuple[str, str]] = {
 }
 GRADE_POINTS = {1: 1, 2: 2, 3: 3}
 DEFAULT_PARALLEL_LEXICON_REL = "data/raw/political_lexicon_parallel.csv"
+DEFAULT_POLARIZATION_LEXICON_REL = "data/raw/polarization_lexicon_parallel.csv"
+DEFAULT_EMOTION_COGNITION_REL = "data/raw/emotion_cognition_parallel.csv"
 
-LEXICON_NAMES = ("ideology", "other_side", "aggression", "affect", "issue", "ai_style", "stance", "valence", "polarized")
+LEXICON_NAMES = ("ideology", "other_side", "aggression", "affect", "issue", "ai_style")
 NEGATION_TOKENS_DEFAULT = frozenset(
     {"non", "not", "no", "never", "neither", "nor", "mai", "né", "senza", "without", "kein", "keine", "nicht"}
 )
@@ -40,48 +47,23 @@ ISSUE_CATEGORIES = ("eu", "migration", "economy", "culture")
 IDEOLOGY_CATEGORIES = ("left", "center", "right")
 
 
-def lexicon_path(project_root: Path, lang_code: str, lexicon_name: str = "political") -> Path:
-    """Function summary: resolve lexicon file path for a language and lexicon family.
-
-    Parameters:
-    - project_root: repository root Path.
-    - lang_code: `it`, `en`, or `de`.
-    - lexicon_name: `political` or categorized stem (`ideology`, `other_side`, ...).
-
-    Returns:
-    - Path to the lexicon text file.
-    """
-    stem = f"{lexicon_name}_{lang_code.lower()}"
-    return project_root / "config" / "lexicons" / f"{stem}.txt"
+def default_polarization_lexicon_path(project_root: Path) -> Path:
+    """Function summary: resolve default polarization_lexicon_parallel.csv path."""
+    return project_root / DEFAULT_POLARIZATION_LEXICON_REL
 
 
-def load_lexicon_terms(path: Path) -> Tuple[List[str], List[Tuple[str, ...]]]:
-    """Function summary: load single-token and multi-token terms from a flat lexicon file.
+def default_emotion_cognition_path(project_root: Path) -> Path:
+    """Function summary: resolve default emotion_cognition_parallel.csv path."""
+    return project_root / DEFAULT_EMOTION_COGNITION_REL
 
-    Parameters:
-    - path: lexicon file path.
 
-    Returns:
-    - Tuple of (single_token_terms, phrase_token_tuples).
-    """
-    singles: List[str] = []
-    phrases: List[Tuple[str, ...]] = []
-    if not path.is_file():
-        return singles, phrases
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.split("#", 1)[0].strip().lower()
-        if not line:
-            continue
-        if ":" in line:
-            line = line.split(":", 1)[1].strip()
-        if not line:
-            continue
-        parts = line.split()
-        if len(parts) == 1:
-            singles.append(parts[0])
-        else:
-            phrases.append(tuple(parts))
-    return singles, phrases
+def resolve_polarization_lexicon_path(
+    project_root: Path, csv_path: Optional[Path] = None
+) -> Path:
+    """Function summary: return explicit or default polarization parallel CSV path."""
+    if csv_path is not None:
+        return csv_path
+    return default_polarization_lexicon_path(project_root)
 
 
 def load_categorized_lexicon(path: Path) -> Dict[str, Tuple[List[str], List[Tuple[str, ...]]]]:
@@ -166,10 +148,12 @@ def load_parallel_political_lexicon(csv_path: Path, lang_code: str) -> Dict[str,
     out: Dict[str, int] = {}
     if not csv_path.is_file():
         return out
+    from src.parallel_lexicon import expand_lexicon_variants, split_lexicon_cell
+
     with csv_path.open(encoding="utf-8-sig", newline="") as f:
         for row in csv.DictReader(f):
-            term = _norm_term_key(row.get(term_col, "") or "")
-            if not term:
+            cell = (row.get(term_col, "") or "").strip()
+            if not cell:
                 continue
             raw_grade = (row.get(grade_col) or "").strip()
             if not raw_grade.isdigit():
@@ -177,7 +161,12 @@ def load_parallel_political_lexicon(csv_path: Path, lang_code: str) -> Dict[str,
             grade = int(raw_grade)
             if grade not in GRADE_POINTS:
                 continue
-            out[term] = max(out.get(term, 0), grade)
+            pieces = split_lexicon_cell(cell) if ";" in cell else [cell]
+            for piece in pieces:
+                for variant in expand_lexicon_variants(piece, lang):
+                    key = _norm_term_key(variant)
+                    if key:
+                        out[key] = max(out.get(key, 0), grade)
     return out
 
 
@@ -271,6 +260,152 @@ def _match_graded_terms_unique(
     return g1, g2, g3, points
 
 
+class GradedPoliticalMatcher:
+    """Function summary: cached graded lexicon matcher with first-token indexing for phrases."""
+
+    def __init__(self, entries: Sequence[Tuple[Tuple[str, ...], int, str]]):
+        """Function summary: build matcher from graded lexicon entries (longest phrase first).
+
+        Parameters:
+        - entries: list of (token_tuple, grade, term_key) sorted longest-first.
+        """
+        self.entries = list(entries)
+        by_first: Dict[str, List[Tuple[Tuple[str, ...], int, str]]] = defaultdict(list)
+        for phrase, grade, key in self.entries:
+            if not phrase:
+                continue
+            by_first[phrase[0]].append((phrase, grade, key))
+        for bucket in by_first.values():
+            bucket.sort(key=lambda e: len(e[0]), reverse=True)
+        self._by_first = dict(by_first)
+
+    def score_tokens(self, tokens: Sequence[str]) -> Tuple[int, int, int, int]:
+        """Function summary: match graded lexicon on tokenized comment text.
+
+        Parameters:
+        - tokens: comment token list.
+
+        Returns:
+        - Tuple (g1_hits, g2_hits, g3_hits, weighted_points).
+        """
+        n_words = len(tokens)
+        if n_words == 0:
+            return 0, 0, 0, 0
+        covered: set[int] = set()
+        matched_keys: set[str] = set()
+        g1 = g2 = g3 = 0
+        for idx in range(n_words):
+            candidates = self._by_first.get(tokens[idx])
+            if not candidates:
+                continue
+            for phrase, grade, key in candidates:
+                if key in matched_keys:
+                    continue
+                plen = len(phrase)
+                if plen == 0 or idx + plen > n_words:
+                    continue
+                if any(i in covered for i in range(idx, idx + plen)):
+                    continue
+                if tuple(tokens[idx : idx + plen]) != phrase:
+                    continue
+                matched_keys.add(key)
+                covered.update(range(idx, idx + plen))
+                if grade == 1:
+                    g1 += 1
+                elif grade == 2:
+                    g2 += 1
+                else:
+                    g3 += 1
+                break
+        points = g1 * GRADE_POINTS[1] + g2 * GRADE_POINTS[2] + g3 * GRADE_POINTS[3]
+        return g1, g2, g3, points
+
+    def score_text(self, text: str) -> Tuple[int, int, int, int]:
+        """Function summary: tokenize and score political salience on comment body.
+
+        Parameters:
+        - text: comment body.
+
+        Returns:
+        - Tuple (g1_hits, g2_hits, g3_hits, weighted_points).
+        """
+        return self.score_tokens(tokenize(text))
+
+
+def get_graded_matcher(
+    project_root: Path,
+    lang_code: str,
+    csv_path: Optional[Path] = None,
+) -> GradedPoliticalMatcher:
+    """Function summary: return cached GradedPoliticalMatcher for a language.
+
+    Parameters:
+    - project_root: repository root Path.
+    - lang_code: it, en, or de.
+    - csv_path: optional parallel CSV override.
+
+    Returns:
+    - GradedPoliticalMatcher instance.
+    """
+    path = resolve_parallel_lexicon_path(project_root, csv_path)
+    cache_key = f"{path.resolve()}:{lang_code.lower()}"
+    if cache_key not in _GRADED_MATCHER_CACHE:
+        entries = get_graded_lexicon_entries(project_root, lang_code, csv_path=csv_path)
+        _GRADED_MATCHER_CACHE[cache_key] = GradedPoliticalMatcher(entries)
+    return _GRADED_MATCHER_CACHE[cache_key]
+
+
+def score_bodies_political_salience(
+    bodies: Sequence[str],
+    lang_code: str,
+    project_root: Path,
+    csv_path: Optional[Path] = None,
+) -> pd.DataFrame:
+    """Function summary: batch-score comment bodies with graded unique-term matching.
+
+    Parameters:
+    - bodies: sequence of comment body strings.
+    - lang_code: it, en, or de.
+    - project_root: repository root.
+    - csv_path: optional parallel CSV override.
+
+    Returns:
+    - DataFrame with political_g1_hits, political_g2_hits, political_g3_hits,
+      political_weighted_points, n_words (one row per body).
+    """
+    matcher = get_graded_matcher(project_root, lang_code, csv_path=csv_path)
+    g1_list: List[int] = []
+    g2_list: List[int] = []
+    g3_list: List[int] = []
+    points_list: List[int] = []
+    n_words_list: List[int] = []
+    for body in bodies:
+        tokens = tokenize(body)
+        n_words = len(tokens)
+        if n_words == 0:
+            g1_list.append(0)
+            g2_list.append(0)
+            g3_list.append(0)
+            points_list.append(0)
+            n_words_list.append(0)
+            continue
+        g1, g2, g3, points = matcher.score_tokens(tokens)
+        g1_list.append(g1)
+        g2_list.append(g2)
+        g3_list.append(g3)
+        points_list.append(points)
+        n_words_list.append(n_words)
+    return pd.DataFrame(
+        {
+            "political_g1_hits": g1_list,
+            "political_g2_hits": g2_list,
+            "political_g3_hits": g3_list,
+            "political_weighted_points": points_list,
+            "n_words": n_words_list,
+        }
+    )
+
+
 def score_comment_political_salience(
     text: str,
     lang_code: str,
@@ -289,6 +424,7 @@ def score_comment_political_salience(
     - Dict with political_g1_hits, political_g2_hits, political_g3_hits,
       political_weighted_points, n_words.
     """
+    matcher = get_graded_matcher(project_root, lang_code, csv_path=csv_path)
     tokens = tokenize(text)
     n_words = len(tokens)
     if n_words == 0:
@@ -299,8 +435,7 @@ def score_comment_political_salience(
             "political_weighted_points": 0,
             "n_words": 0,
         }
-    entries = get_graded_lexicon_entries(project_root, lang_code, csv_path=csv_path)
-    g1, g2, g3, points = _match_graded_terms_unique(tokens, entries)
+    g1, g2, g3, points = matcher.score_tokens(tokens)
     return {
         "political_g1_hits": g1,
         "political_g2_hits": g2,
@@ -311,7 +446,10 @@ def score_comment_political_salience(
 
 
 def get_categorized_lexicon(
-    project_root: Path, lang_code: str, lexicon_name: str
+    project_root: Path,
+    lang_code: str,
+    lexicon_name: str,
+    polarization_csv_path: Optional[Path] = None,
 ) -> Dict[str, Tuple[List[str], List[Tuple[str, ...]]]]:
     """Function summary: return cached categorized lexicon for a language and family.
 
@@ -319,15 +457,28 @@ def get_categorized_lexicon(
     - project_root: repository root Path.
     - lang_code: language code.
     - lexicon_name: e.g. `ideology`, `other_side`.
+    - polarization_csv_path: optional polarization CSV override.
 
     Returns:
     - Category -> (singles, phrases).
     """
-    cache_key = f"{lexicon_name}:{lang_code.lower()}"
+    from src.parallel_lexicon import load_polarization_parallel
+
+    path = resolve_polarization_lexicon_path(project_root, polarization_csv_path)
+    cache_key = f"{path.resolve()}:{lang_code.lower()}:{lexicon_name}"
     if cache_key not in _CATEGORIZED_CACHE:
-        path = lexicon_path(project_root, lang_code, lexicon_name=lexicon_name)
-        _CATEGORIZED_CACHE[cache_key] = load_categorized_lexicon(path)
+        full = load_polarization_parallel(path, lang_code)
+        _CATEGORIZED_CACHE[cache_key] = full.get(lexicon_name, {})
     return _CATEGORIZED_CACHE[cache_key]
+
+
+def _count_pole_hits(
+    tokens: Sequence[str],
+    singles: Sequence[str],
+    phrases: Sequence[Tuple[str, ...]],
+) -> int:
+    """Function summary: count hits for one emotion/cognition pole lexicon."""
+    return _count_terms_in_tokens(tokens, singles, phrases, negation_window=0)
 
 
 def tokenize(text: str) -> List[str]:
@@ -409,18 +560,18 @@ def count_political_hits(
     return int(scored["political_weighted_points"]), int(scored["n_words"])
 
 
-def count_categorized_hits(
-    text: str,
+def count_categorized_hits_from_tokens(
+    tokens: Sequence[str],
     lang_code: str,
     lexicon_name: str,
     project_root: Path,
     negation_window: int = 0,
     categories: Optional[Sequence[str]] = None,
-) -> Tuple[Dict[str, int], int]:
-    """Function summary: count hits per category for a categorized lexicon file.
+) -> Dict[str, int]:
+    """Function summary: count hits per category using a pre-tokenized comment.
 
     Parameters:
-    - text: comment body.
+    - tokens: lowercase word tokens.
     - lang_code: language code.
     - lexicon_name: lexicon family stem.
     - project_root: repository root.
@@ -428,12 +579,10 @@ def count_categorized_hits(
     - categories: optional subset of categories to score.
 
     Returns:
-    - Tuple (category -> hit count, n_words).
+    - category -> hit count (empty dict when tokens empty).
     """
-    tokens = tokenize(text)
-    n_words = len(tokens)
-    if n_words == 0:
-        return {}, 0
+    if len(tokens) == 0:
+        return {}
     lex = get_categorized_lexicon(project_root, lang_code, lexicon_name)
     use_negation = negation_window > 0 and lexicon_name == "ideology"
     out: Dict[str, int] = {}
@@ -446,7 +595,59 @@ def count_categorized_hits(
             phrases,
             negation_window=negation_window if use_negation else 0,
         )
-    return out, n_words
+    return out
+
+
+def count_categorized_hits(
+    text: str,
+    lang_code: str,
+    lexicon_name: str,
+    project_root: Path,
+    negation_window: int = 0,
+    categories: Optional[Sequence[str]] = None,
+    tokens: Optional[Sequence[str]] = None,
+) -> Tuple[Dict[str, int], int]:
+    """Function summary: count hits per category for a categorized lexicon file.
+
+    Parameters:
+    - text: comment body.
+    - lang_code: language code.
+    - lexicon_name: lexicon family stem.
+    - project_root: repository root.
+    - negation_window: negation lookback (ideology typically > 0).
+    - categories: optional subset of categories to score.
+    - tokens: optional pre-tokenized list (avoids re-tokenizing).
+
+    Returns:
+    - Tuple (category -> hit count, n_words).
+    """
+    tok_list = list(tokens) if tokens is not None else tokenize(text)
+    n_words = len(tok_list)
+    if n_words == 0:
+        return {}, 0
+    hits = count_categorized_hits_from_tokens(
+        tok_list,
+        lang_code,
+        lexicon_name,
+        project_root,
+        negation_window=negation_window,
+        categories=categories,
+    )
+    return hits, n_words
+
+
+def warm_polarization_lexicons(project_root: Path, lang_code: str) -> None:
+    """Function summary: preload categorized lexicons for one language into process cache.
+
+    Parameters:
+    - project_root: repository root.
+    - lang_code: language code.
+
+    Returns:
+    - None.
+    """
+    for name in LEXICON_NAMES:
+        get_categorized_lexicon(project_root, lang_code, name)
 
 
 def political_rate_100w(hits: int, n_words: int) -> float:
@@ -584,11 +785,15 @@ def score_comment_polarization(
     Returns:
     - Flat dict of hit counts, rates, and derived fields.
     """
-    from src.v4_lexicon import zero_v4_polarization_columns
-
-    ideology_hits, n_words = count_categorized_hits(
-        text, lang_code, "ideology", project_root, negation_window=negation_window
+    from src.parallel_lexicon import load_emotion_cognition_parallel
+    from src.v4_lexicon import (
+        get_pairs_registry,
+        score_pair_framing,
+        zero_pair_framing_columns,
     )
+
+    tokens = tokenize(text)
+    n_words = len(tokens)
     if n_words == 0:
         out = {col: 0.0 for col in (
             "left_hits", "center_hits", "right_hits", "left_rate_100w", "center_rate_100w",
@@ -599,9 +804,23 @@ def score_comment_polarization(
             "issue_culture_rate_100w", "has_left_hit", "has_right_hit", "has_other_side_hit",
         )}
         out["n_words"] = 0.0
-        out.update(zero_v4_polarization_columns())
+        out.update(zero_pair_framing_columns())
+        out["emotion_hits"] = 0.0
+        out["emotion_rate_100w"] = 0.0
+        out["cognition_hits"] = 0.0
+        out["cognition_rate_100w"] = 0.0
         return out
 
+    emo_path = default_emotion_cognition_path(project_root)
+    emo_lex = load_emotion_cognition_parallel(emo_path, lang_code)
+    emo_s, emo_p = emo_lex.get("emotion", ([], []))
+    cog_s, cog_p = emo_lex.get("cognition", ([], []))
+    emotion_h = _count_pole_hits(tokens, emo_s, emo_p)
+    cognition_h = _count_pole_hits(tokens, cog_s, cog_p)
+
+    ideology_hits = count_categorized_hits_from_tokens(
+        tokens, lang_code, "ideology", project_root, negation_window=negation_window
+    )
     result: Dict[str, float] = {"n_words": float(n_words)}
     left_h = int(ideology_hits.get("left", 0))
     center_h = int(ideology_hits.get("center", 0))
@@ -614,21 +833,21 @@ def score_comment_polarization(
     result["center_rate_100w"] = political_rate_100w(center_h, n_words)
     result.update(compute_ideology_indices(left_h, center_h, right_h, eps=eps))
 
-    other_hits, _ = count_categorized_hits(text, lang_code, "other_side", project_root)
+    other_hits = count_categorized_hits_from_tokens(tokens, lang_code, "other_side", project_root)
     other_total = sum(other_hits.values())
     result["other_side_salience_hits"] = float(other_total)
     result["other_side_salience_rate_100w"] = political_rate_100w(other_total, n_words)
 
-    agg_hits, _ = count_categorized_hits(text, lang_code, "aggression", project_root)
+    agg_hits = count_categorized_hits_from_tokens(tokens, lang_code, "aggression", project_root)
     agg_total = sum(agg_hits.values())
     result["aggression_hits"] = float(agg_total)
     result["aggression_rate_100w"] = political_rate_100w(agg_total, n_words)
 
-    affect_hits, _ = count_categorized_hits(text, lang_code, "affect", project_root)
+    affect_hits = count_categorized_hits_from_tokens(tokens, lang_code, "affect", project_root)
     result["negative_rate_100w"] = political_rate_100w(int(affect_hits.get("negative", 0)), n_words)
     result["anger_rate_100w"] = political_rate_100w(int(affect_hits.get("anger", 0)), n_words)
 
-    issue_hits, _ = count_categorized_hits(text, lang_code, "issue", project_root)
+    issue_hits = count_categorized_hits_from_tokens(tokens, lang_code, "issue", project_root)
     for cat in ISSUE_CATEGORIES:
         h = int(issue_hits.get(cat, 0))
         result[f"issue_{cat}_rate_100w"] = political_rate_100w(h, n_words)
@@ -636,24 +855,17 @@ def score_comment_polarization(
     result["has_left_hit"] = float(left_h > 0)
     result["has_right_hit"] = float(right_h > 0)
     result["has_other_side_hit"] = float(other_total > 0)
-
-    from src.v4_lexicon import (
-        load_pairs_registry,
-        pairs_registry_path,
-        score_pair_framing,
-        score_v4_metadata,
-        score_weighted_ideology_hits,
-        zero_v4_polarization_columns,
-    )
+    result["emotion_hits"] = float(emotion_h)
+    result["emotion_rate_100w"] = political_rate_100w(emotion_h, n_words)
+    result["cognition_hits"] = float(cognition_h)
+    result["cognition_rate_100w"] = political_rate_100w(cognition_h, n_words)
 
     if lang_code.lower() == "it":
-        pairs = load_pairs_registry(pairs_registry_path(project_root))
+        pairs = get_pairs_registry(project_root)
         for track in ("strict", "all"):
-            result.update(score_pair_framing(text, pairs, track, n_words, eps=eps))
-        result.update(score_v4_metadata(text, project_root, n_words, eps=eps))
-        result.update(score_weighted_ideology_hits(text, project_root))
+            result.update(score_pair_framing(text, pairs, track, n_words, eps=eps, tokens=tokens))
     else:
-        result.update(zero_v4_polarization_columns())
+        result.update(zero_pair_framing_columns())
     return result
 
 

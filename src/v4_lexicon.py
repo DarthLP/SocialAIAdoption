@@ -1,11 +1,11 @@
 """
 Script summary:
-Dominant-side assignment, pair-framing registry, and v4 metadata scoring for Italian polarization.
+Dominant-side assignment and pair-framing scoring for Italian polarization (v4 CSV pairs).
 
 Functionality:
 - Maps v4 use columns (yes/some/rarely/no) to a single L/C/R bucket with tie-break rules.
-- Loads pairs_it.json and scores strict/all pair-framing nets.
-- Scores stance, valence, polarized, and relevance-weighted contra rates.
+- Loads framing pairs from italian_political_lexicon_v4.csv (section=pairs).
+- Scores strict/all pair-framing nets at comment level.
 
 How to apply/run:
 - Imported by src/political_lexicon.score_comment_polarization when lang_code is it.
@@ -13,18 +13,12 @@ How to apply/run:
 
 from __future__ import annotations
 
-import json
-import re
+import csv
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 from src.political_lexicon import (
-    TOKEN_PATTERN,
-    _count_terms_in_tokens,
-    compute_ideology_indices,
-    count_categorized_hits,
-    get_categorized_lexicon,
     political_rate_100w,
     tokenize,
 )
@@ -49,6 +43,9 @@ class PairEntry:
     polarized: str
     tokens_a: Tuple[str, ...]
     tokens_b: Tuple[str, ...]
+
+
+_PAIRS_CACHE: Dict[str, Tuple[float, List["PairEntry"]]] = {}
 
 
 def normalize_use(value: str) -> str:
@@ -125,8 +122,8 @@ def dominant_side_for_role(row: Mapping[str, str], role: str, variant: DominantV
 
 
 def _term_tokens(term: str) -> Tuple[str, ...]:
-    """Function summary: token tuple for phrase matching."""
-    return tuple(normalize_use(term).replace("'", "'").split()) if term else ()
+    """Function summary: token tuple for phrase matching (Unicode-aware)."""
+    return tuple(tokenize(term)) if term else ()
 
 
 def _match_term(tokens: Sequence[str], term_tokens: Tuple[str, ...]) -> bool:
@@ -143,42 +140,70 @@ def _match_term(tokens: Sequence[str], term_tokens: Tuple[str, ...]) -> bool:
     return False
 
 
-def load_pairs_registry(path: Path) -> List[PairEntry]:
-    """Function summary: load pairs_it.json into PairEntry list.
+def pairs_registry_path(project_root: Path) -> Path:
+    """Function summary: resolve italian_political_lexicon_v4.csv path for pairs section."""
+    return project_root / "data" / "raw" / "italian_political_lexicon_v4.csv"
+
+
+def load_pairs_from_v4_csv(csv_path: Path) -> List[PairEntry]:
+    """Function summary: load PairEntry list from v4 CSV rows with section=pairs.
 
     Parameters:
-    - path: JSON registry path.
+    - csv_path: italian_political_lexicon_v4.csv (semicolon-delimited).
 
     Returns:
-    - List of pair entries.
+    - List of pair entries with dominant L/C/R poles.
     """
-    if not path.is_file():
+    if not csv_path.is_file():
         return []
-    data = json.loads(path.read_text(encoding="utf-8"))
-    pairs = data.get("pairs", data) if isinstance(data, dict) else data
     out: List[PairEntry] = []
-    for i, raw in enumerate(pairs):
-        if not isinstance(raw, dict):
-            continue
-        out.append(
-            PairEntry(
-                pair_id=str(raw.get("pair_id", f"pair_{i}")),
-                topic=str(raw.get("topic", "")),
-                term_a=str(raw.get("term_a", "")),
-                term_b=str(raw.get("term_b", "")),
-                pole_a=str(raw.get("pole_a", "ambiguous")),
-                pole_b=str(raw.get("pole_b", "ambiguous")),
-                polarized=str(raw.get("polarized", "no")).lower(),
-                tokens_a=_term_tokens(str(raw.get("term_a", ""))),
-                tokens_b=_term_tokens(str(raw.get("term_b", ""))),
+    pair_idx = 0
+    with csv_path.open(encoding="utf-8-sig", newline="") as f:
+        for row in csv.DictReader(f, delimiter=";"):
+            if (row.get("section") or "").strip().lower() != "pairs":
+                continue
+            ta = (row.get("term_a") or "").strip()
+            tb = (row.get("term_b") or "").strip()
+            if not ta or not tb:
+                continue
+            topic = (row.get("topic") or "").strip()
+            pa, _ = dominant_side_for_role(row, "term_a", variant="dominant_v1")
+            pb, _ = dominant_side_for_role(row, "term_b", variant="dominant_v1")
+            out.append(
+                PairEntry(
+                    pair_id=f"{topic}_{pair_idx}",
+                    topic=topic,
+                    term_a=ta,
+                    term_b=tb,
+                    pole_a=pa or "ambiguous",
+                    pole_b=pb or "ambiguous",
+                    polarized=normalize_use(row.get("polarized", "")),
+                    tokens_a=_term_tokens(ta),
+                    tokens_b=_term_tokens(tb),
+                )
             )
-        )
+            pair_idx += 1
     return out
 
 
-def pairs_registry_path(project_root: Path) -> Path:
-    """Function summary: resolve pairs_it.json path."""
-    return project_root / "config" / "lexicons" / "pairs_it.json"
+def get_pairs_registry(project_root: Path) -> List[PairEntry]:
+    """Function summary: return cached pair registry from v4 CSV (reload on mtime change).
+
+    Parameters:
+    - project_root: repository root.
+
+    Returns:
+    - List of PairEntry objects.
+    """
+    path = pairs_registry_path(project_root)
+    key = str(path.resolve())
+    mtime = path.stat().st_mtime if path.is_file() else 0.0
+    cached = _PAIRS_CACHE.get(key)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+    pairs = load_pairs_from_v4_csv(path)
+    _PAIRS_CACHE[key] = (mtime, pairs)
+    return pairs
 
 
 def _pair_pole_score(pole: str) -> Optional[int]:
@@ -196,6 +221,7 @@ def score_pair_framing(
     track: str,
     n_words: int,
     eps: float = 1.0e-6,
+    tokens: Optional[Sequence[str]] = None,
 ) -> Dict[str, float]:
     """Function summary: score one comment for pair-framing track strict or all.
 
@@ -220,14 +246,14 @@ def score_pair_framing(
     }
     if n_words <= 0:
         return zeros
-    tokens = tokenize(text)
+    tok = list(tokens) if tokens is not None else tokenize(text)
     net = 0
     active = left_only = right_only = both = 0
     for p in pairs:
         if track == "strict" and p.polarized != "yes":
             continue
-        hit_a = _match_term(tokens, p.tokens_a)
-        hit_b = _match_term(tokens, p.tokens_b)
+        hit_a = _match_term(tok, p.tokens_a)
+        hit_b = _match_term(tok, p.tokens_b)
         if hit_a and hit_b:
             both += 1
             continue
@@ -254,168 +280,14 @@ def score_pair_framing(
     }
 
 
-def score_v4_metadata(
-    text: str,
-    project_root: Path,
-    n_words: int,
-    eps: float = 1.0e-6,
-) -> Dict[str, float]:
-    """Function summary: stance, valence, polarized, and relevance-weighted contra for IT.
-
-    Parameters:
-    - text: comment body.
-    - project_root: repo root.
-    - n_words: word count.
-    - eps: unused stabilizer placeholder.
-
-    Returns:
-    - Metadata hit and rate columns.
-    """
-    _ = eps
-    out: Dict[str, float] = {
-        "stance_pro_hits": 0.0,
-        "stance_contra_hits": 0.0,
-        "stance_ambiguous_hits": 0.0,
-        "stance_pro_rate_100w": 0.0,
-        "stance_contra_rate_100w": 0.0,
-        "stance_ambiguous_rate_100w": 0.0,
-        "valence_positive_hits": 0.0,
-        "valence_negative_hits": 0.0,
-        "valence_neutral_hits": 0.0,
-        "valence_ambiguous_hits": 0.0,
-        "valence_positive_rate_100w": 0.0,
-        "valence_negative_rate_100w": 0.0,
-        "valence_neutral_rate_100w": 0.0,
-        "valence_ambiguous_rate_100w": 0.0,
-        "polarized_yes_hits": 0.0,
-        "polarized_yes_rate_100w": 0.0,
-        "relevance_weighted_contra_rate_100w": 0.0,
-        "left_weight_hits": 0.0,
-        "center_weight_hits": 0.0,
-        "right_weight_hits": 0.0,
-        "net_ideology_weighted": 0.0,
-    }
-    if n_words <= 0:
-        return out
-    stance_h, _ = count_categorized_hits(text, "it", "stance", project_root)
-    valence_h, _ = count_categorized_hits(text, "it", "valence", project_root)
-    pol_h, _ = count_categorized_hits(text, "it", "polarized", project_root)
-    pro = int(stance_h.get("pro", 0))
-    contra = int(stance_h.get("contra", 0))
-    stance_amb = int(stance_h.get("ambiguous", 0))
-    pos = int(valence_h.get("positive", 0))
-    neg = int(valence_h.get("negative", 0))
-    neu = int(valence_h.get("neutral", 0))
-    val_amb = int(valence_h.get("ambiguous", 0))
-    pol_yes = int(pol_h.get("yes", 0))
-    meta_path = project_root / "config" / "lexicons" / "term_meta_it.json"
-    rel_contra = 0.0
-    if meta_path.is_file():
-        raw_meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        meta = raw_meta.get("terms", raw_meta) if isinstance(raw_meta, dict) else {}
-        tokens = tokenize(text)
-        for term_key, info in meta.items():
-            if not isinstance(info, dict):
-                continue
-            if info.get("stance") != "contra":
-                continue
-            tt = tuple(term_key.split())
-            if not _match_term(tokens, tt):
-                continue
-            rel_contra += float(info.get("political_relevance", 1))
-    out.update(
-        {
-            "stance_pro_hits": float(pro),
-            "stance_contra_hits": float(contra),
-            "stance_ambiguous_hits": float(stance_amb),
-            "stance_pro_rate_100w": political_rate_100w(pro, n_words),
-            "stance_contra_rate_100w": political_rate_100w(contra, n_words),
-            "stance_ambiguous_rate_100w": political_rate_100w(stance_amb, n_words),
-            "valence_positive_hits": float(pos),
-            "valence_negative_hits": float(neg),
-            "valence_neutral_hits": float(neu),
-            "valence_ambiguous_hits": float(val_amb),
-            "valence_positive_rate_100w": political_rate_100w(pos, n_words),
-            "valence_negative_rate_100w": political_rate_100w(neg, n_words),
-            "valence_neutral_rate_100w": political_rate_100w(neu, n_words),
-            "valence_ambiguous_rate_100w": political_rate_100w(val_amb, n_words),
-            "polarized_yes_hits": float(pol_yes),
-            "polarized_yes_rate_100w": political_rate_100w(pol_yes, n_words),
-            "relevance_weighted_contra_rate_100w": political_rate_100w(int(rel_contra), n_words),
-        }
-    )
-    return out
-
-
-def score_weighted_ideology_hits(
-    text: str,
-    project_root: Path,
-    variant: DominantVariant = "dominant_downweight_weak",
-) -> Dict[str, float]:
-    """Function summary: weighted L/C/R hits using per-term use scores (exploratory).
-
-    Parameters:
-    - text: comment body.
-    - project_root: repo root.
-    - variant: downweight assigns min(score,2) to dominant bucket per hit.
-
-    Returns:
-    - left_weight_hits, center_weight_hits, right_weight_hits, net_ideology_weighted.
-    """
-    meta_path = project_root / "config" / "lexicons" / "term_meta_it.json"
-    zeros = {
-        "left_weight_hits": 0.0,
-        "center_weight_hits": 0.0,
-        "right_weight_hits": 0.0,
-        "net_ideology_weighted": 0.0,
-    }
-    if not meta_path.is_file():
-        return zeros
-    raw_meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    meta = raw_meta.get("terms", raw_meta) if isinstance(raw_meta, dict) else {}
-    tokens = tokenize(text)
-    if not tokens:
-        return zeros
-    lw = cw = rw = 0.0
-    for term_key, info in meta.items():
-        if not isinstance(info, dict):
-            continue
-        side = info.get("dominant_side")
-        if not side:
-            continue
-        tt = tuple(term_key.split())
-        if not _match_term(tokens, tt):
-            continue
-        scores = info.get("use_scores", {})
-        w = float(max(scores.get("left", 0), scores.get("center", 0), scores.get("right", 0)))
-        if variant == "dominant_downweight_weak":
-            w = float(min(w, 2.0))
-        if side == "left":
-            lw += w
-        elif side == "center":
-            cw += w
-        elif side == "right":
-            rw += w
-    lr = lw + rw
-    net_w = (lw - rw) / (lr + 1.0e-6) if lr > 0 else 0.0
-    return {
-        "left_weight_hits": lw,
-        "center_weight_hits": cw,
-        "right_weight_hits": rw,
-        "net_ideology_weighted": float(net_w),
-    }
-
-
-def zero_v4_polarization_columns() -> Dict[str, float]:
-    """Function summary: return zeros for all IT-only v4 extension columns."""
+def zero_pair_framing_columns() -> Dict[str, float]:
+    """Function summary: return zeros for pair-framing columns (strict and all tracks)."""
     out: Dict[str, float] = {}
     for track in PAIR_TRACKS:
         out.update(score_pair_framing("", [], track, 0))
-    out.update(score_v4_metadata("", Path("."), 0))
-    out.update(score_weighted_ideology_hits("", Path(".")))
     return out
 
 
-def all_v4_column_names() -> List[str]:
-    """Function summary: list comment-level v4 column names (no thread_)."""
-    return [k for k in zero_v4_polarization_columns().keys()]
+def all_pair_framing_column_names() -> List[str]:
+    """Function summary: list comment-level pair-framing column names."""
+    return [k for k in zero_pair_framing_columns().keys()]

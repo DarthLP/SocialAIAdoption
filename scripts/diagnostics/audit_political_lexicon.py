@@ -4,7 +4,8 @@ Sanity-check political lexicon scoring on benchmark Italy polarization subreddit
 
 Functionality:
 - Reports lexicon term counts and per-subreddit word-weighted political rates.
-- Samples example comments with lexicon hits from politicaITA, litigi, and Italia.
+- Uses enriched Parquet columns when present (fast); otherwise batch-rescores bodies.
+- Samples example comments with lexicon hits from benchmark forums.
 
 How to apply/run:
   .venv/bin/python scripts/diagnostics/audit_political_lexicon.py --config config/italy_polarization_setup.yaml
@@ -32,6 +33,14 @@ BENCHMARK_SUBREDDITS = [
     "ukpolitics",
 ]
 
+ENRICHED_SCORE_COLS = [
+    "political_weighted_points",
+    "n_words",
+    "political_g1_hits",
+    "political_g2_hits",
+    "political_g3_hits",
+]
+
 
 def _setup_project_root() -> Path:
     """Function summary: resolve repo root via scripts/_bootstrap.py."""
@@ -56,11 +65,12 @@ from src.config_utils import (  # noqa: E402
     load_config,
     parallel_political_lexicon_path,
     resolve_primary_subreddits,
+    shard_dir_is_enriched,
 )
 from src.political_lexicon import (  # noqa: E402
     get_lexicon,
     political_rate_100w,
-    score_comment_political_salience,
+    score_bodies_political_salience,
 )
 
 
@@ -90,13 +100,78 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=str, default="config/italy_polarization_setup.yaml")
     parser.add_argument("--sample-per-forum", type=int, default=10)
     parser.add_argument("--seed", type=int, default=20260518)
+    parser.add_argument(
+        "--force-rescore",
+        action="store_true",
+        help="Rescore from body text even when enriched columns exist.",
+    )
     return parser.parse_args()
 
 
-def subreddit_stats(
-    interim_dir: Path, subreddit: str, lex_lang: str, parallel_csv: Path
+def subreddit_stats_from_enriched(
+    interim_dir: Path,
+    subreddit: str,
+    lex_lang: str,
 ) -> Dict[str, Any]:
-    """Function summary: word-weighted rate and hit share for one subreddit.
+    """Function summary: aggregate WW rate from enriched political columns.
+
+    Parameters:
+    - interim_dir: interim data root.
+    - subreddit: forum name.
+    - lex_lang: lexicon language code.
+
+    Returns:
+    - Summary statistics dict.
+    """
+    shard_dir = interim_dir / "cleaned_monthly_chunks" / subreddit
+    total_points = 0
+    total_g1 = total_g2 = total_g3 = 0
+    total_words = 0
+    n_with_hits = 0
+    n_comments = 0
+    n_shards_read = 0
+    n_shards_skipped = 0
+    if not shard_dir.exists():
+        return {"subreddit": subreddit, "lexicon": lex_lang, "n_comments": 0}
+    for shard in sorted(shard_dir.glob("*.parquet")):
+        df = read_parquet_shard_safe(shard, columns=ENRICHED_SCORE_COLS)
+        if df is None or df.empty:
+            n_shards_skipped += 1
+            continue
+        n_shards_read += 1
+        points = df["political_weighted_points"].astype(int)
+        n_comments += len(df)
+        n_with_hits += int((points > 0).sum())
+        total_points += int(points.sum())
+        total_words += int(df["n_words"].astype(int).sum())
+        if "political_g1_hits" in df.columns:
+            total_g1 += int(df["political_g1_hits"].astype(int).sum())
+            total_g2 += int(df["political_g2_hits"].astype(int).sum())
+            total_g3 += int(df["political_g3_hits"].astype(int).sum())
+    return {
+        "subreddit": subreddit,
+        "lexicon": lex_lang,
+        "n_comments": n_comments,
+        "n_shards_read": n_shards_read,
+        "n_shards_skipped": n_shards_skipped,
+        "word_weighted_political_rate_100w": political_rate_100w(total_points, total_words),
+        "comment_hit_share": (n_with_hits / n_comments) if n_comments else 0.0,
+        "total_weighted_points": total_points,
+        "total_g1_hits": total_g1,
+        "total_g2_hits": total_g2,
+        "total_g3_hits": total_g3,
+        "total_words": total_words,
+        "source": "enriched_columns",
+    }
+
+
+def subreddit_stats_rescore(
+    interim_dir: Path,
+    subreddit: str,
+    lex_lang: str,
+    parallel_csv: Path,
+) -> Dict[str, Any]:
+    """Function summary: word-weighted rate by batch-rescoring comment bodies.
 
     Parameters:
     - interim_dir: interim data root.
@@ -116,27 +191,24 @@ def subreddit_stats(
     n_shards_read = 0
     n_shards_skipped = 0
     if not shard_dir.exists():
-        return {"subreddit": subreddit, "lexicon": lex_lang, "n_comments": 0}
+        return {"subreddit": subreddit, "lexicon": lex_lang, "n_comments": 0, "source": "rescore"}
     for shard in sorted(shard_dir.glob("*.parquet")):
         df = read_parquet_shard_safe(shard, columns=["body"])
         if df is None or df.empty:
             n_shards_skipped += 1
             continue
         n_shards_read += 1
-        for body in df["body"].astype(str).tolist():
-            scored = score_comment_political_salience(
-                body, lex_lang, PROJECT_ROOT, csv_path=parallel_csv
-            )
-            points = int(scored["political_weighted_points"])
-            total_points += points
-            total_g1 += int(scored["political_g1_hits"])
-            total_g2 += int(scored["political_g2_hits"])
-            total_g3 += int(scored["political_g3_hits"])
-            nw = int(scored["n_words"])
-            total_words += nw
-            n_comments += 1
-            if points > 0:
-                n_with_hits += 1
+        scored = score_bodies_political_salience(
+            df["body"].astype(str).tolist(), lex_lang, PROJECT_ROOT, csv_path=parallel_csv
+        )
+        points = scored["political_weighted_points"].astype(int)
+        n_comments += len(scored)
+        n_with_hits += int((points > 0).sum())
+        total_points += int(points.sum())
+        total_words += int(scored["n_words"].astype(int).sum())
+        total_g1 += int(scored["political_g1_hits"].astype(int).sum())
+        total_g2 += int(scored["political_g2_hits"].astype(int).sum())
+        total_g3 += int(scored["political_g3_hits"].astype(int).sum())
     return {
         "subreddit": subreddit,
         "lexicon": lex_lang,
@@ -150,54 +222,102 @@ def subreddit_stats(
         "total_g2_hits": total_g2,
         "total_g3_hits": total_g3,
         "total_words": total_words,
+        "source": "rescore",
     }
+
+
+def subreddit_stats(
+    interim_dir: Path,
+    subreddit: str,
+    lex_lang: str,
+    parallel_csv: Path,
+    force_rescore: bool,
+) -> Dict[str, Any]:
+    """Function summary: forum stats using enriched columns or body rescore fallback.
+
+    Parameters:
+    - interim_dir: interim data root.
+    - subreddit: forum name.
+    - lex_lang: lexicon language code.
+    - parallel_csv: graded parallel lexicon CSV path.
+    - force_rescore: if True, always rescore from body.
+
+    Returns:
+    - Summary statistics dict.
+    """
+    shard_dir = interim_dir / "cleaned_monthly_chunks" / subreddit
+    if not force_rescore and shard_dir_is_enriched(shard_dir):
+        return subreddit_stats_from_enriched(interim_dir, subreddit, lex_lang)
+    return subreddit_stats_rescore(interim_dir, subreddit, lex_lang, parallel_csv)
 
 
 def sample_hit_comments(
     interim_dir: Path,
     subreddit: str,
-    lex_lang: str,
-    parallel_csv: Path,
     n_sample: int,
     rng: random.Random,
+    use_enriched: bool,
+    lex_lang: str,
+    parallel_csv: Path,
 ) -> List[Dict[str, str]]:
-    """Function summary: random sample of comments with at least one lexicon hit.
+    """Function summary: random sample of comments with political weighted points > 0.
 
     Parameters:
     - interim_dir: interim root.
     - subreddit: forum name.
-    - lex_lang: lexicon code.
     - n_sample: max samples to return.
     - rng: random generator.
+    - use_enriched: read stored score columns when True.
+    - lex_lang: lexicon code for rescore fallback.
+    - parallel_csv: graded CSV for rescore fallback.
 
     Returns:
-    - List of {subreddit, body_snippet, hits} dicts.
+    - List of sample dicts.
     """
     hits_pool: List[Dict[str, str]] = []
     shard_dir = interim_dir / "cleaned_monthly_chunks" / subreddit
     if not shard_dir.exists():
         return hits_pool
+    cols = ["body", "political_weighted_points", "political_g1_hits", "political_g2_hits", "political_g3_hits"]
     for shard in sorted(shard_dir.glob("*.parquet")):
-        df = read_parquet_shard_safe(shard, columns=["body"])
-        if df is None or df.empty:
-            continue
-        for body in df["body"].astype(str).tolist():
-            scored = score_comment_political_salience(
-                body, lex_lang, PROJECT_ROOT, csv_path=parallel_csv
-            )
-            points = int(scored["political_weighted_points"])
-            if points > 0:
-                snippet = body[:200].replace("\n", " ")
+        if use_enriched:
+            df = read_parquet_shard_safe(shard, columns=cols)
+            if df is None or df.empty or "political_weighted_points" not in df.columns:
+                continue
+            mask = df["political_weighted_points"].astype(int) > 0
+            hit_df = df.loc[mask]
+            for _, row in hit_df.iterrows():
+                body = str(row["body"])
                 hits_pool.append(
                     {
                         "subreddit": subreddit,
-                        "weighted_points": str(points),
-                        "g1": str(scored["political_g1_hits"]),
-                        "g2": str(scored["political_g2_hits"]),
-                        "g3": str(scored["political_g3_hits"]),
-                        "body_snippet": snippet,
+                        "weighted_points": str(int(row["political_weighted_points"])),
+                        "g1": str(int(row.get("political_g1_hits", 0))),
+                        "g2": str(int(row.get("political_g2_hits", 0))),
+                        "g3": str(int(row.get("political_g3_hits", 0))),
+                        "body_snippet": body[:200].replace("\n", " "),
                     }
                 )
+        else:
+            df = read_parquet_shard_safe(shard, columns=["body"])
+            if df is None or df.empty:
+                continue
+            scored = score_bodies_political_salience(
+                df["body"].astype(str).tolist(), lex_lang, PROJECT_ROOT, csv_path=parallel_csv
+            )
+            for body, row in zip(df["body"].astype(str), scored.itertuples(index=False), strict=True):
+                points = int(row.political_weighted_points)
+                if points > 0:
+                    hits_pool.append(
+                        {
+                            "subreddit": subreddit,
+                            "weighted_points": str(points),
+                            "g1": str(int(row.political_g1_hits)),
+                            "g2": str(int(row.political_g2_hits)),
+                            "g3": str(int(row.political_g3_hits)),
+                            "body_snippet": body[:200].replace("\n", " "),
+                        }
+                    )
     if len(hits_pool) <= n_sample:
         return hits_pool
     return rng.sample(hits_pool, n_sample)
@@ -234,11 +354,16 @@ def main() -> None:
     stat_rows: List[Dict[str, Any]] = []
     for idx, subreddit in enumerate(subreddits, start=1):
         lex_lang = meta_table[subreddit]["primary_lexicon"]
+        shard_dir = interim_dir / "cleaned_monthly_chunks" / subreddit
+        use_enriched = not args.force_rescore and shard_dir_is_enriched(shard_dir)
         print(
-            f"[audit_political_lexicon] subreddit_start {idx}/{len(subreddits)} subreddit={subreddit}",
+            f"[audit_political_lexicon] subreddit_start {idx}/{len(subreddits)} "
+            f"subreddit={subreddit} mode={'enriched' if use_enriched else 'rescore'}",
             flush=True,
         )
-        stat_rows.append(subreddit_stats(interim_dir, subreddit, lex_lang, parallel_csv))
+        stat_rows.append(
+            subreddit_stats(interim_dir, subreddit, lex_lang, parallel_csv, args.force_rescore)
+        )
     stats_df = pd.DataFrame(stat_rows)
     stats_df = stats_df.sort_values("word_weighted_political_rate_100w", ascending=False)
     stats_df.to_csv(out_dir / "lexicon_audit_subreddit_rates.csv", index=False)
@@ -250,9 +375,17 @@ def main() -> None:
         if subreddit not in meta_table:
             continue
         lex_lang = meta_table[subreddit]["primary_lexicon"]
+        shard_dir = interim_dir / "cleaned_monthly_chunks" / subreddit
+        use_enriched = not args.force_rescore and shard_dir_is_enriched(shard_dir)
         sample_rows.extend(
             sample_hit_comments(
-                interim_dir, subreddit, lex_lang, parallel_csv, args.sample_per_forum, rng
+                interim_dir,
+                subreddit,
+                args.sample_per_forum,
+                rng,
+                use_enriched,
+                lex_lang,
+                parallel_csv,
             )
         )
     pd.DataFrame(sample_rows).to_csv(out_dir / "lexicon_audit_sample_hits.csv", index=False)

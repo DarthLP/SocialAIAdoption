@@ -14,8 +14,11 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Sequence
+from typing import Any, Dict, List, Literal, Sequence, Tuple
 
 import pandas as pd
 
@@ -68,8 +71,13 @@ from src.config_utils import (  # noqa: E402
     subreddit_primary_lexicon,
     subreddit_screening_action,
 )
-from src.political_lexicon import score_comment_ai_style, score_comment_polarization  # noqa: E402
-from src.v4_lexicon import all_v4_column_names  # noqa: E402
+from src.political_lexicon import (  # noqa: E402
+    score_comment_ai_style,
+    score_comment_polarization,
+    warm_polarization_lexicons,
+)
+from src.feature_shard_worker import feature_shard_worker  # noqa: E402
+from src.v4_lexicon import all_pair_framing_column_names, get_pairs_registry  # noqa: E402
 
 PassName = Literal["polarization", "ai", "style"]
 PASS_ORDER: tuple[PassName, ...] = ("polarization", "ai", "style")
@@ -97,7 +105,11 @@ POLARIZATION_COMMENT_COLUMNS: tuple[str, ...] = (
     "has_left_hit",
     "has_right_hit",
     "has_other_side_hit",
-    *tuple(all_v4_column_names()),
+    "emotion_hits",
+    "emotion_rate_100w",
+    "cognition_hits",
+    "cognition_rate_100w",
+    *tuple(all_pair_framing_column_names()),
 )
 
 POLARIZATION_THREAD_COLUMNS: tuple[str, ...] = (
@@ -137,6 +149,12 @@ def parse_args(
     parser.add_argument("--subreddit", type=str, default=None, help="Process one subreddit only.")
     parser.add_argument("--max-shards", type=int, default=None, help="Max parquet files per subreddit.")
     parser.add_argument("--include-excluded", action="store_true")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Parallel shard workers (default min(8, cpu_count-1); use 1 for sequential).",
+    )
     if fixed_pass is None:
         parser.add_argument(
             "--pass",
@@ -146,6 +164,16 @@ def parse_args(
             help="Feature pass: polarization, ai, style, or all (default all).",
         )
     return parser.parse_args()
+
+
+def default_worker_count() -> int:
+    """Function summary: choose default ProcessPool worker count.
+
+    Returns:
+    - Worker count at least 1.
+    """
+    cpu = os.cpu_count() or 4
+    return max(1, min(8, cpu - 1))
 
 
 def _polarization_score_row(
@@ -222,6 +250,9 @@ def _process_polarization_shard(
     path: Path, lex_lang: str, cfg: Dict[str, Any], project_root: Path
 ) -> int:
     """Function summary: add polarization columns to one Parquet shard."""
+    warm_polarization_lexicons(project_root, lex_lang)
+    if lex_lang.lower() == "it":
+        get_pairs_registry(project_root)
     df = read_parquet_shard_safe(path)
     if df is None or df.empty:
         return 0
@@ -246,6 +277,86 @@ def _process_polarization_shard(
     return len(out)
 
 
+def _ai_score_row(
+    body: str,
+    lex_lang: str,
+    lang_comment: str,
+    cfg: Dict[str, Any],
+    project_root: Path,
+) -> Dict[str, float]:
+    """Function summary: AI-use scores for one comment."""
+    if cfg.get("lang_match_filter") and lang_comment != lex_lang:
+        return {col: 0.0 for col in AI_USE_COLUMNS}
+    scored = score_comment_ai_style(body, lex_lang, project_root)
+    return {
+        "ai_style_hits": scored["ai_style_hits"],
+        "ai_style_rate_100w": scored["ai_style_rate_100w"],
+        "ai_sentence_length_variance": scored["sentence_length_variance"],
+    }
+
+
+def _style_score_row(
+    body: str,
+    lex_lang: str,
+    lang_comment: str,
+    cfg: Dict[str, Any],
+    project_root: Path,
+) -> Dict[str, int | float]:
+    """Function summary: style scores for one comment."""
+    if cfg.get("lang_match_filter") and lang_comment != lex_lang:
+        return {col: 0 for col in STYLE_COUNT_COLUMNS}
+    return score_comment_style(
+        body,
+        lex_lang,
+        project_root,
+        enable_phrase_lexicons=bool(cfg.get("enable_phrase_lexicons", True)),
+        lang_match_filter=bool(cfg.get("lang_match_filter", False)),
+        lang_comment=lang_comment,
+    )
+
+
+def _process_all_features_shard(
+    path: Path,
+    lex_lang: str,
+    pol_cfg: Dict[str, Any],
+    ai_cfg: Dict[str, Any],
+    style_cfg: Dict[str, Any],
+    project_root: Path,
+) -> int:
+    """Function summary: add polarization, AI, and style columns in one parquet read/write."""
+    warm_polarization_lexicons(project_root, lex_lang)
+    if lex_lang.lower() == "it":
+        get_pairs_registry(project_root)
+    df = read_parquet_shard_safe(path)
+    if df is None or df.empty:
+        return 0
+    required = {"body", "primary_lexicon", "n_words"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing columns {sorted(missing)} in {path}; run enrich first.")
+    drop_cols = list(POLARIZATION_COLUMNS) + list(AI_USE_COLUMNS) + list(STYLE_COUNT_COLUMNS)
+    out = df.drop(columns=[c for c in drop_cols if c in df.columns], errors="ignore").copy()
+    lang_series = (
+        out["lang_comment"].astype(str) if "lang_comment" in out.columns else pd.Series([lex_lang] * len(out))
+    )
+    bodies = out["body"].astype(str).tolist()
+    langs = lang_series.tolist()
+    pol_rows = [_polarization_score_row(b, lex_lang, lc, pol_cfg, project_root) for b, lc in zip(bodies, langs, strict=True)]
+    ai_rows = [_ai_score_row(b, lex_lang, lc, ai_cfg, project_root) for b, lc in zip(bodies, langs, strict=True)]
+    style_rows = [_style_score_row(b, lex_lang, lc, style_cfg, project_root) for b, lc in zip(bodies, langs, strict=True)]
+    for col in POLARIZATION_COLUMNS:
+        if col.startswith("thread_"):
+            continue
+        out[col] = [r[col] for r in pol_rows]
+    for col in AI_USE_COLUMNS:
+        out[col] = [r[col] for r in ai_rows]
+    for col in STYLE_COUNT_COLUMNS:
+        out[col] = [r[col] for r in style_rows]
+    out = _add_thread_rollups(out)
+    out.to_parquet(path, index=False, engine="pyarrow", compression="snappy")
+    return len(out)
+
+
 def _process_ai_shard(path: Path, lex_lang: str, cfg: Dict[str, Any], project_root: Path) -> int:
     """Function summary: add AI-use columns to one Parquet shard."""
     df = read_parquet_shard_safe(path)
@@ -255,19 +366,10 @@ def _process_ai_shard(path: Path, lex_lang: str, cfg: Dict[str, Any], project_ro
         raise ValueError(f"Run enrich_cleaned_chunks.py first: missing columns in {path}")
     out = df.drop(columns=[c for c in AI_USE_COLUMNS if c in df.columns], errors="ignore").copy()
     lang_col = out["lang_comment"].astype(str) if "lang_comment" in out.columns else pd.Series([lex_lang] * len(out))
-    rows: List[Dict[str, float]] = []
-    for body, lang_c in zip(out["body"].astype(str).tolist(), lang_col.tolist(), strict=True):
-        if cfg.get("lang_match_filter") and lang_c != lex_lang:
-            rows.append({col: 0.0 for col in AI_USE_COLUMNS})
-        else:
-            scored = score_comment_ai_style(body, lex_lang, project_root)
-            rows.append(
-                {
-                    "ai_style_hits": scored["ai_style_hits"],
-                    "ai_style_rate_100w": scored["ai_style_rate_100w"],
-                    "ai_sentence_length_variance": scored["sentence_length_variance"],
-                }
-            )
+    rows = [
+        _ai_score_row(body, lex_lang, lang_c, cfg, project_root)
+        for body, lang_c in zip(out["body"].astype(str).tolist(), lang_col.tolist(), strict=True)
+    ]
     for col in AI_USE_COLUMNS:
         out[col] = [r[col] for r in rows]
     out.to_parquet(path, index=False, engine="pyarrow", compression="snappy")
@@ -283,21 +385,10 @@ def _process_style_shard(path: Path, lex_lang: str, cfg: Dict[str, Any], project
         raise ValueError(f"Run enrich_cleaned_chunks.py first: missing columns in {path}")
     out = df.drop(columns=[c for c in STYLE_COUNT_COLUMNS if c in df.columns], errors="ignore").copy()
     lang_col = out["lang_comment"].astype(str) if "lang_comment" in out.columns else pd.Series([lex_lang] * len(out))
-    rows: List[Dict[str, int | float]] = []
-    for body, lang_c in zip(out["body"].astype(str).tolist(), lang_col.tolist(), strict=True):
-        if cfg.get("lang_match_filter") and lang_c != lex_lang:
-            rows.append({col: 0 for col in STYLE_COUNT_COLUMNS})
-        else:
-            rows.append(
-                score_comment_style(
-                    body,
-                    lex_lang,
-                    project_root,
-                    enable_phrase_lexicons=bool(cfg.get("enable_phrase_lexicons", True)),
-                    lang_match_filter=bool(cfg.get("lang_match_filter", False)),
-                    lang_comment=lang_c,
-                )
-            )
+    rows = [
+        _style_score_row(body, lex_lang, lang_c, cfg, project_root)
+        for body, lang_c in zip(out["body"].astype(str).tolist(), lang_col.tolist(), strict=True)
+    ]
     for col in STYLE_COUNT_COLUMNS:
         out[col] = [r[col] for r in rows]
     out.to_parquet(path, index=False, engine="pyarrow", compression="snappy")
@@ -309,6 +400,51 @@ def _passes_to_run(pass_name: str) -> Sequence[PassName]:
     if pass_name == "all":
         return PASS_ORDER
     return (pass_name,)  # type: ignore[return-value]
+
+
+def _is_combined_all_pass(passes: Sequence[PassName]) -> bool:
+    """Function summary: True when all three feature passes should use single parquet I/O."""
+    return len(passes) == len(PASS_ORDER) and set(passes) == set(PASS_ORDER)
+
+
+def _feature_shard_worker(
+    shard_str: str,
+    subreddit: str,
+    lex_lang: str,
+    pass_name: str,
+    config_path_str: str,
+    project_root_str: str,
+) -> Tuple[str, str, str, int, float]:
+    """Function summary: process-pool worker for one shard and feature pass.
+
+    Parameters:
+    - shard_str: absolute parquet path.
+    - subreddit: subreddit name for logging.
+    - lex_lang: primary lexicon language.
+    - pass_name: polarization, ai, style, or all.
+    - config_path_str: study YAML path.
+    - project_root_str: repository root path.
+
+    Returns:
+    - Tuple (subreddit, shard_name, pass_name, rows, elapsed_sec).
+    """
+    t0 = time.perf_counter()
+    project_root = Path(project_root_str)
+    config = load_config(Path(config_path_str))
+    pol_cfg = load_polarization_config(config)
+    ai_cfg = load_ai_use_config(config)
+    style_cfg = load_comment_style_config(config)
+    path = Path(shard_str)
+    if pass_name == "all":
+        n = _process_all_features_shard(path, lex_lang, pol_cfg, ai_cfg, style_cfg, project_root)
+    elif pass_name == "polarization":
+        n = _process_polarization_shard(path, lex_lang, pol_cfg, project_root)
+    elif pass_name == "ai":
+        n = _process_ai_shard(path, lex_lang, ai_cfg, project_root)
+    else:
+        n = _process_style_shard(path, lex_lang, style_cfg, project_root)
+    elapsed = time.perf_counter() - t0
+    return subreddit, path.name, pass_name, n, elapsed
 
 
 def run_passes(
@@ -333,12 +469,11 @@ def run_passes(
     tables_dir = Path(config["paths"]["tables_dir"])
     screening_by_sub = screening_by_subreddit(load_screening_pooled(tables_dir))
     subs = [args.subreddit] if args.subreddit else resolve_primary_subreddits(config)
-    processors = {
-        "polarization": (_process_polarization_shard, pol_cfg),
-        "ai": (_process_ai_shard, ai_cfg),
-        "style": (_process_style_shard, style_cfg),
-    }
-    total = 0
+    workers = args.workers if args.workers is not None else default_worker_count()
+    config_path_str = str((project_root / args.config).resolve())
+    project_root_str = str(project_root.resolve())
+    combined_all = _is_combined_all_pass(passes)
+    tasks: List[Tuple[str, str, str, str, str, str]] = []
     for subreddit in subs:
         action = subreddit_screening_action(screening_by_sub, subreddit)
         if should_skip_screened_subreddit(action, include_excluded=args.include_excluded):
@@ -360,12 +495,47 @@ def run_passes(
         if not shards:
             continue
         lex_lang = subreddit_primary_lexicon(config, subreddit, project_root=project_root)
-        for shard in shards:
-            for pass_name in passes:
-                fn, cfg = processors[pass_name]
-                n = fn(shard, lex_lang, cfg, project_root)
+        if combined_all:
+            for shard in shards:
+                tasks.append(
+                    (str(shard.resolve()), subreddit, lex_lang, "all", config_path_str, project_root_str)
+                )
+        else:
+            for shard in shards:
+                for pass_name in passes:
+                    tasks.append(
+                        (
+                            str(shard.resolve()),
+                            subreddit,
+                            lex_lang,
+                            pass_name,
+                            config_path_str,
+                            project_root_str,
+                        )
+                    )
+    if not tasks:
+        print(f"[{log_prefix}] no shards to process", flush=True)
+        return
+    total = 0
+    print(f"[{log_prefix}] tasks={len(tasks)} workers={workers} combined_all={combined_all}", flush=True)
+    if workers <= 1:
+        for task in tasks:
+            sub, shard_name, pass_name, n, elapsed = feature_shard_worker(*task)
+            total += n
+            print(
+                f"[{log_prefix}] pass={pass_name} {sub}/{shard_name} rows={n} elapsed={elapsed:.1f}s",
+                flush=True,
+            )
+    else:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(feature_shard_worker, *task) for task in tasks]
+            for fut in as_completed(futures):
+                sub, shard_name, pass_name, n, elapsed = fut.result()
                 total += n
-                print(f"[{log_prefix}] pass={pass_name} {subreddit}/{shard.name} rows={n}", flush=True)
+                print(
+                    f"[{log_prefix}] pass={pass_name} {sub}/{shard_name} rows={n} elapsed={elapsed:.1f}s",
+                    flush=True,
+                )
     print(f"[{log_prefix}] done total_rows={total}", flush=True)
 
 

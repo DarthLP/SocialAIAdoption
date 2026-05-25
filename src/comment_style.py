@@ -274,42 +274,29 @@ def compute_complexity_index(
     return 0.5 * mean_sentence_length + 0.5 * mean_word_length
 
 
-def phrase_lexicon_path(project_root: Path, lang_code: str, kind: str) -> Path:
-    """Function summary: resolve path for a phrase lexicon file.
-
-    Parameters:
-    - project_root: repository root.
-    - lang_code: it, en, or de.
-    - kind: hedging, signposting, or polite_closer.
-
-    Returns:
-    - Path under config/lexicons/.
-    """
-    return project_root / "config" / "lexicons" / f"{kind}_{lang_code.lower()}.txt"
+def default_style_phrase_parallel_path(project_root: Path) -> Path:
+    """Function summary: resolve default style_phrase_parallel.csv path."""
+    return project_root / "data" / "raw" / "style_phrase_parallel.csv"
 
 
 def load_phrase_lexicon(project_root: Path, lang_code: str, kind: str) -> Tuple[str, ...]:
-    """Function summary: load lowercased phrase strings from a flat lexicon file.
+    """Function summary: load lowercased phrase strings from style_phrase_parallel.csv.
 
     Parameters:
     - project_root: repository root.
     - lang_code: language code.
-    - kind: phrase lexicon kind.
+    - kind: phrase lexicon kind (hedging, signposting, polite_closer).
 
     Returns:
     - Tuple of phrases (empty when file missing).
     """
+    from src.parallel_lexicon import load_style_phrase_parallel
+
     key = (lang_code.lower(), kind)
     if key in _PHRASE_CACHE:
         return _PHRASE_CACHE[key]
-    path = phrase_lexicon_path(project_root, lang_code, kind)
-    phrases: List[str] = []
-    if path.is_file():
-        for raw_line in path.read_text(encoding="utf-8").splitlines():
-            line = raw_line.split("#", 1)[0].strip().lower()
-            if line:
-                phrases.append(line)
-    out = tuple(phrases)
+    path = default_style_phrase_parallel_path(project_root)
+    out = load_style_phrase_parallel(path, lang_code, kind)
     _PHRASE_CACHE[key] = out
     return out
 

@@ -12,16 +12,20 @@ Functionality:
 
 How to apply/run:
   .venv/bin/python scripts/cleaning/enrich_cleaned_chunks.py --config config/italy_polarization_setup.yaml
+  .venv/bin/python scripts/cleaning/enrich_cleaned_chunks.py --config config/italy_polarization_setup.yaml --assign-only
+  .venv/bin/python scripts/cleaning/enrich_cleaned_chunks.py --config config/italy_polarization_setup.yaml --workers 8
 """
 
 from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 import sys
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -61,6 +65,7 @@ from src.config_utils import (  # noqa: E402
     parallel_political_lexicon_path,
     resolve_primary_subreddits,
     screening_by_subreddit,
+    shard_dir_is_enriched,
     should_skip_screened_subreddit,
     subreddit_arm_map,
     subreddit_screening_action,
@@ -69,8 +74,9 @@ from src.config_utils import (  # noqa: E402
     topic_family_map,
 )
 from src.political_lexicon import (  # noqa: E402
+    get_graded_matcher,
     political_rate_100w,
-    score_comment_political_salience,
+    score_bodies_political_salience,
 )
 
 POLITICAL_TOPICS = frozenset({"it_political", "it_pure_political", "us", "uk_political"})
@@ -113,7 +119,33 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Do not run plot_cleaning_pipeline_trends.py after enrichment (default: run when inputs exist).",
     )
+    parser.add_argument(
+        "--assign-only",
+        action="store_true",
+        help="Re-assign topics from existing political_weighted_points columns (no rescoring).",
+    )
+    parser.add_argument(
+        "--skip-langid",
+        action="store_true",
+        help="Skip per-comment langid.classify during finalize pass.",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Parallel shard workers for scoring pass (default: min(8, cpu_count-1); use 1 for deterministic logs).",
+    )
     return parser.parse_args()
+
+
+def default_worker_count() -> int:
+    """Function summary: choose default ProcessPool worker count.
+
+    Returns:
+    - Worker count at least 1.
+    """
+    cpu = os.cpu_count() or 4
+    return max(1, min(8, cpu - 1))
 
 
 def run_cleaning_pipeline_plots_if_ready(config_path: str) -> None:
@@ -178,19 +210,136 @@ def compute_political_thresholds(
     return soft_tau, pure_tau, benchmark
 
 
-def collect_subreddit_political_stats(
+SCORE_COLS = [
+    "political_g1_hits",
+    "political_g2_hits",
+    "political_g3_hits",
+    "political_weighted_points",
+    "n_words",
+]
+
+
+def _empty_subreddit_stats(lex_lang: str) -> Dict[str, Any]:
+    """Function summary: return zeroed forum-level political stats."""
+    return {
+        "primary_lexicon": lex_lang,
+        "total_weighted_points": 0,
+        "total_words": 0,
+        "n_comments": 0,
+        "n_comments_with_hits": 0,
+        "n_shards_read": 0,
+        "n_shards_skipped": 0,
+        "median_political_rate_100w": 0.0,
+        "mean_political_rate_100w": 0.0,
+        "word_weighted_political_rate_100w": 0.0,
+        "comment_hit_share": 0.0,
+    }
+
+
+def _stats_from_scored_df(scored: pd.DataFrame, lex_lang: str) -> Dict[str, Any]:
+    """Function summary: build forum stats fragment from scored comment columns.
+
+    Parameters:
+    - scored: dataframe with political_weighted_points and n_words.
+    - lex_lang: primary lexicon code.
+
+    Returns:
+    - Stats dict fragment.
+    """
+    if scored.empty:
+        return _empty_subreddit_stats(lex_lang)
+    points = scored["political_weighted_points"].astype(int)
+    n_words = scored["n_words"].astype(int)
+    rates = [
+        political_rate_100w(int(p), int(w))
+        for p, w in zip(points.tolist(), n_words.tolist(), strict=True)
+    ]
+    total_points = int(points.sum())
+    total_words = int(n_words.sum())
+    series = pd.Series(rates)
+    return {
+        "primary_lexicon": lex_lang,
+        "total_weighted_points": total_points,
+        "total_words": total_words,
+        "n_comments": len(scored),
+        "n_comments_with_hits": int((points > 0).sum()),
+        "n_shards_read": 1,
+        "n_shards_skipped": 0,
+        "median_political_rate_100w": float(series.median()),
+        "mean_political_rate_100w": float(series.mean()),
+        "word_weighted_political_rate_100w": political_rate_100w(total_points, total_words),
+        "comment_hit_share": float((points > 0).mean()),
+        "_rates": rates,
+    }
+
+
+def merge_subreddit_stats(
+    acc: Dict[str, Any],
+    fragment: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Function summary: merge a shard-level stats fragment into accumulated forum stats.
+
+    Parameters:
+    - acc: accumulated stats (or empty dict).
+    - fragment: shard fragment from _stats_from_scored_df.
+
+    Returns:
+    - Updated accumulated stats.
+    """
+    if not acc:
+        out = dict(fragment)
+        out["_rates"] = list(fragment.get("_rates", []))
+        return out
+    acc["total_weighted_points"] = int(acc.get("total_weighted_points", 0)) + int(
+        fragment.get("total_weighted_points", 0)
+    )
+    acc["total_words"] = int(acc.get("total_words", 0)) + int(fragment.get("total_words", 0))
+    acc["n_comments"] = int(acc.get("n_comments", 0)) + int(fragment.get("n_comments", 0))
+    acc["n_comments_with_hits"] = int(acc.get("n_comments_with_hits", 0)) + int(
+        fragment.get("n_comments_with_hits", 0)
+    )
+    acc["n_shards_read"] = int(acc.get("n_shards_read", 0)) + int(fragment.get("n_shards_read", 0))
+    acc["n_shards_skipped"] = int(acc.get("n_shards_skipped", 0)) + int(
+        fragment.get("n_shards_skipped", 0)
+    )
+    acc.setdefault("_rates", []).extend(fragment.get("_rates", []))
+    rates = acc["_rates"]
+    series = pd.Series(rates) if rates else pd.Series([0.0])
+    acc["median_political_rate_100w"] = float(series.median())
+    acc["mean_political_rate_100w"] = float(series.mean())
+    acc["word_weighted_political_rate_100w"] = political_rate_100w(
+        int(acc["total_weighted_points"]), int(acc["total_words"])
+    )
+    n_comments = int(acc["n_comments"])
+    acc["comment_hit_share"] = (
+        int(acc["n_comments_with_hits"]) / n_comments if n_comments else 0.0
+    )
+    return acc
+
+
+def finalize_subreddit_stats(acc: Dict[str, Any]) -> Dict[str, float]:
+    """Function summary: drop internal keys and return public stats dict.
+
+    Parameters:
+    - acc: accumulated stats possibly with _rates.
+
+    Returns:
+    - Stats dict without private keys.
+    """
+    return {k: v for k, v in acc.items() if not str(k).startswith("_")}
+
+
+def collect_subreddit_stats_from_enriched(
     interim_dir: Path,
     subreddit: str,
     meta_row: Dict[str, str],
-    parallel_csv: Path,
 ) -> Dict[str, float]:
-    """Function summary: aggregate political lexicon stats for one subreddit.
+    """Function summary: aggregate WW political stats from enriched Parquet columns.
 
     Parameters:
     - interim_dir: interim root.
     - subreddit: subreddit name.
     - meta_row: metadata with primary_lexicon.
-    - parallel_csv: graded parallel political lexicon CSV path.
 
     Returns:
     - Dict with hit/word counts and rate metrics.
@@ -198,76 +347,82 @@ def collect_subreddit_political_stats(
     lex_lang = meta_row["primary_lexicon"]
     shard_dir = interim_dir / "cleaned_monthly_chunks" / subreddit
     if not shard_dir.exists():
-        return {
-            "primary_lexicon": lex_lang,
-            "total_hits": 0,
-            "total_words": 0,
-            "n_comments": 0,
-            "n_comments_with_hits": 0,
-            "n_shards_read": 0,
-            "n_shards_skipped": 0,
-            "median_political_rate_100w": 0.0,
-            "mean_political_rate_100w": 0.0,
-            "word_weighted_political_rate_100w": 0.0,
-            "comment_hit_share": 0.0,
-        }
-
-    rates: List[float] = []
-    total_points = 0
-    total_words = 0
-    n_with_hits = 0
-    n_shards_read = 0
-    n_shards_skipped = 0
-
+        return _empty_subreddit_stats(lex_lang)
+    acc: Dict[str, Any] = {}
     for shard in sorted(shard_dir.glob("*.parquet")):
-        df = read_parquet_shard_safe(shard, columns=["body"])
+        df = read_parquet_shard_safe(shard, columns=SCORE_COLS)
         if df is None or df.empty:
-            n_shards_skipped += 1
+            if acc:
+                acc["n_shards_skipped"] = int(acc.get("n_shards_skipped", 0)) + 1
             continue
-        n_shards_read += 1
-        for body in df["body"].astype(str).tolist():
-            scored = score_comment_political_salience(
-                body, lex_lang, PROJECT_ROOT, csv_path=parallel_csv
-            )
-            points = int(scored["political_weighted_points"])
-            nw = int(scored["n_words"])
-            total_points += points
-            total_words += nw
-            rate = political_rate_100w(points, nw)
-            rates.append(rate)
-            if points > 0:
-                n_with_hits += 1
+        acc = merge_subreddit_stats(acc, _stats_from_scored_df(df, lex_lang))
+    if not acc:
+        return _empty_subreddit_stats(lex_lang)
+    return finalize_subreddit_stats(acc)
 
-    n_comments = len(rates)
-    if n_comments == 0:
-        return {
-            "primary_lexicon": lex_lang,
-            "total_weighted_points": 0,
-            "total_words": 0,
-            "n_comments": 0,
-            "n_comments_with_hits": 0,
-            "n_shards_read": n_shards_read,
-            "n_shards_skipped": n_shards_skipped,
-            "median_political_rate_100w": 0.0,
-            "mean_political_rate_100w": 0.0,
-            "word_weighted_political_rate_100w": 0.0,
-            "comment_hit_share": 0.0,
-        }
 
-    series = pd.Series(rates)
-    return {
-        "primary_lexicon": lex_lang,
-        "total_weighted_points": total_points,
-        "total_words": total_words,
-        "n_comments": n_comments,
-        "n_comments_with_hits": n_with_hits,
-        "n_shards_read": n_shards_read,
-        "n_shards_skipped": n_shards_skipped,
-        "median_political_rate_100w": float(series.median()),
-        "mean_political_rate_100w": float(series.mean()),
-        "word_weighted_political_rate_100w": political_rate_100w(total_points, total_words),
-        "comment_hit_share": n_with_hits / n_comments,
-    }
+def score_shard_write(
+    shard: Path,
+    lex_lang: str,
+    meta_row: Dict[str, str],
+    screening_row: Dict[str, Any],
+    parallel_csv: Path,
+) -> Dict[str, Any]:
+    """Function summary: batch-score one shard and write political columns (no topic/langid).
+
+    Parameters:
+    - shard: Parquet path.
+    - lex_lang: primary lexicon language.
+    - meta_row: arm/forum_type/primary_lexicon.
+    - screening_row: screening record.
+    - parallel_csv: graded lexicon CSV path.
+
+    Returns:
+    - Stats fragment dict for forum aggregation.
+    """
+    df = read_parquet_shard_safe(shard)
+    if df is None or df.empty:
+        return _empty_subreddit_stats(lex_lang)
+    scored = score_bodies_political_salience(
+        df["body"].astype(str).tolist(), lex_lang, PROJECT_ROOT, csv_path=parallel_csv
+    )
+    fragment = _stats_from_scored_df(scored, lex_lang)
+    drop_cols = [
+        "political_lexicon_hits",
+        "political_g1_hits",
+        "political_g2_hits",
+        "political_g3_hits",
+        "political_weighted_points",
+        "n_words",
+        "political_rate_100w",
+        "thread_id",
+        "arm",
+        "forum_type",
+        "primary_lexicon",
+        "volume_band",
+        "exclusion_code",
+    ]
+    out = df.drop(columns=[c for c in drop_cols if c in df.columns], errors="ignore").copy()
+    out["political_g1_hits"] = scored["political_g1_hits"].values
+    out["political_g2_hits"] = scored["political_g2_hits"].values
+    out["political_g3_hits"] = scored["political_g3_hits"].values
+    out["political_weighted_points"] = scored["political_weighted_points"].values
+    out["political_lexicon_hits"] = scored["political_weighted_points"].values
+    out["n_words"] = scored["n_words"].values
+    out["political_rate_100w"] = [
+        political_rate_100w(int(p), int(w))
+        for p, w in zip(out["political_weighted_points"], out["n_words"], strict=True)
+    ]
+    out["thread_id"] = out["link_id"].astype(str)
+    out["arm"] = meta_row["arm"]
+    out["forum_type"] = meta_row["forum_type"]
+    out["primary_lexicon"] = lex_lang
+    out["volume_band"] = str(
+        screening_row.get("volume_band", screening_row.get("analysis_tier", "low_volume"))
+    )
+    out["exclusion_code"] = str(screening_row.get("exclusion_codes", "")) or pd.NA
+    out.to_parquet(shard, index=False, engine="pyarrow", compression="snappy")
+    return fragment
 
 
 def assign_topics(
@@ -380,8 +535,8 @@ def build_political_audit_rows(
         stats = subreddit_stats.get(subreddit, {})
         topic = info["topic"]
         source = info["assignment_source"]
-        soft_tau = float(info.get("political_soft_threshold", info.get("political_threshold", 0.35)))
-        pure_tau = float(info.get("political_pure_threshold", info.get("political_threshold", 0.7)))
+        soft_tau = float(info.get("political_soft_threshold", info.get("political_threshold", 0.6)))
+        pure_tau = float(info.get("political_pure_threshold", info.get("political_threshold", 1.2)))
         median_r = float(stats.get("median_political_rate_100w", 0.0))
         mean_r = float(stats.get("mean_political_rate_100w", 0.0))
         ww_r = float(stats.get("word_weighted_political_rate_100w", 0.0))
@@ -441,94 +596,54 @@ def build_political_audit_rows(
     return rows
 
 
-def enrich_dataframe(
+def finalize_enrichment_dataframe(
     df: pd.DataFrame,
-    subreddit: str,
     meta_row: Dict[str, str],
     topic: str,
     topic_family: str,
     screening_row: Dict[str, Any],
     screening: Dict[str, Any],
-    parallel_csv: Path,
+    skip_langid: bool,
 ) -> pd.DataFrame:
-    """Function summary: add enrichment columns and thread roll-ups to one month dataframe.
+    """Function summary: add topic/langid/thread columns to a scored shard (no rescoring).
 
     Parameters:
-    - df: cleaned month data.
-    - subreddit: subreddit name.
+    - df: shard with political_weighted_points and n_words.
     - meta_row: arm/forum_type/primary_lexicon.
     - topic: assigned topic.
     - topic_family: topic family name.
     - screening_row: pooled screening record.
     - screening: screening config.
-    - parallel_csv: graded parallel political lexicon CSV path.
+    - skip_langid: if True, omit lang_comment classification.
 
     Returns:
-    - Enriched dataframe.
+    - Fully enriched dataframe.
     """
     enrich_cols = [
-        "political_lexicon_hits",
-        "political_g1_hits",
-        "political_g2_hits",
-        "political_g3_hits",
-        "political_weighted_points",
-        "n_words",
-        "political_rate_100w",
         "lang_comment",
-        "thread_id",
-        "arm",
-        "forum_type",
-        "primary_lexicon",
         "topic",
         "topic_family",
-        "volume_band",
         "analysis_tier",
-        "exclusion_code",
         "thread_political_weighted_points",
         "thread_political_rate_100w",
         "thread_is_political",
     ]
     out = df.drop(columns=[c for c in enrich_cols if c in df.columns], errors="ignore").copy()
-    lex_lang = meta_row["primary_lexicon"]
-    g1_list: List[int] = []
-    g2_list: List[int] = []
-    g3_list: List[int] = []
-    points_list: List[int] = []
-    n_words_list: List[int] = []
-    lang_comments: List[str] = []
-    for body in out["body"].astype(str).tolist():
-        scored = score_comment_political_salience(
-            body, lex_lang, PROJECT_ROOT, csv_path=parallel_csv
-        )
-        g1_list.append(int(scored["political_g1_hits"]))
-        g2_list.append(int(scored["political_g2_hits"]))
-        g3_list.append(int(scored["political_g3_hits"]))
-        points = int(scored["political_weighted_points"])
-        points_list.append(points)
-        n_words_list.append(int(scored["n_words"]))
-        lang, _ = langid.classify(body)
-        lang_comments.append(lang)
-    out["political_g1_hits"] = g1_list
-    out["political_g2_hits"] = g2_list
-    out["political_g3_hits"] = g3_list
-    out["political_weighted_points"] = points_list
-    out["political_lexicon_hits"] = points_list
-    out["n_words"] = n_words_list
-    out["political_rate_100w"] = [
-        political_rate_100w(p, nw) for p, nw in zip(points_list, n_words_list, strict=True)
-    ]
-    out["lang_comment"] = lang_comments
-    out["thread_id"] = out["link_id"].astype(str)
+    if "thread_id" not in out.columns:
+        out["thread_id"] = out["link_id"].astype(str)
     out["arm"] = meta_row["arm"]
     out["forum_type"] = meta_row["forum_type"]
-    out["primary_lexicon"] = lex_lang
+    out["primary_lexicon"] = meta_row["primary_lexicon"]
     out["topic"] = topic
     out["topic_family"] = topic_family
-    volume_band = str(
+    out["volume_band"] = str(
         screening_row.get("volume_band", screening_row.get("analysis_tier", "low_volume"))
     )
-    out["volume_band"] = volume_band
     out["exclusion_code"] = str(screening_row.get("exclusion_codes", "")) or pd.NA
+    if skip_langid:
+        out["lang_comment"] = pd.NA
+    else:
+        out["lang_comment"] = [langid.classify(str(b))[0] for b in out["body"].astype(str)]
 
     min_points = int(screening.get("thread_political_min_points", 3))
     thread_stats = (
@@ -607,6 +722,46 @@ def thread_political_share_from_enriched(enriched: pd.DataFrame) -> List[bool]:
     return per_thread["thread_is_political"].astype(bool).tolist()
 
 
+def _score_shard_worker(
+    shard_str: str,
+    subreddit: str,
+    lex_lang: str,
+    arm: str,
+    forum_type: str,
+    volume_band: str,
+    exclusion_codes: str,
+    parallel_csv_str: str,
+) -> Tuple[str, Dict[str, Any]]:
+    """Function summary: process-pool worker to score one Parquet shard.
+
+    Parameters:
+    - shard_str: absolute shard path string.
+    - subreddit: subreddit name.
+    - lex_lang: lexicon language code.
+    - arm: arm label.
+    - forum_type: forum type label.
+    - volume_band: volume band string.
+    - exclusion_codes: exclusion codes string.
+    - parallel_csv_str: graded lexicon CSV path.
+
+    Returns:
+    - Tuple (subreddit, stats fragment).
+    """
+    screening_row = {
+        "volume_band": volume_band,
+        "exclusion_codes": exclusion_codes,
+    }
+    meta_row = {"arm": arm, "forum_type": forum_type, "primary_lexicon": lex_lang}
+    fragment = score_shard_write(
+        Path(shard_str),
+        lex_lang,
+        meta_row,
+        screening_row,
+        Path(parallel_csv_str),
+    )
+    return subreddit, fragment
+
+
 def main() -> None:
     """Function summary: enrich all cleaned Parquet shards and write assignment tables."""
     args = parse_args()
@@ -621,29 +776,86 @@ def main() -> None:
     meta_table = build_subreddit_metadata_table(config, project_root=PROJECT_ROOT)
     sub_to_family = subreddit_family_map(config, include_family_aliases=False)
     parallel_csv = parallel_political_lexicon_path(config, project_root=PROJECT_ROOT)
+    workers = args.workers if args.workers is not None else default_worker_count()
 
     subreddits = resolve_primary_subreddits(config)
     subreddit_stats: Dict[str, Dict[str, float]] = {}
-    print(f"[enrich_cleaned_chunks] phase=collect_political_stats subreddits={len(subreddits)}", flush=True)
-    for idx, subreddit in enumerate(subreddits, start=1):
-        action = subreddit_screening_action(screening_by_sub, subreddit)
-        if should_skip_screened_subreddit(action, include_excluded=args.include_excluded):
-            continue
+
+    if args.assign_only:
         print(
-            f"[enrich_cleaned_chunks] stats_start {idx}/{len(subreddits)} subreddit={subreddit}",
+            f"[enrich_cleaned_chunks] phase=aggregate_from_enriched subreddits={len(subreddits)}",
             flush=True,
         )
-        subreddit_stats[subreddit] = collect_subreddit_political_stats(
-            interim_dir, subreddit, meta_table[subreddit], parallel_csv
-        )
-        st = subreddit_stats[subreddit]
+        for idx, subreddit in enumerate(subreddits, start=1):
+            action = subreddit_screening_action(screening_by_sub, subreddit)
+            if should_skip_screened_subreddit(action, include_excluded=args.include_excluded):
+                continue
+            subreddit_stats[subreddit] = collect_subreddit_stats_from_enriched(
+                interim_dir, subreddit, meta_table[subreddit]
+            )
+            st = subreddit_stats[subreddit]
+            print(
+                f"[enrich_cleaned_chunks] aggregate_done {idx}/{len(subreddits)} "
+                f"subreddit={subreddit} ww={st.get('word_weighted_political_rate_100w', 0):.4f}",
+                flush=True,
+            )
+    else:
+        for lang in ("it", "en", "de"):
+            get_graded_matcher(PROJECT_ROOT, lang, csv_path=parallel_csv)
+        score_tasks: List[Tuple[str, str, str, str, str, str, str, str]] = []
+        for subreddit in subreddits:
+            action = subreddit_screening_action(screening_by_sub, subreddit)
+            if should_skip_screened_subreddit(action, include_excluded=args.include_excluded):
+                continue
+            shard_dir = interim_dir / "cleaned_monthly_chunks" / subreddit
+            if not shard_dir.exists():
+                continue
+            meta_row = meta_table[subreddit]
+            screen_row = screening_by_sub.get(subreddit, {})
+            for shard in sorted(shard_dir.glob("*.parquet")):
+                score_tasks.append(
+                    (
+                        str(shard.resolve()),
+                        subreddit,
+                        meta_row["primary_lexicon"],
+                        meta_row["arm"],
+                        meta_row["forum_type"],
+                        str(
+                            screen_row.get(
+                                "volume_band", screen_row.get("analysis_tier", "low_volume")
+                            )
+                        ),
+                        str(screen_row.get("exclusion_codes", "")),
+                        str(parallel_csv.resolve()),
+                    )
+                )
         print(
-            f"[enrich_cleaned_chunks] stats_done subreddit={subreddit} "
-            f"lexicon={st.get('primary_lexicon', '')} ww={st.get('word_weighted_political_rate_100w', 0):.4f} "
-            f"n_comments={st.get('n_comments', 0)} shards_read={st.get('n_shards_read', 0)} "
-            f"shards_skipped={st.get('n_shards_skipped', 0)}",
+            f"[enrich_cleaned_chunks] phase=score_shards tasks={len(score_tasks)} workers={workers}",
             flush=True,
         )
+        if workers <= 1:
+            for task in score_tasks:
+                sub, fragment = _score_shard_worker(*task)
+                subreddit_stats[sub] = merge_subreddit_stats(
+                    subreddit_stats.get(sub, {}), fragment
+                )
+        else:
+            with ProcessPoolExecutor(max_workers=workers) as pool:
+                futures = [pool.submit(_score_shard_worker, *t) for t in score_tasks]
+                for fut in as_completed(futures):
+                    sub, fragment = fut.result()
+                    subreddit_stats[sub] = merge_subreddit_stats(
+                        subreddit_stats.get(sub, {}), fragment
+                    )
+        for sub, acc in list(subreddit_stats.items()):
+            subreddit_stats[sub] = finalize_subreddit_stats(acc)
+            st = subreddit_stats[sub]
+            print(
+                f"[enrich_cleaned_chunks] score_done subreddit={sub} "
+                f"ww={st.get('word_weighted_political_rate_100w', 0):.4f} "
+                f"n_comments={st.get('n_comments', 0)}",
+                flush=True,
+            )
 
     warn_zero_ww_control_forums(subreddit_stats, interim_dir)
 
@@ -652,7 +864,7 @@ def main() -> None:
     topic_to_family = topic_family_map(config, include_family_aliases=False)
     thread_political_by_sub: Dict[str, List[bool]] = defaultdict(list)
 
-    print("[enrich_cleaned_chunks] phase=enrich_shards", flush=True)
+    print("[enrich_cleaned_chunks] phase=finalize_shards", flush=True)
     for idx, subreddit in enumerate(subreddits, start=1):
         action = subreddit_screening_action(screening_by_sub, subreddit)
         if should_skip_screened_subreddit(action, include_excluded=args.include_excluded):
@@ -670,7 +882,7 @@ def main() -> None:
         family = topic_to_family.get(str(topic), sub_to_family.get(subreddit, "it_others"))
         shards = sorted(shard_dir.glob("*.parquet"))
         print(
-            f"[enrich_cleaned_chunks] enrich_start {idx}/{len(subreddits)} "
+            f"[enrich_cleaned_chunks] finalize_start {idx}/{len(subreddits)} "
             f"subreddit={subreddit} topic={topic} shards={len(shards)}",
             flush=True,
         )
@@ -678,19 +890,25 @@ def main() -> None:
             df = read_parquet_shard_safe(shard)
             if df is None or df.empty:
                 continue
-            enriched = enrich_dataframe(
+            if args.assign_only and "political_weighted_points" not in df.columns:
+                print(
+                    f"[enrich_cleaned_chunks] WARN missing_score_cols subreddit={subreddit} "
+                    f"shard={shard.name}; run without --assign-only",
+                    flush=True,
+                )
+                continue
+            enriched = finalize_enrichment_dataframe(
                 df=df,
-                subreddit=subreddit,
                 meta_row=meta_row,
                 topic=str(topic),
                 topic_family=family,
                 screening_row=screen_row,
                 screening=screening,
-                parallel_csv=parallel_csv,
+                skip_langid=args.skip_langid,
             )
             enriched.to_parquet(shard, index=False, engine="pyarrow", compression="snappy")
             thread_political_by_sub[subreddit].extend(thread_political_share_from_enriched(enriched))
-        print(f"[enrich_cleaned_chunks] enrich_done subreddit={subreddit}", flush=True)
+        print(f"[enrich_cleaned_chunks] finalize_done subreddit={subreddit}", flush=True)
 
     print("[enrich_cleaned_chunks] phase=write_tables", flush=True)
     assignment_rows: List[Dict[str, Any]] = []

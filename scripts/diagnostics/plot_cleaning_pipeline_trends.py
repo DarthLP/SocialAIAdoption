@@ -86,8 +86,11 @@ THRESHOLD_SENSITIVITY_CANDIDATES = (
     0.35,
     0.40,
     0.45,
+    0.50,
     0.60,
     0.70,
+    1.00,
+    1.20,
 )
 THRESHOLD_HIGHLIGHT_SUBREDDITS = frozenset(
     {
@@ -483,7 +486,7 @@ def _political_assignment_thresholds(audit_df: pd.DataFrame) -> Tuple[Optional[f
     elif "political_threshold" in audit_df.columns:
         pure = float(audit_df["political_threshold"].iloc[0])
     if soft is None and pure is not None:
-        soft = 0.35
+        soft = 0.6
     return soft, pure
 
 
@@ -773,8 +776,8 @@ def write_political_threshold_sensitivity_csv(
                 "subreddit": str(row["subreddit"]),
                 "topic_current": str(row.get("topic", "")),
                 "word_weighted_political_rate_100w": ww,
-                "would_be_political": int(ww >= (soft_tau if soft_tau is not None else 0.35)),
-                "would_be_pure": int(ww >= (pure_tau if pure_tau is not None else 0.7)),
+                "would_be_political": int(ww >= (soft_tau if soft_tau is not None else 0.6)),
+                "would_be_pure": int(ww >= (pure_tau if pure_tau is not None else 1.2)),
             }
         )
     for tau in candidates:

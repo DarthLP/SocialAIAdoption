@@ -1,10 +1,12 @@
 # Political and polarization lexicons
 
-Curated term lists for the Italy polarization study. Political **salience** uses graded parallel CSV; polarization dimensions use **categorized** text files.
+**Archived copy** — runtime lexicons are CSV files under `data/raw/`. See [`ARCHIVE.md`](ARCHIVE.md) for the path table (including **affect** → `polarization_lexicon_parallel.csv`, **hedging** → `style_phrase_parallel.csv`).
+
+Historical notes below describe the pre-CSV export workflow.
 
 ## Salience (graded parallel CSV)
 
-**Runtime source:** `data/raw/political_lexicon_parallel.csv` (see `paths.political_lexicon_parallel` in study YAML).
+**Runtime source:** [`data/raw/political_lexicon_parallel.csv`](../../data/raw/political_lexicon_parallel.csv) (`paths.political_lexicon_parallel`).
 
 | Column pair | Language |
 |-------------|----------|
@@ -12,62 +14,60 @@ Curated term lists for the Italy polarization study. Political **salience** uses
 | `EN (US/UK)` / `EN_grade` | English |
 | `DE` / `DE_grade` | German |
 
-Grades 1–3 map to points 1/2/3 per unique matched term. Forum assignment uses word-weighted rate `100 × Σ(points) / Σ(words)`. Thread flag: `thread_political_weighted_points >= 3` (one grade-3 term suffices).
+One lemma per row. Grades 1–3 → points 1/2/3 per unique matched term (Unicode tokenization + spelling variants). Thread flag: `thread_political_weighted_points >= 3`.
 
-Legacy flat `political_{it,en,de}.txt` files are deprecated for runtime salience (kept in git for reference only).
+## Polarization / AI (parallel categorized CSV)
 
-## Polarization / AI (categorized)
+**Runtime source:** [`data/raw/polarization_lexicon_parallel.csv`](../../data/raw/polarization_lexicon_parallel.csv) (`paths.polarization_lexicon_parallel`).
 
-Format: `category:term` per line; `#` starts a comment. Multi-word: `category:word word`.
+| `lexicon` column | `bucket` values |
+|------------------|-----------------|
+| `ideology` | `left`, `center`, `right` |
+| `other_side` | `other_side` |
+| `aggression` | `aggression` |
+| `affect` | `negative`, `anger` |
+| `issue` | `eu`, `migration`, `economy`, `culture` |
+| `ai_style` | `ai_discourse` |
 
-| Pattern | Categories |
-|---------|------------|
-| `ideology_{lang}.txt` | `left`, `center`, `right` |
-| `other_side_{lang}.txt` | `other_side` (other-side salience; not speaker-conditioned hostility) |
-| `aggression_{lang}.txt` | `aggression` |
-| `affect_{lang}.txt` | `negative`, `anger` |
-| `issue_{lang}.txt` | `eu`, `migration`, `economy`, `culture` |
-| `ai_style_{lang}.txt` | `ai_discourse` |
+**Multi-lemma cells:** separate lemmas with **`;`** only (never comma inside `IT` / `EN` / `DE`). Commas appear only in CSV structure or in `notes` / `slot_concept`.
 
-## Style phrase lists (flat, substring match)
+Supplemental ideology rows from [`data/raw/ideology_parallel.csv`](../../data/raw/ideology_parallel.csv) are merged into the polarization CSV via `scripts/devtools/prepare_parallel_lexicon_raw.py`.
 
-One phrase per line (`#` comments allowed). Used by `compute_comment_style_features.py` via `primary_lexicon`:
+## Emotion / cognition
 
-| Pattern | Purpose |
-|---------|---------|
-| `hedging_{lang}.txt` | Hedging / epistemic softeners |
-| `signposting_{lang}.txt` | Discourse signposting |
-| `polite_closer_{lang}.txt` | Polite or assistant-style closers |
+**Runtime source:** [`data/raw/emotion_cognition_parallel.csv`](../../data/raw/emotion_cognition_parallel.csv) (`paths.emotion_cognition_parallel`).
 
-Languages: `it`, `en`, `de`. Matched per forum via `primary_lexicon` in enrichment.
+Columns: `pole` (`emotion` | `cognition`), `concept`, `IT`, `EN`, `DE`. Scored as `emotion_*` and `cognition_*` rates (distinct from `affect` negative/anger in the polarization CSV).
+
+## Style phrases (substring match)
+
+**Runtime source:** [`data/raw/style_phrase_parallel.csv`](../../data/raw/style_phrase_parallel.csv) (`paths.style_phrase_parallel`).
+
+`lexicon` ∈ `hedging`, `signposting`, `polite_closer`. One phrase per row per language column.
+
+## Italian pair framing (v4 CSV, pairs section only)
+
+**Runtime source:** [`data/raw/italian_political_lexicon_v4.csv`](../../data/raw/italian_political_lexicon_v4.csv) (`paths.italian_lexicon_v4_pairs`), semicolon-delimited file; only `section=pairs` rows are loaded.
+
+Comment columns: `pair_framing_net_strict`, `pair_framing_net_all`, and related `pair_*` fields when `lang_code=it`.
 
 ## Matching
 
-- Token-level matching on lowercased word tokens ([`src/political_lexicon.py`](../../src/political_lexicon.py)).
-- Multi-word phrases: consecutive token sequences.
-- Optional negation window for ideology hits (see `polarization.negation_window_tokens` in study YAML).
+- Unicode word tokens: `[\w']+` ([`src/political_lexicon.py`](../../src/political_lexicon.py)).
+- German/Italian spelling alternates via [`src/parallel_lexicon.py`](../../src/parallel_lexicon.py) `expand_lexicon_variants`.
+- Ideology negation window: `polarization.negation_window_tokens` in study YAML.
 
-## Validation
-
-- Run `scripts/diagnostics/audit_polarization_lexicons.py`.
-- Hand labels: `results/tables/italy_polarization/descriptives/lexicon_validation_labels.csv`.
-
-## Provenance
-
-Mar–Apr 2023 context; versioned in git. See `CHANGELOG.md`.
-
-### Italian curated list (v4)
-
-- **Source of truth (local):** `data/raw/italian_political_lexicon_v4.csv` (semicolon-separated; hand-checked terms, sources, L/C/R use columns).
-- **Runtime lists:** exported into `political_it.txt`, `ideology_it.txt`, `issue_it.txt`, `other_side_it.txt` via:
+## Prepare / audit
 
 ```bash
-.venv/bin/python scripts/devtools/export_italian_lexicon_v4.py --policy dominant
+.venv/bin/python scripts/devtools/prepare_parallel_lexicon_raw.py --gap-report
+.venv/bin/python scripts/diagnostics/audit_polarization_lexicons.py --config config/italy_polarization_setup.yaml
 ```
 
-- **Dominant export (default):** one L/C/R bucket per v4 term (`yes=3 > some=2 > rarely=1`; left+center→left, right+center→right). First dominant run auto-archives prior `ideology_it.txt` to `ideology_it_broad.txt`.
-- **Also writes:** `pairs_it.json`, `term_meta_it.json`, `stance_it.txt`, `valence_it.txt`, `polarized_it.txt`, `dominant_export_stamp.txt`.
-- **Pair framing:** `pair_framing_net_strict` (polarized=yes pairs) and `pair_framing_net_all` scored at comment level when `lang_code=it`.
-- **Legacy policies:** `--policy broad` or `conservative` still available for reproducing the broad archive.
-- **Audit tables:** `results/tables/italy_polarization/lexicon_export/lexicon_v4_export_audit.csv`, `lexicon_v4_export_diff.csv`.
-- After export, re-run `enrich_cleaned_chunks.py` (salience) and/or `compute_polarization_features.py` (polarization columns) — see root `README.md`.
+Gap table (optional): `results/tables/italy_polarization/lexicon_export/parallel_vs_config_gap.csv`.
+
+## Legacy export (optional)
+
+`scripts/devtools/export_italian_lexicon_v4.py` writes snapshots under `categorized/` and `v4_export/`; **stage-4 features do not require this step.**
+
+See `CHANGELOG.md` for history.

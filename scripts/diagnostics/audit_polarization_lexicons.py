@@ -50,14 +50,19 @@ def _setup_project_root() -> Path:
 
 PROJECT_ROOT = _setup_project_root()
 
-from src.config_utils import load_config  # noqa: E402
+from src.config_utils import (  # noqa: E402
+    emotion_cognition_parallel_path,
+    load_config,
+    polarization_lexicon_parallel_path,
+)
 from src.political_lexicon import (  # noqa: E402
     LEXICON_NAMES,
     get_categorized_lexicon,
-    lexicon_path,
     political_rate_100w,
     score_comment_polarization,
 )
+from src.parallel_lexicon import load_emotion_cognition_parallel  # noqa: E402
+from src.v4_lexicon import get_pairs_registry, pairs_registry_path  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,19 +73,21 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def term_counts_table(project_root: Path) -> pd.DataFrame:
+def term_counts_table(project_root: Path, config: Dict[str, Any]) -> pd.DataFrame:
     """Function summary: count terms per lexicon file, category, and language.
 
     Parameters:
     - project_root: repo root.
+    - config: study YAML.
 
     Returns:
     - Summary dataframe.
     """
+    pol_path = polarization_lexicon_parallel_path(config, project_root)
     rows: List[Dict[str, Any]] = []
     for lang in ("it", "en", "de"):
         for name in LEXICON_NAMES:
-            lex = get_categorized_lexicon(project_root, lang, name)
+            lex = get_categorized_lexicon(project_root, lang, name, polarization_csv_path=pol_path)
             for cat, (singles, phrases) in lex.items():
                 rows.append(
                     {
@@ -89,9 +96,33 @@ def term_counts_table(project_root: Path) -> pd.DataFrame:
                         "category": cat,
                         "n_single_tokens": len(singles),
                         "n_phrases": len(phrases),
-                        "path": str(lexicon_path(project_root, lang, name)),
+                        "path": str(pol_path),
                     }
                 )
+    emo_path = emotion_cognition_parallel_path(config, project_root)
+    for lang in ("it", "en", "de"):
+        emo = load_emotion_cognition_parallel(emo_path, lang)
+        for pole, (singles, phrases) in emo.items():
+            rows.append(
+                {
+                    "lang": lang,
+                    "lexicon": pole,
+                    "category": pole,
+                    "n_single_tokens": len(singles),
+                    "n_phrases": len(phrases),
+                    "path": str(emo_path),
+                }
+            )
+    rows.append(
+        {
+            "lang": "it",
+            "lexicon": "pairs",
+            "category": "pairs",
+            "n_single_tokens": len(get_pairs_registry(project_root)),
+            "n_phrases": 0,
+            "path": str(pairs_registry_path(project_root)),
+        }
+    )
     return pd.DataFrame(rows)
 
 
@@ -248,7 +279,7 @@ def main() -> None:
     out_dir = Path(config["paths"]["tables_dir"]) / "descriptives"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    term_counts_table(PROJECT_ROOT).to_csv(out_dir / "lexicon_audit_term_counts.csv", index=False)
+    term_counts_table(PROJECT_ROOT, config).to_csv(out_dir / "lexicon_audit_term_counts.csv", index=False)
     benchmark_rates(interim_dir, PROJECT_ROOT).to_csv(out_dir / "lexicon_audit_benchmark_rates.csv", index=False)
     hit_samples(interim_dir, PROJECT_ROOT, args.seed).to_csv(out_dir / "lexicon_audit_hit_samples.csv", index=False)
     labels_path = out_dir / "lexicon_validation_labels.csv"

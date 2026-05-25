@@ -1,5 +1,25 @@
 # Political lexicon changelog
 
+## 2026-05-25 — Move lists to config/archive/lexicons/
+
+- All `config/lexicons/*.txt` and v4 json moved under `categorized/`, `style_phrases/`, `v4_export/`.
+- Runtime unchanged: `data/raw/*.csv` only. Stub: `config/lexicons/README.md` → `ARCHIVE.md`.
+
+## 2026-05-25 — Raw CSV runtime sources (polarization, style, emotion, v4 pairs)
+
+- **Runtime categorized lists:** `data/raw/polarization_lexicon_parallel.csv` (merged with `ideology_parallel.csv` via `prepare_parallel_lexicon_raw.py`).
+- **Style phrases:** `data/raw/style_phrase_parallel.csv` (exported from legacy `hedging_*`, `signposting_*`, `polite_closer_*` txt).
+- **Emotion/cognition:** `data/raw/emotion_cognition_parallel.csv` → `emotion_hits`, `emotion_rate_100w`, `cognition_hits`, `cognition_rate_100w`.
+- **Italian pairs:** loaded from `italian_political_lexicon_v4.csv` (`section=pairs`); `pairs_it.json` no longer required.
+- **Dropped from scoring:** stance/valence/polarized/`term_meta` columns (v4 single-term export path).
+- **Parsing:** multi-lemma cells use `;` only; Unicode tokenization; DE/IT spelling variants (`src/parallel_lexicon.py`).
+- `config/lexicons/*.txt` retained as legacy archive only.
+
+## 2026-05-25 — Remove flat political_{it,en,de}.txt
+
+- Deleted `config/lexicons/political_{it,en,de}.txt` (superseded by `political_lexicon_parallel.csv` since 2026-05-22).
+- Removed dead `load_lexicon_terms` and v4 export writes to `political_it.txt`.
+
 ## 2026-05-22 — Graded parallel salience CSV
 
 - Runtime political salience from `data/raw/political_lexicon_parallel.csv` (grades 1–3 → weighted points 1/2/3; unique term hits; max-grade dedupe on duplicate rows).

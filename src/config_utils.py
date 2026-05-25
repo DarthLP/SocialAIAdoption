@@ -83,6 +83,80 @@ def parallel_political_lexicon_path(
     return root / path
 
 
+def _parallel_path_from_config(
+    config: Dict[str, Any],
+    key: str,
+    default_rel: str,
+    project_root: Optional[Path] = None,
+) -> Path:
+    """Function summary: resolve a paths.<key> entry under the project root.
+
+    Parameters:
+    - config: loaded study YAML.
+    - key: paths dict key.
+    - default_rel: fallback relative path.
+    - project_root: optional repo root override.
+
+    Returns:
+    - Resolved Path.
+    """
+    paths = config.get("paths") or {}
+    raw = paths.get(key, default_rel)
+    path = Path(str(raw))
+    if path.is_absolute():
+        return path
+    root = project_root or Path(__file__).resolve().parent.parent
+    return root / path
+
+
+def polarization_lexicon_parallel_path(
+    config: Dict[str, Any], project_root: Optional[Path] = None
+) -> Path:
+    """Function summary: resolve paths.polarization_lexicon_parallel CSV."""
+    return _parallel_path_from_config(
+        config,
+        "polarization_lexicon_parallel",
+        "data/raw/polarization_lexicon_parallel.csv",
+        project_root,
+    )
+
+
+def emotion_cognition_parallel_path(
+    config: Dict[str, Any], project_root: Optional[Path] = None
+) -> Path:
+    """Function summary: resolve paths.emotion_cognition_parallel CSV."""
+    return _parallel_path_from_config(
+        config,
+        "emotion_cognition_parallel",
+        "data/raw/emotion_cognition_parallel.csv",
+        project_root,
+    )
+
+
+def style_phrase_parallel_path(
+    config: Dict[str, Any], project_root: Optional[Path] = None
+) -> Path:
+    """Function summary: resolve paths.style_phrase_parallel CSV."""
+    return _parallel_path_from_config(
+        config,
+        "style_phrase_parallel",
+        "data/raw/style_phrase_parallel.csv",
+        project_root,
+    )
+
+
+def italian_lexicon_v4_pairs_path(
+    config: Dict[str, Any], project_root: Optional[Path] = None
+) -> Path:
+    """Function summary: resolve paths.italian_lexicon_v4_pairs CSV (pairs section)."""
+    return _parallel_path_from_config(
+        config,
+        "italian_lexicon_v4_pairs",
+        "data/raw/italian_political_lexicon_v4.csv",
+        project_root,
+    )
+
+
 def tables_subdir(config: Dict[str, Any], *parts: str) -> Path:
     """Function summary: join paths.tables_dir with optional subfolders for CSV/parquet outputs.
 
@@ -283,9 +357,9 @@ def load_screening_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "thread_political_min_hits": 0,
         "thread_political_min_points": 3,
         "forum_political_rate_multiplier_vs_politicaita": 0.25,
-        "forum_political_soft_threshold": 0.35,
-        "forum_political_pure_threshold": 0.7,
-        "forum_political_word_weighted_rate_threshold": 0.7,
+        "forum_political_soft_threshold": 0.6,
+        "forum_political_pure_threshold": 1.2,
+        "forum_political_word_weighted_rate_threshold": 1.2,
     }
     raw = config.get("screening", {})
     if isinstance(raw, dict):
@@ -306,11 +380,11 @@ def forum_political_thresholds(screening: Dict[str, Any]) -> Tuple[float, float]
     - Tuple (soft_threshold for it_political, pure_threshold for it_pure_political).
     """
     legacy = screening.get("forum_political_word_weighted_rate_threshold")
-    soft = float(screening.get("forum_political_soft_threshold", legacy if legacy is not None else 0.35))
+    soft = float(screening.get("forum_political_soft_threshold", legacy if legacy is not None else 0.6))
     pure = float(
         screening.get(
             "forum_political_pure_threshold",
-            legacy if legacy is not None else 0.7,
+            legacy if legacy is not None else 1.2,
         )
     )
     return soft, pure

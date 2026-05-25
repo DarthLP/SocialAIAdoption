@@ -55,18 +55,18 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
 ### 4c) Stage-3 enrichment
 - Script: `enrich_cleaned_chunks.py`
 - Why: Adds `topic`, `topic_family`, `volume_band`, `arm`, graded political salience (IT/EN/DE), `thread_id` roll-ups. Salience: `paths.political_lexicon_parallel` → `data/raw/political_lexicon_parallel.csv` (grades 1–3 → points 1/2/3 per unique term). Forum WW = `100 × Σ(points)/Σ(words)`; Italian topics: WW ≥ `forum_political_pure_threshold` → `it_pure_political`; WW ≥ `forum_political_soft_threshold` → `it_political` (recalibrate after enrichment via `political_threshold_sensitivity.csv`). Thread flag: `thread_political_weighted_points >= thread_political_min_points` (**3**). Comment columns: `political_g1_hits`, `political_g2_hits`, `political_g3_hits`, `political_weighted_points`, `political_rate_100w`.
-- Polarization lexicons: `config/lexicons/ideology_{it,en,de}.txt`, etc. (unchanged)
+- Polarization lexicons: `data/raw/polarization_lexicon_parallel.csv` (+ salience from `political_lexicon_parallel.csv`)
 - Output: enriched Parquet in `cleaned_monthly_chunks/` (canonical); `subreddit_topic_assignment.csv`, `subreddit_forum_political_profile.csv`, `subreddit_topic_political_audit.csv`
 - Run: `.venv/bin/python scripts/cleaning/enrich_cleaned_chunks.py --config config/italy_polarization_setup.yaml`
 - **Auto:** on completion, calls `plot_cleaning_pipeline_trends.run_cleaning_pipeline_plots` (skip with `--skip-pipeline-plots`)
 - Deprecated: `--write-by-family` (prefer `groupby('topic_family')` on shards)
 
-### 4c-bis) Italian v4 lexicon export (dominant)
-- Script: `export_italian_lexicon_v4.py`
-- Why: Dominant L/C/R export + `pairs_it.json`, `stance_it.txt`, `valence_it.txt`, `polarized_it.txt`, `term_meta_it.json`; archives `ideology_it_broad.txt` on first dominant run.
-- Output: `results/tables/italy_polarization/lexicon_export/lexicon_v4_export_audit.csv`, `lexicon_v4_export_diff.csv`
-- Run: `.venv/bin/python scripts/devtools/export_italian_lexicon_v4.py --policy dominant`
-- Re-run `compute_polarization_features.py` on **all** shards after export (`polarization.ideology_scoring: dominant_v1` required).
+### 4c-bis) Raw parallel lexicon preparation
+- Script: `prepare_parallel_lexicon_raw.py`
+- Why: Merge `ideology_parallel.csv` into `polarization_lexicon_parallel.csv`; build `style_phrase_parallel.csv` from legacy phrase txt.
+- Output: updated `data/raw/*.csv`; optional `lexicon_export/parallel_vs_config_gap.csv` with `--gap-report`
+- Run: `.venv/bin/python scripts/devtools/prepare_parallel_lexicon_raw.py --gap-report`
+- Optional legacy snapshot: `export_italian_lexicon_v4.py --policy dominant` (not required for stage-4 scoring).
 
 ### 4i-bis) Lexicon descriptives (pair framing + metadata)
 - Scripts: `prepare_lexicon_descriptives.py`, `plot_lexicon_descriptives.py`
@@ -86,11 +86,15 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
 - Output: `results/tables/italy_polarization/cleaning_pipeline/`, `results/figures/italy_polarization/cleaning_pipeline/{volume,stage1_drop_rates,political_qa}/` (political audit: boxplot, subreddit bars, `by_subreddit_political_rate_vs_topic.png` name-axis scatter, `by_subreddit_political_rate_vs_thread_share.png` bubble; screened-in only)
 
 ### 4f–4g) Enriched-shard features (polarization, AI-use, style)
-- Canonical: `compute_enriched_shard_features.py --pass all` (order: polarization → ai → style).
+- Canonical: `compute_enriched_shard_features.py --pass all` (single parquet read/write per shard when all passes run).
 - Wrappers (same behavior): `compute_polarization_features.py`, `compute_ai_use_features.py`, `compute_comment_style_features.py`.
 - Input/output: enriched `cleaned_monthly_chunks/*.parquet` (in place).
+- Parallelism: `--workers N` (default `min(8, cpu_count-1)`; `1` = sequential). Logs include per-shard `elapsed=` seconds.
+- Scoring: module-level caches for `pairs_it.json` / `term_meta_it.json`; one tokenize per comment for IT polarization.
 - Run (all passes):
-  `.venv/bin/python scripts/features/compute_enriched_shard_features.py --config config/italy_polarization_setup.yaml --pass all`
+  `.venv/bin/python scripts/features/compute_enriched_shard_features.py --config config/italy_polarization_setup.yaml --pass all --workers 8`
+- Run (polarization only):
+  `.venv/bin/python scripts/features/compute_polarization_features.py --config config/italy_polarization_setup.yaml --workers 8`
 - Polarization lexicons: `ideology_it.txt` (dominant v4), `pairs_it.json`, `stance_it.txt`, `valence_it.txt`, `polarized_it.txt`; EN/DE ideology lists hand-curated
 - `_polarization_score_row` copies all `POLARIZATION_COMMENT_COLUMNS` from scorer (KeyError if missing)
 
@@ -154,7 +158,7 @@ Prerequisites: enriched shards with polarization + AI + style columns (stage 4 a
 | [`scripts/diagnostics/`](diagnostics/) | QA plots, polarization descriptives, overlap |
 | [`scripts/features/`](features/) | Polarization, AI-use, comment-style (in-place on enriched shards) |
 | [`scripts/user_week/`](user_week/) | Ban-window within-user pre/post panel and figures |
-| [`scripts/devtools/`](devtools/) | Italian lexicon export (`export_italian_lexicon_v4.py`) |
+| [`scripts/devtools/`](devtools/) | Raw lexicon prep (`prepare_parallel_lexicon_raw.py`); optional v4 txt export |
 | [`scripts/archive/`](archive/) | Archived AI-adoption ML, event-time, legacy user-week — see [`archive/README.md`](archive/README.md) |
 
 Shared helpers: [`scripts/_bootstrap.py`](_bootstrap.py), [`scripts/_project_root.py`](_project_root.py)
