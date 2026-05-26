@@ -59,6 +59,8 @@ READ_COLUMNS = [
     "sentence_count_comment",
     "total_word_chars_comment",
     "avg_words_per_sentence_comment",
+    "ambivalence",
+    "pair_framing_net_strict",
 ]
 
 REQUIRED_FEATURE_COLUMNS = (
@@ -362,9 +364,13 @@ def daily_subreddit_table(df: pd.DataFrame, pol_cfg: Dict[str, Any]) -> pd.DataF
     rows: List[Dict[str, Any]] = []
     for (sub, day), grp in df.groupby(["subreddit", "date_utc"], sort=True):
         nw = grp["n_words"].astype(float)
+        topic = str(grp["topic"].iloc[0]) if "topic" in grp.columns and len(grp) else ""
+        family = str(grp["topic_family"].iloc[0]) if "topic_family" in grp.columns and len(grp) else ""
         rows.append(
             {
                 "subreddit": sub,
+                "topic": topic,
+                "topic_family": family,
                 "date_utc": day,
                 "n_comments": len(grp),
                 "n_authors": grp["author"].nunique(),
@@ -372,6 +378,18 @@ def daily_subreddit_table(df: pd.DataFrame, pol_cfg: Dict[str, Any]) -> pd.DataF
                 "political_rate_100w_mean": weighted_mean(grp["political_rate_100w"], nw),
                 "net_ideology_mean": weighted_mean(grp["net_ideology"], nw),
                 "extremity_mean": weighted_mean(grp["extremity"], nw),
+                "ambivalence_mean": weighted_mean(grp["ambivalence"], nw)
+                if "ambivalence" in grp.columns
+                else float("nan"),
+                "negative_rate_100w_mean": weighted_mean(grp["negative_rate_100w"], nw)
+                if "negative_rate_100w" in grp.columns
+                else float("nan"),
+                "anger_rate_100w_mean": weighted_mean(grp["anger_rate_100w"], nw)
+                if "anger_rate_100w" in grp.columns
+                else float("nan"),
+                "pair_framing_net_strict_mean": weighted_mean(grp["pair_framing_net_strict"], nw)
+                if "pair_framing_net_strict" in grp.columns
+                else float("nan"),
                 "other_side_salience_rate_100w_mean": weighted_mean(grp["other_side_salience_rate_100w"], nw),
                 "aggression_rate_100w_mean": weighted_mean(grp["aggression_rate_100w"], nw),
                 "ai_style_rate_100w_mean": weighted_mean(grp.get("ai_style_rate_100w", pd.Series(0.0)), nw),
@@ -634,6 +652,18 @@ def _slice_metrics_row(grp: pd.DataFrame, pol_cfg: Dict[str, Any]) -> Dict[str, 
         "extremity_mean": weighted_mean(grp["extremity"], nw),
         "other_side_salience_rate_100w_mean": weighted_mean(grp["other_side_salience_rate_100w"], nw),
         "aggression_rate_100w_mean": weighted_mean(grp["aggression_rate_100w"], nw),
+        "ambivalence_mean": weighted_mean(grp["ambivalence"], nw)
+        if "ambivalence" in grp.columns
+        else float("nan"),
+        "negative_rate_100w_mean": weighted_mean(grp["negative_rate_100w"], nw)
+        if "negative_rate_100w" in grp.columns
+        else float("nan"),
+        "anger_rate_100w_mean": weighted_mean(grp["anger_rate_100w"], nw)
+        if "anger_rate_100w" in grp.columns
+        else float("nan"),
+        "pair_framing_net_strict_mean": weighted_mean(grp["pair_framing_net_strict"], nw)
+        if "pair_framing_net_strict" in grp.columns
+        else float("nan"),
         "ai_style_rate_100w_mean": weighted_mean(grp["ai_style_rate_100w"], nw)
         if "ai_style_rate_100w" in grp.columns
         else float("nan"),
@@ -863,6 +893,9 @@ def main() -> None:
         it_oth = cp_work[cp_work["topic_family"] == "it_others"]
         daily_metrics_by_slice(it_oth, [], pol_cfg).to_csv(
             out_dir / "daily_it_others_by_universe_slice.csv", index=False
+        )
+        daily_metrics_by_slice(df, ["subreddit"], pol_cfg).to_csv(
+            out_dir / "daily_by_subreddit_universe_slice.csv", index=False
         )
 
     attrition_table(tables_dir, subs).to_csv(out_dir / "attrition_by_subreddit.csv", index=False)

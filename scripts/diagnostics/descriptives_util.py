@@ -14,8 +14,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+import numpy as np
 import pandas as pd
 
 from src.config_utils import load_polarization_config, require_dominant_v1_ideology_scoring
@@ -53,6 +54,88 @@ def ban_phase(date_utc: str, launch: str, lift: str) -> str:
     if date_utc < lift:
         return "ban"
     return "post"
+
+
+def assign_period_start(
+    dates: pd.Series,
+    bin_days: int,
+    launch: str,
+) -> pd.Series:
+    """Function summary: map calendar dates to period_start for daily or launch-aligned bins.
+
+    Parameters:
+    - dates: YYYY-MM-DD strings.
+    - bin_days: 1 (calendar day), 3, or 7 (launch-aligned).
+    - launch: launch anchor YYYY-MM-DD.
+
+    Returns:
+    - period_start as YYYY-MM-DD strings.
+    """
+    dt = pd.to_datetime(dates.astype(str))
+    if bin_days <= 1:
+        return dt.dt.strftime("%Y-%m-%d")
+    launch_dt = datetime.strptime(launch, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    launch_ts = pd.Timestamp(launch_dt.date())
+    days_from_launch = (dt - launch_ts).dt.days
+    bin_index = np.floor(days_from_launch.astype(float) / float(bin_days)).astype(int)
+    period_dt = launch_ts + pd.to_timedelta(bin_index * bin_days, unit="D")
+    return period_dt.dt.strftime("%Y-%m-%d")
+
+
+def bin_lexical_daily_panel(
+    panel: pd.DataFrame,
+    entity_cols: Sequence[str],
+    bin_days: int,
+    launch: str,
+) -> pd.DataFrame:
+    """Function summary: rollup daily lexical country panels to launch-aligned period bins.
+
+    Parameters:
+    - panel: daily table with date_utc, n_comments, and outcome metrics.
+    - entity_cols: grouping keys (e.g. country_panel or country_panel + universe_slice).
+    - bin_days: 1, 3, or 7.
+    - launch: ban launch YYYY-MM-DD for post flag and bin alignment.
+
+    Returns:
+    - Binned panel with period_start, n_days_in_bin, is_partial_bin, post, bin_days.
+    """
+    if panel.empty:
+        return panel.copy()
+    work = panel.copy()
+    if "date_utc" not in work.columns:
+        raise ValueError("bin_lexical_daily_panel requires date_utc column")
+    bd = int(bin_days)
+    if bd <= 1:
+        out = work.rename(columns={"date_utc": "period_start"})
+        out["n_days_in_bin"] = 1
+        out["is_partial_bin"] = False
+        out["bin_days"] = 1
+        out["post"] = (out["period_start"].astype(str) >= str(launch)).astype(int)
+        return out
+
+    work["period_start"] = assign_period_start(work["date_utc"], bd, launch)
+    group_cols = list(entity_cols) + ["period_start"]
+    skip = set(entity_cols) | {"date_utc", "period_start", "n_comments"}
+    outcome_cols = [
+        c
+        for c in work.columns
+        if c not in skip and pd.api.types.is_numeric_dtype(work[c])
+    ]
+    records: List[Dict[str, Any]] = []
+    for key_vals, grp in work.groupby(group_cols, sort=True):
+        if not isinstance(key_vals, tuple):
+            key_vals = (key_vals,)
+        w = grp["n_comments"].astype(float)
+        row: Dict[str, Any] = dict(zip(group_cols, key_vals))
+        row["n_comments"] = int(grp["n_comments"].sum())
+        row["n_days_in_bin"] = int(grp["date_utc"].astype(str).nunique())
+        row["is_partial_bin"] = bool(row["n_days_in_bin"] < bd)
+        row["bin_days"] = bd
+        row["post"] = int(str(row["period_start"]) >= str(launch))
+        for col in outcome_cols:
+            row[col] = weighted_mean(grp[col], w)
+        records.append(row)
+    return pd.DataFrame(records)
 
 
 def event_dates_from_config(config: Dict[str, Any]) -> Tuple[str, str, str, str]:
@@ -209,6 +292,25 @@ def stamp_metrics_notes(
         "- Cross-country level comparisons of net_ideology are not directly comparable without harmonized exports.",
         "- Pair/stance/valence metrics are zero outside Italian-primary shards by design.",
         "- Post+~7d after launch may reflect VPN circumvention; lift-window tables are appendix only.",
+        "",
+        "## Circumvention / DiD",
+        "- Google Trends vpn_interest is within-geo over time only; do not compare levels across countries.",
+        "- Tor Metrics user counts have sparse calendar days; missing days stay NaN (not zero-filled).",
+        "- circumvention_panel_by_geo: treated=IT tests ban effect on VPN/Tor (first stage).",
+        "- Lexical DiD: did_country_panel_{1,3,7}d (+ by_universe_slice); geo-matched vpn_interest/tor_* per country_panel row.",
+        "- Semantic DiD: did_semantic_{topic_family,language,language_universe}_{1,3,7}d; intensity interactions use vpn_interest_it / tor_*_it only (not geo-matched columns).",
+        "- Cross-country semantic arms: topic_family (six arms, mirrors country_panel IT split); language (it/en/de); political universe via universe_slice on language_universe panel.",
+        "- Launch-aligned 3d/7d bins: n_days_in_bin and is_partial_bin on panels; weight partial endpoint bins by n_comments and/or n_days_in_bin/bin_days.",
+        "- EU_hub_en has no Trends geo in country_panel_geo_map; VPN columns are omitted for that arm.",
+        "",
+        "## Semantic axis (embedding outcomes)",
+        "- DiD outcomes: use sem_axis_{ideology,emotion,aggression}_mean within language/arm; expect null treatment effects.",
+        "- Do not compare raw pole-share levels across languages (separate FastText spaces).",
+        "- Pole buckets: per-lexicon abs thresholds + p10/p90 percentile columns; tau50/tau75 removed.",
+        "- sem_axis_coverage_mean is saturated (~1); use share_unscored and seed OOV tables instead.",
+        "- Ideology axis must pass ideology_axis_orientation_report.csv vs net_ideology before substantive claims.",
+        "- did_semantic_topic_family_* must include all six topic_family arms (us, eu, de, uk, it_*).",
+        "- Forum-level panel: semantic_axis_panel_by_forum_1d.csv (no separate semantic_axis_panel.csv alias).",
         "",
     ]
     if extra_sections:

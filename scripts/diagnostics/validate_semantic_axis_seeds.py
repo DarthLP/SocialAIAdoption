@@ -39,6 +39,7 @@ PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import load_config, load_semantic_axis_config, tables_subdir  # noqa: E402
 from src.embeddings import (  # noqa: E402
+    ensure_exclusive_vector_lang,
     held_out_axis_sanity_report,
     seed_coverage_report,
 )
@@ -62,6 +63,7 @@ def main() -> None:
     coverage_rows = []
     sanity_rows = []
     for lang in ("it", "en", "de"):
+        ensure_exclusive_vector_lang(lang, sem_cfg)
         coverage_rows.extend(
             seed_coverage_report(lang, PROJECT_ROOT, sem_cfg, config=config)
         )

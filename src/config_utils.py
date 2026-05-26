@@ -548,7 +548,7 @@ def load_semantic_axis_config(config: Dict[str, Any]) -> Dict[str, Any]:
     - config: loaded study YAML.
 
     Returns:
-    - Semantic axis settings (vector paths, seeds_dir, thresholds, lang_match_filter).
+    - Semantic axis settings (vector paths, seeds_dir, pole_cutoffs, panel_bin_days, language_waves).
     """
     defaults: Dict[str, Any] = {
         "lang_match_filter": False,
@@ -563,7 +563,22 @@ def load_semantic_axis_config(config: Dict[str, Any]) -> Dict[str, Any]:
             "emotion": 0.25,
             "aggression": 0.25,
         },
+        "pole_thresholds_by_lexicon": {
+            "it": {"ideology": 0.12, "emotion": 0.12, "aggression": 0.08},
+            "en": {"ideology": 0.25, "emotion": 0.25, "aggression": 0.25},
+            "de": {"ideology": 0.20, "emotion": 0.20, "aggression": 0.18},
+        },
+        "pole_percentiles": [10, 90],
+        "percentile_calibration": {
+            "enabled": True,
+            "max_comments_per_lang": 50000,
+        },
         "write_vector_cache": True,
+        "language_waves": True,
+        "language_wave_order": ["it", "en", "de"],
+        "vector_cache_exclusive": True,
+        "pole_cutoffs": [0.25],
+        "panel_bin_days": [1, 3, 7],
     }
     raw = config.get("semantic_axis", {})
     if isinstance(raw, dict):
@@ -572,6 +587,49 @@ def load_semantic_axis_config(config: Dict[str, Any]) -> Dict[str, Any]:
                 defaults["vector_paths"].update(val)
             elif key == "pole_thresholds" and isinstance(val, dict):
                 defaults["pole_thresholds"].update(val)
+            elif key == "pole_thresholds_by_lexicon" and isinstance(val, dict):
+                merged = dict(defaults["pole_thresholds_by_lexicon"])
+                for lex, axes in val.items():
+                    if isinstance(axes, dict):
+                        merged.setdefault(str(lex), {}).update(axes)
+                defaults["pole_thresholds_by_lexicon"] = merged
+            elif key == "percentile_calibration" and isinstance(val, dict):
+                defaults["percentile_calibration"].update(val)
+            else:
+                defaults[key] = val
+    return defaults
+
+
+def load_circumvention_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Function summary: return circumvention proxy settings with defaults.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - Circumvention paths, treated/control geos, country_panel_geo_map, panel_bin_days.
+    """
+    defaults: Dict[str, Any] = {
+        "raw_dir": "data/raw/circumvention",
+        "google_trends_combined": "google_trends_vpn_by_country.csv",
+        "tor_relay_combined": "tor_relay_users_by_country.csv",
+        "tor_bridge_combined": "tor_bridge_users_by_country.csv",
+        "treated_geo": "IT",
+        "control_geos": ["DE", "FR", "ES", "GB", "US"],
+        "country_panel_geo_map": {
+            "Italy_political": "IT",
+            "Italy_others": "IT",
+            "Germany": "DE",
+            "US_political": "US",
+            "UK": "GB",
+        },
+        "panel_bin_days": [1, 3, 7],
+    }
+    raw = config.get("circumvention", {})
+    if isinstance(raw, dict):
+        for key, val in raw.items():
+            if key == "country_panel_geo_map" and isinstance(val, dict):
+                defaults["country_panel_geo_map"].update(val)
             else:
                 defaults[key] = val
     return defaults
@@ -592,6 +650,218 @@ def require_dominant_v1_ideology_scoring(config: Dict[str, Any]) -> None:
         f"polarization.ideology_scoring must be 'dominant_v1' (got {scoring!r}). "
         "Re-export lexicons with export_italian_lexicon_v4.py --policy dominant and re-run features."
     )
+
+
+def load_wordfish_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Function summary: return Wordfish robustness settings with defaults.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - Wordfish settings dictionary.
+    """
+    defaults: Dict[str, Any] = {
+        "enabled": True,
+        "min_doc_tokens": 200,
+        "min_doc_freq": 2,
+        "min_token_len": 3,
+        "max_vocab_terms": 5000,
+        "top_freq_drop_n": 50,
+        "stopwords_dir": "config/lexicons",
+        "languages": ["it", "en"],
+        "min_subreddits_per_language": 2,
+        "time_bins": ["day", "week"],
+        "ban_anchor_date": "2023-03-31",
+        "weekly_bin_days": 7,
+        "train_iters": 5000,
+        "learning_rate": 1.0e-5,
+        "convergence": {
+            "check_final_objective": True,
+            "min_objective_improvement": 1.0e-4,
+        },
+        "anchor_subreddit": {
+            "it": "politicaITA",
+            "en": "PoliticalDiscussion",
+        },
+        "sensitivity_profiles": [
+            {"min_doc_freq": 2, "top_freq_drop_n": 50},
+            {"min_doc_freq": 3, "top_freq_drop_n": 100},
+        ],
+        "top_axis_words": 25,
+        "change_window_days": [7, 3],
+        "placebo_launch_date": "2023-03-16",
+        "primary_time_bin": "day",
+        "week_learning_rate_scale": 0.1,
+    }
+    raw = config.get("wordfish", {})
+    if isinstance(raw, dict):
+        for key, val in raw.items():
+            if key == "anchor_subreddit" and isinstance(val, dict):
+                defaults["anchor_subreddit"].update(val)
+            elif key == "convergence" and isinstance(val, dict):
+                defaults["convergence"].update(val)
+            elif key == "sensitivity_profiles" and isinstance(val, list):
+                defaults["sensitivity_profiles"] = val
+            else:
+                defaults[key] = val
+    return defaults
+
+
+def load_wordfish_authors_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Function summary: return author-level Wordfish settings merged with wordfish defaults.
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - wordfish_authors settings dict (includes prune/train/stopwords from wordfish).
+    """
+    base = load_wordfish_config(config)
+    defaults: Dict[str, Any] = {
+        **base,
+        "enabled": True,
+        "languages": ["it", "en", "de"],
+        "ban_anchor_date": base.get("ban_anchor_date", "2023-03-31"),
+        "placebo_launch_date": base.get("placebo_launch_date", "2023-03-16"),
+        "rolling_bins_w": 2,
+        "time_bins": [
+            {"name": "week7", "time_bin": "week", "weekly_bin_days": 7, "min_doc_tokens": 100},
+            {"name": "week3", "time_bin": "week", "weekly_bin_days": 3, "min_doc_tokens": 50},
+            {"name": "window", "time_bin": "window", "min_doc_tokens": 100},
+        ],
+        "panel_modes": ["full", "balanced"],
+        "drop_cross_language": False,
+        "min_authors_per_language": 50,
+        "primary_lang_priority": ["it", "de", "en"],
+        "filter_comments_to_assigned_lang": True,
+        "sign_anchor_mode": "subreddit_modal",
+        "anchor_subreddit": {
+            "it": "politicaITA",
+            "en": "PoliticalDiscussion",
+            "de": "de",
+        },
+        "headline_spec": "week7",
+        "headline_mode": "balanced",
+        "note": "Robustness; headline balanced+week7 for prompt 04.",
+    }
+    raw = config.get("wordfish_authors", {})
+    if isinstance(raw, dict):
+        for key, val in raw.items():
+            if key == "anchor_subreddit" and isinstance(val, dict):
+                defaults["anchor_subreddit"] = {**defaults.get("anchor_subreddit", {}), **val}
+            elif key == "convergence" and isinstance(val, dict):
+                defaults["convergence"] = {**defaults.get("convergence", {}), **val}
+            elif key == "time_bins" and isinstance(val, list):
+                defaults["time_bins"] = val
+            elif key == "panel_modes" and isinstance(val, list):
+                defaults["panel_modes"] = val
+            elif key == "primary_lang_priority" and isinstance(val, list):
+                defaults["primary_lang_priority"] = val
+            else:
+                defaults[key] = val
+    return defaults
+
+
+def load_wordfish_authors_v2_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Function summary: author Wordfish v2 settings (alternating MLE, token cap, validation gate).
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - Merged wordfish_authors_v2 dict built on wordfish_authors defaults.
+    """
+    defaults = load_wordfish_authors_config(config)
+    defaults.update(
+        {
+            "output_tables_subdir": "wordfish_authors_v2",
+            "output_figures_subdir": "wordfish_authors_v2",
+            "max_tokens_per_doc": 8000,
+            "token_subsample_seed": 42,
+            "backend": "python_v2",
+            "en_fit_mode": "split_us_uk",
+            "validation": {
+                "gate_abs_rho_sem_axis": 0.5,
+                "min_authors": 100,
+            },
+            "convergence": {
+                **defaults.get("convergence", {}),
+                "max_cycles": 40,
+                "min_objective_improvement": 1.0e-4,
+                "opposite_frac_threshold": 0.05,
+            },
+            "note": (
+                "Author-level v2: political-universe docs, token cap, alternating MLE. "
+                "Pre-registered gate on |rho| vs sem_axis; demote theta if gate fails."
+            ),
+        }
+    )
+    raw = config.get("wordfish_authors_v2", {})
+    if isinstance(raw, dict):
+        for key, val in raw.items():
+            if key == "validation" and isinstance(val, dict):
+                defaults["validation"] = {**defaults.get("validation", {}), **val}
+            elif key == "convergence" and isinstance(val, dict):
+                defaults["convergence"] = {**defaults.get("convergence", {}), **val}
+            elif key == "anchor_subreddit" and isinstance(val, dict):
+                defaults["anchor_subreddit"] = {**defaults.get("anchor_subreddit", {}), **val}
+            elif key == "time_bins" and isinstance(val, list):
+                defaults["time_bins"] = val
+            elif key == "panel_modes" and isinstance(val, list):
+                defaults["panel_modes"] = val
+            else:
+                defaults[key] = val
+    return defaults
+
+
+def load_wordfish_forum_v2_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Function summary: forum Wordfish v2 (shard topic_family, token cap, alternating MLE).
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - Merged wordfish_forum_v2 settings on wordfish defaults.
+    """
+    defaults = load_wordfish_config(config)
+    defaults.update(
+        {
+            "output_tables_subdir": "wordfish_forum_v2",
+            "output_figures_subdir": "wordfish_forum_v2",
+            "max_tokens_per_doc": 8000,
+            "token_subsample_seed": 42,
+            "backend": "python_v2",
+            "use_shard_topic_family": True,
+            "validation": {
+                "gate_abs_rho_sem_axis": 0.5,
+                "min_subreddits": 5,
+                "expect_gate_fail": True,
+            },
+            "convergence": {
+                **defaults.get("convergence", {}),
+                "max_cycles": 40,
+                "min_objective_improvement": 1.0e-4,
+                "opposite_frac_threshold": 0.05,
+            },
+            "note": (
+                "Forum v2: preserve enrich topic_family labels, token cap, alternating MLE. "
+                "Theta is NOT validated as ideology (gate expected to fail)."
+            ),
+        }
+    )
+    raw = config.get("wordfish_forum_v2", {})
+    if isinstance(raw, dict):
+        for key, val in raw.items():
+            if key == "validation" and isinstance(val, dict):
+                defaults["validation"] = {**defaults.get("validation", {}), **val}
+            elif key == "convergence" and isinstance(val, dict):
+                defaults["convergence"] = {**defaults.get("convergence", {}), **val}
+            elif key == "anchor_subreddit" and isinstance(val, dict):
+                defaults["anchor_subreddit"] = {**defaults.get("anchor_subreddit", {}), **val}
+            else:
+                defaults[key] = val
+    return defaults
 
 
 def load_ai_use_config(config: Dict[str, Any]) -> Dict[str, Any]:

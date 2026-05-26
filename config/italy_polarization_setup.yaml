@@ -353,7 +353,7 @@ comment_features:
   perplexity_model: ''
 political_universe:
   mode: tree
-  comment_political_min_points: 3
+  comment_political_min_points: 2
   tree_include_parent: true
   tree_max_depth: null
   political_cos_threshold: 0.55
@@ -386,14 +386,129 @@ semantic_axis:
   lang_match_filter: false
   seeds_dir: data/raw/seeds
   write_vector_cache: true
+  language_waves: true
+  language_wave_order: [it, en, de]
+  vector_cache_exclusive: true
   vector_paths:
     it: data/external/embeddings/cc.it.300.bin
     en: data/external/embeddings/cc.en.300.bin
     de: data/external/embeddings/cc.de.300.bin
-  pole_thresholds:
-    ideology: 0.25
-    emotion: 0.25
-    aggression: 0.25
+  pole_cutoffs: [0.25]
+  pole_thresholds_by_lexicon:
+    it:
+      ideology: 0.12
+      emotion: 0.12
+      aggression: 0.08
+    en:
+      ideology: 0.25
+      emotion: 0.25
+      aggression: 0.25
+    de:
+      ideology: 0.20
+      emotion: 0.20
+      aggression: 0.18
+  pole_percentiles: [10, 90]
+  percentile_calibration:
+    enabled: true
+    max_comments_per_lang: 50000
+  panel_bin_days: [1, 3, 7]
+circumvention:
+  raw_dir: data/raw/circumvention
+  treated_geo: IT
+  control_geos: [DE, FR, ES, GB, US]
+  country_panel_geo_map:
+    Italy_political: IT
+    Italy_others: IT
+    Germany: DE
+    US_political: US
+    UK: GB
+  panel_bin_days: [1, 3, 7]
+wordfish:
+  enabled: true
+  min_doc_tokens: 200
+  min_doc_freq: 2
+  min_token_len: 3
+  max_vocab_terms: 3000
+  top_freq_drop_n: 50
+  stopwords_dir: config/lexicons
+  languages: [it, en]
+  min_subreddits_per_language: 2
+  time_bins: [day, week]
+  ban_anchor_date: "2023-03-31"
+  weekly_bin_days: 7
+  train_iters: 5000
+  learning_rate: 1.0e-5
+  convergence:
+    check_final_objective: true
+    min_objective_improvement: 1.0e-4
+  anchor_subreddit:
+    it: politicaITA
+    en: PoliticalDiscussion
+  sensitivity_profiles:
+    - min_doc_freq: 2
+      top_freq_drop_n: 50
+    - min_doc_freq: 3
+      top_freq_drop_n: 100
+  top_axis_words: 25
+  change_window_days: [7, 3]
+  placebo_launch_date: "2023-03-16"
+  primary_time_bin: day
+wordfish_authors:
+  enabled: true
+  languages: [it, en, de]
+  ban_anchor_date: "2023-03-31"
+  placebo_launch_date: "2023-03-16"
+  rolling_bins_w: 2
+  time_bins:
+    - name: week7
+      time_bin: week
+      weekly_bin_days: 7
+      min_doc_tokens: 100
+    - name: week3
+      time_bin: week
+      weekly_bin_days: 3
+      min_doc_tokens: 50
+    - name: window
+      time_bin: window
+      min_doc_tokens: 100
+  panel_modes: [full, balanced]
+  drop_cross_language: false
+  min_authors_per_language: 50
+  primary_lang_priority: [it, de, en]
+  filter_comments_to_assigned_lang: true
+  sign_anchor_mode: subreddit_modal
+  anchor_subreddit:
+    it: politicaITA
+    en: PoliticalDiscussion
+    de: de
+  max_vocab_terms: 3000
+  headline_spec: week7
+  headline_mode: balanced
+  week_learning_rate_scale: 0.1
+  note: "Robustness; headline balanced+week7 for prompt 04."
+wordfish_authors_v2:
+  enabled: true
+  output_tables_subdir: wordfish_authors_v2
+  output_figures_subdir: wordfish_authors_v2
+  max_tokens_per_doc: 8000
+  token_subsample_seed: 42
+  backend: python_v2
+  en_fit_mode: split_us_uk
+  validation:
+    gate_abs_rho_sem_axis: 0.5
+    min_authors: 100
+wordfish_forum_v2:
+  enabled: true
+  output_tables_subdir: wordfish_forum_v2
+  output_figures_subdir: wordfish_forum_v2
+  max_tokens_per_doc: 8000
+  token_subsample_seed: 42
+  backend: python_v2
+  use_shard_topic_family: true
+  validation:
+    gate_abs_rho_sem_axis: 0.5
+    min_subreddits: 5
+    expect_gate_fail: true
 user_week:
   input_mode: enriched_shards
   # Pre/post split uses event_window.launch_day_utc (Italy ChatGPT ban onset, 2023-03-31 UTC).

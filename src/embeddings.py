@@ -30,6 +30,7 @@ _LANG_COL = {"it": "IT", "en": "EN", "de": "DE"}
 _VECTOR_CACHE: Dict[str, Any] = {}
 _AXIS_CACHE: Dict[Tuple[str, str], Dict[str, np.ndarray]] = {}
 _LOAD_LOGGED: set[str] = set()
+_ACTIVE_VECTOR_LANG: Optional[str] = None
 
 SEMAXIS_SCORE_KEYS = (
     "sem_axis_ideology",
@@ -135,6 +136,42 @@ def resolve_vector_path(
     return path
 
 
+def unload_all_vectors() -> None:
+    """Function summary: drop all cached fastText models and axes in this process.
+
+    Returns:
+    - None. Frees RAM when switching languages or ending a language wave.
+    """
+    import gc
+
+    global _ACTIVE_VECTOR_LANG
+    _VECTOR_CACHE.clear()
+    _AXIS_CACHE.clear()
+    _LOAD_LOGGED.clear()
+    _ACTIVE_VECTOR_LANG = None
+    gc.collect()
+
+
+def ensure_exclusive_vector_lang(lang_code: str, axes_cfg: Mapping[str, Any]) -> None:
+    """Function summary: keep at most one fastText language loaded per process.
+
+    Parameters:
+    - lang_code: it, en, or de.
+    - axes_cfg: semantic_axis config; honors ``vector_cache_exclusive`` (default true).
+
+    Returns:
+    - None. Unloads other languages when ``lang_code`` changes.
+    """
+    if not axes_cfg.get("vector_cache_exclusive", True):
+        return
+    global _ACTIVE_VECTOR_LANG
+    lang = lang_code.lower()
+    if _ACTIVE_VECTOR_LANG == lang:
+        return
+    unload_all_vectors()
+    _ACTIVE_VECTOR_LANG = lang
+
+
 def load_vectors(lang_code: str, project_root: Path, axes_cfg: Mapping[str, Any]) -> Any:
     """Function summary: load and cache KeyedVectors / FastText for one language.
 
@@ -147,6 +184,7 @@ def load_vectors(lang_code: str, project_root: Path, axes_cfg: Mapping[str, Any]
     - gensim vectors object (FastTextKeyedVectors for .bin).
     """
     lang = lang_code.lower()
+    ensure_exclusive_vector_lang(lang, axes_cfg)
     if lang in _VECTOR_CACHE:
         return _VECTOR_CACHE[lang]
     path = resolve_vector_path(lang, project_root, axes_cfg)
@@ -405,6 +443,7 @@ def get_axes_for_language(
     - Dict mapping axis name to unit vector.
     """
     lang = lang_code.lower()
+    ensure_exclusive_vector_lang(lang, axes_cfg)
     cache_key = (lang, str(axes_cfg.get("seeds_dir", "")))
     if cache_key in _AXIS_CACHE:
         return _AXIS_CACHE[cache_key]
@@ -718,8 +757,29 @@ def held_out_axis_sanity_report(
     return rows
 
 
+def unload_embeddings_for_language(lang_code: str) -> None:
+    """Function summary: drop cached fastText vectors and axes for one language.
+
+    Parameters:
+    - lang_code: it, en, or de.
+
+    Returns:
+    - None. Frees references so the OS can reclaim RAM after language waves.
+    """
+    import gc
+
+    global _ACTIVE_VECTOR_LANG
+    lang = lang_code.lower()
+    _VECTOR_CACHE.pop(lang, None)
+    axis_keys = [k for k in _AXIS_CACHE if k[0] == lang]
+    for key in axis_keys:
+        del _AXIS_CACHE[key]
+    _LOAD_LOGGED.discard(lang)
+    if _ACTIVE_VECTOR_LANG == lang:
+        _ACTIVE_VECTOR_LANG = None
+    gc.collect()
+
+
 def clear_embedding_caches() -> None:
     """Function summary: reset in-process vector and axis caches (for tests)."""
-    _VECTOR_CACHE.clear()
-    _AXIS_CACHE.clear()
-    _LOAD_LOGGED.clear()
+    unload_all_vectors()

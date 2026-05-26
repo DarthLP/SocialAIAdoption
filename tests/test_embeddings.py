@@ -5,14 +5,18 @@ from __future__ import annotations
 import numpy as np
 from gensim.models import KeyedVectors
 
+import src.embeddings as emb
 from src.embeddings import (
     SEMAXIS_SCORE_KEYS,
+    _AXIS_CACHE,
+    _VECTOR_CACHE,
     build_axis,
     clear_embedding_caches,
     comment_vector,
     load_seed_poles,
     score_comment_semantic_axis,
     score_vectors_against_axes,
+    unload_embeddings_for_language,
 )
 
 
@@ -80,6 +84,23 @@ def test_aggression_parallel_has_25_terms() -> None:
                     if part.strip():
                         n += 1
         assert n == 25, col
+
+
+def test_unload_embeddings_for_language() -> None:
+    """Unload removes one language from vector and axis caches."""
+    clear_embedding_caches()
+    kv = _MockKV()
+    _VECTOR_CACHE["it"] = kv
+    _VECTOR_CACHE["en"] = kv
+    _AXIS_CACHE[("it", "seeds")] = {"ideology": np.zeros(3)}
+    _AXIS_CACHE[("en", "seeds")] = {"ideology": np.zeros(3)}
+    unload_embeddings_for_language("it")
+    assert "it" not in _VECTOR_CACHE
+    assert "en" in _VECTOR_CACHE
+    assert not any(k[0] == "it" for k in _AXIS_CACHE)
+    assert any(k[0] == "en" for k in _AXIS_CACHE)
+    assert emb._ACTIVE_VECTOR_LANG is None
+    clear_embedding_caches()
 
 
 def test_load_seed_poles_it() -> None:

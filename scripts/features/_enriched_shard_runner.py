@@ -75,11 +75,13 @@ from src.config_utils import (  # noqa: E402
 from src.embeddings import (  # noqa: E402
     SEMAXIS_SCORE_KEYS,
     build_comment_vectors_for_texts,
+    ensure_exclusive_vector_lang,
     get_axes_for_language,
     load_shard_vector_cache,
     save_shard_vector_cache,
     score_vectors_against_axes,
     shard_embedding_cache_path,
+    unload_embeddings_for_language,
 )
 from src.political_lexicon import (  # noqa: E402
     score_comment_ai_style,
@@ -167,6 +169,13 @@ def parse_args(
         default=None,
         help="Parallel shard workers (default min(8, cpu_count-1); use 1 for sequential).",
     )
+    parser.add_argument(
+        "--lex-lang",
+        type=str,
+        default=None,
+        choices=["it", "en", "de"],
+        help="Process only subreddits with this primary_lexicon (one language wave).",
+    )
     if fixed_pass is None:
         parser.add_argument(
             "--pass",
@@ -186,6 +195,98 @@ def default_worker_count() -> int:
     """
     cpu = os.cpu_count() or 4
     return max(1, min(8, cpu - 1))
+
+
+TaskTuple = Tuple[str, str, str, str, str, str]
+DEFAULT_LANG_WAVE_ORDER: tuple[str, ...] = ("it", "en", "de")
+
+
+def _task_lex_lang(task: TaskTuple) -> str:
+    """Function summary: return primary lexicon language from a shard task tuple."""
+    return str(task[2]).lower()
+
+
+def _passes_need_fasttext(passes: Sequence[PassName]) -> bool:
+    """Function summary: True when any pass loads fastText embeddings."""
+    return "semaxis" in passes or _is_combined_all_pass(passes)
+
+
+def _language_wave_order(sem_cfg: Dict[str, Any]) -> tuple[str, ...]:
+    """Function summary: ordered language codes for semantic-axis waves."""
+    raw = sem_cfg.get("language_wave_order", list(DEFAULT_LANG_WAVE_ORDER))
+    if not isinstance(raw, (list, tuple)):
+        return DEFAULT_LANG_WAVE_ORDER
+    order = tuple(str(x).lower() for x in raw if str(x).strip())
+    return order or DEFAULT_LANG_WAVE_ORDER
+
+
+def _group_tasks_into_language_waves(
+    tasks: List[TaskTuple],
+    wave_order: Sequence[str],
+    log_prefix: str,
+) -> List[Tuple[str, List[TaskTuple]]]:
+    """Function summary: bucket tasks by lex_lang and emit waves in fixed order.
+
+    Parameters:
+    - tasks: shard worker task tuples.
+    - wave_order: e.g. (it, en, de).
+    - log_prefix: log tag for unknown-language warnings.
+
+    Returns:
+    - List of (lang, tasks_for_lang) with non-empty buckets.
+    """
+    buckets: Dict[str, List[TaskTuple]] = {lang: [] for lang in wave_order}
+    unknown: Dict[str, List[TaskTuple]] = {}
+    for task in tasks:
+        lang = _task_lex_lang(task)
+        if lang in buckets:
+            buckets[lang].append(task)
+        else:
+            unknown.setdefault(lang, []).append(task)
+    waves: List[Tuple[str, List[TaskTuple]]] = [
+        (lang, buckets[lang]) for lang in wave_order if buckets[lang]
+    ]
+    for lang in sorted(unknown):
+        print(
+            f"[{log_prefix}] language_wave: unknown lex_lang={lang!r} "
+            f"tasks={len(unknown[lang])} (appended after configured waves)",
+            flush=True,
+        )
+        waves.append((lang, unknown[lang]))
+    return waves
+
+
+def _run_task_batch(tasks: List[TaskTuple], workers: int, log_prefix: str) -> int:
+    """Function summary: execute shard tasks sequentially or via ProcessPool.
+
+    Parameters:
+    - tasks: shard worker tuples.
+    - workers: parallel worker count (1 = sequential).
+    - log_prefix: log tag prefix.
+
+    Returns:
+    - Total rows written across tasks.
+    """
+    total = 0
+    if workers <= 1:
+        for task in tasks:
+            sub, shard_name, pass_name, n, elapsed = feature_shard_worker(*task)
+            total += n
+            print(
+                f"[{log_prefix}] pass={pass_name} {sub}/{shard_name} rows={n} elapsed={elapsed:.1f}s",
+                flush=True,
+            )
+    else:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(feature_shard_worker, *task) for task in tasks]
+            for fut in as_completed(futures):
+                sub, shard_name, pass_name, n, elapsed = fut.result()
+                total += n
+                print(
+                    f"[{log_prefix}] pass={pass_name} {sub}/{shard_name} rows={n} elapsed={elapsed:.1f}s",
+                    flush=True,
+                )
+    return total
 
 
 def _polarization_score_row(
@@ -357,6 +458,7 @@ def _process_semaxis_shard(
     interim_dir: Path,
 ) -> int:
     """Function summary: add semantic-axis columns and optional vector cache for one shard."""
+    ensure_exclusive_vector_lang(lex_lang, sem_cfg)
     get_axes_for_language(lex_lang, project_root, sem_cfg)
     df = read_parquet_shard_safe(path)
     if df is None or df.empty:
@@ -420,7 +522,6 @@ def _process_all_features_shard(
     warm_polarization_lexicons(project_root, lex_lang)
     if lex_lang.lower() == "it":
         get_pairs_registry(project_root)
-    get_axes_for_language(lex_lang, project_root, sem_cfg)
     df = read_parquet_shard_safe(path)
     if df is None or df.empty:
         return 0
@@ -442,6 +543,7 @@ def _process_all_features_shard(
     langs = lang_series.tolist()
     ids = out["id"].astype(str).tolist()
     pol_rows = [_polarization_score_row(b, lex_lang, lc, pol_cfg, project_root) for b, lc in zip(bodies, langs, strict=True)]
+    ensure_exclusive_vector_lang(lex_lang, sem_cfg)
     comment_vecs = None
     coverages = None
     if sem_cfg.get("write_vector_cache", True):
@@ -613,11 +715,23 @@ def run_passes(
     tables_dir = Path(config["paths"]["tables_dir"])
     screening_by_sub = screening_by_subreddit(load_screening_pooled(tables_dir))
     subs = [args.subreddit] if args.subreddit else resolve_primary_subreddits(config)
-    workers = args.workers if args.workers is not None else default_worker_count()
+    default_workers = default_worker_count()
+    workers = args.workers if args.workers is not None else default_workers
+    if _passes_need_fasttext(passes) and workers > 2:
+        print(
+            f"[{log_prefix}] hint: semaxis fastText uses ~7GB per worker; "
+            f"on <=16GB RAM use --workers 1 (current workers={workers})",
+            flush=True,
+        )
+    lex_lang_filter = getattr(args, "lex_lang", None)
+    if lex_lang_filter:
+        lex_lang_filter = str(lex_lang_filter).lower()
     config_path_str = str((project_root / args.config).resolve())
     project_root_str = str(project_root.resolve())
     combined_all = _is_combined_all_pass(passes)
-    tasks: List[Tuple[str, str, str, str, str, str]] = []
+    use_language_waves = bool(sem_cfg.get("language_waves", True)) and _passes_need_fasttext(passes)
+    wave_order = _language_wave_order(sem_cfg)
+    tasks: List[TaskTuple] = []
     for subreddit in subs:
         action = subreddit_screening_action(screening_by_sub, subreddit)
         if should_skip_screened_subreddit(action, include_excluded=args.include_excluded):
@@ -639,6 +753,8 @@ def run_passes(
         if not shards:
             continue
         lex_lang = subreddit_primary_lexicon(config, subreddit, project_root=project_root)
+        if lex_lang_filter and lex_lang.lower() != lex_lang_filter:
+            continue
         if combined_all:
             for shard in shards:
                 tasks.append(
@@ -661,25 +777,22 @@ def run_passes(
         print(f"[{log_prefix}] no shards to process", flush=True)
         return
     total = 0
-    print(f"[{log_prefix}] tasks={len(tasks)} workers={workers} combined_all={combined_all}", flush=True)
-    if workers <= 1:
-        for task in tasks:
-            sub, shard_name, pass_name, n, elapsed = feature_shard_worker(*task)
-            total += n
+    print(
+        f"[{log_prefix}] tasks={len(tasks)} workers={workers} combined_all={combined_all} "
+        f"language_waves={use_language_waves}",
+        flush=True,
+    )
+    if use_language_waves:
+        waves = _group_tasks_into_language_waves(tasks, wave_order, log_prefix)
+        for lang, wave_tasks in waves:
             print(
-                f"[{log_prefix}] pass={pass_name} {sub}/{shard_name} rows={n} elapsed={elapsed:.1f}s",
+                f"[{log_prefix}] lang_wave={lang} tasks={len(wave_tasks)} workers={workers}",
                 flush=True,
             )
+            total += _run_task_batch(wave_tasks, workers, log_prefix)
+            unload_embeddings_for_language(lang)
     else:
-        with ProcessPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(feature_shard_worker, *task) for task in tasks]
-            for fut in as_completed(futures):
-                sub, shard_name, pass_name, n, elapsed = fut.result()
-                total += n
-                print(
-                    f"[{log_prefix}] pass={pass_name} {sub}/{shard_name} rows={n} elapsed={elapsed:.1f}s",
-                    flush=True,
-                )
+        total = _run_task_batch(tasks, workers, log_prefix)
     print(f"[{log_prefix}] done total_rows={total}", flush=True)
 
 

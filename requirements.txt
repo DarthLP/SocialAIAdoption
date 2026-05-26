@@ -1,5 +1,7 @@
 requests
+pytrends
 numpy
+scipy
 gensim
 pandas
 pyarrow
@@ -15,3 +17,7 @@ langid
 transformers
 torch
 sentencepiece
+stopwordsiso
+linearmodels
+statsmodels
+scipy

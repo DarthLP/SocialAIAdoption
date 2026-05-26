@@ -4,7 +4,7 @@
 
 - Dominant export + re-run stage 4 + `prepare_lexicon_descriptives.py` / `plot_lexicon_descriptives.py` (before P/R labeling).
 - Lexicon hand-label P/R validation (`audit_polarization_lexicons.py`, `lexicon_validation_pr.csv`) — **after** dominant features exist on shards.
-- Event-study / DiD at ban dates (`plot_reference_dates_utc` in config).
+- ~~Event-study / DiD at ban dates~~ — `prepare_did_subreddit_panel.py` + `scripts/analysis/did_event_study.py` → `results/tables/italy_polarization/did/`.
 - Within-user pre/post: panel → analyze → plot (`scripts/user_week/`; composites in `config/italy_polarization_setup.yaml` `user_week` block).
 
 ## Maintenance

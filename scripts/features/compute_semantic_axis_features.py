@@ -7,8 +7,12 @@ Functionality:
 - Requires fastText models under data/external/embeddings/ (see download_fasttext_models.py).
 
 How to apply/run:
-  .venv/bin/python scripts/features/compute_semantic_axis_features.py --config config/italy_polarization_setup.yaml
+  .venv/bin/python scripts/features/compute_semantic_axis_features.py --config config/italy_polarization_setup.yaml --workers 1
+  .venv/bin/python scripts/features/compute_semantic_axis_features.py --config config/italy_polarization_setup.yaml --lex-lang it --workers 1
   .venv/bin/python scripts/features/compute_semantic_axis_features.py --config config/italy_polarization_setup.yaml --subreddit Italia --max-shards 1
+
+Language waves (default): all IT shards, then EN, then DE; ProcessPool restarts between waves
+so fastText models unload. Use --workers 1 on machines with ~8GB RAM.
 """
 
 from __future__ import annotations
