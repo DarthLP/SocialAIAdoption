@@ -69,6 +69,8 @@ def composite_file_slug(composite_name: str) -> str:
     """Function summary: short filesystem slug for per-composite output files."""
     if composite_name.startswith("polarization"):
         return "polarization"
+    if composite_name.startswith("semantic"):
+        return "semantic"
     if "style" in composite_name:
         return "style"
     return composite_name.replace("_user_week", "").replace("_composite", "")

@@ -50,6 +50,7 @@ from src.config_utils import (  # noqa: E402
     plot_reference_dates_calendar_utc,
     tables_subdir,
 )
+from src.did.paths import resolve_panel_path  # noqa: E402
 
 SCORE_COLS = ("sem_axis_ideology", "sem_axis_emotion", "sem_axis_aggression")
 STALE_POLE_SUFFIXES = ("tau50", "tau75", "tau25")
@@ -639,7 +640,7 @@ def _plot_country_lexical(did_panel: pd.DataFrame, out_path: Path, config: dict,
 def _plot_bin_audit_and_lexical(
     fig_root: Path,
     tables: Path,
-    did_dir: Path,
+    did_country_path: Path,
     bin_days: int,
     config: dict,
 ) -> None:
@@ -662,10 +663,9 @@ def _plot_bin_audit_and_lexical(
             config,
             bin_days=bd,
         )
-    did_path = did_dir / f"did_country_panel_{bd}d.csv"
-    if did_path.is_file():
+    if did_country_path.is_file():
         _plot_country_lexical(
-            pd.read_csv(did_path),
+            pd.read_csv(did_country_path),
             bin_root / "lexical_country" / "net_ideology_and_ai_style.png",
             config,
             bin_days=bd,
@@ -677,7 +677,6 @@ def main() -> None:
     args = parse_args()
     config = load_config(PROJECT_ROOT / args.config)
     tables = tables_subdir(config, "semantic_axis")
-    did_dir = tables_subdir(config, "did")
     fig_root = figures_subdir(config, "semantic_axis")
     fig_root.mkdir(parents=True, exist_ok=True)
     global_dir = fig_root / "_global"
@@ -693,7 +692,13 @@ def main() -> None:
 
     n_plotted = 0
     for bin_days in PANEL_BIN_DAYS:
-        _plot_bin_audit_and_lexical(fig_root, tables, did_dir, int(bin_days), config)
+        _plot_bin_audit_and_lexical(
+            fig_root,
+            tables,
+            resolve_panel_path(config, "country", f"did_country_panel_{int(bin_days)}d.csv"),
+            int(bin_days),
+            config,
+        )
         for level_key, (slug, group_col, use_series_id) in PLOT_LEVELS.items():
             panel_path = tables / f"semantic_axis_panel_{slug}_{int(bin_days)}d.csv"
             if not panel_path.is_file():

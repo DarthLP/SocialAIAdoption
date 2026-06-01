@@ -10,19 +10,27 @@ Functionality:
 How to apply/run:
   .venv/bin/python scripts/diagnostics/prepare_wordfish_authors_v2.py --config config/italy_polarization_setup.yaml
   .venv/bin/python scripts/diagnostics/prepare_wordfish_authors_v2.py --spec week7 --panel-mode balanced
+  .venv/bin/python scripts/diagnostics/prepare_wordfish_authors_v2.py --reuse-assignment  # skip pass1 lexicon scan
 """
 
 from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 import shutil
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, DefaultDict, Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 import pandas as pd
+
+# Keep scipy/numpy BLAS on one thread during fits (lower heat, same wall-clock order).
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 READ_COLUMNS = [
     "author",
@@ -38,6 +46,18 @@ READ_COLUMNS = [
 ]
 
 FIT_LANGUAGES = ("it", "en", "de")
+
+PASS1_SCAN_COLUMNS = (
+    "author",
+    "primary_lexicon",
+    "comment_in_political_universe",
+    "is_deleted_author",
+    "date_utc",
+    "net_ideology",
+    "sem_axis_ideology",
+)
+BODY_SCAN_COLUMNS = PASS1_SCAN_COLUMNS + ("subreddit", "body", "n_words")
+PROGRESS_EVERY_N_SHARDS = 25
 
 
 def _setup_project_root() -> Path:
@@ -102,6 +122,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--spec", type=str, default="all")
     parser.add_argument("--panel-mode", type=str, default="all", choices=("full", "balanced", "all"))
     parser.add_argument("--drop-cross-language", action="store_true")
+    parser.add_argument(
+        "--reuse-assignment",
+        action="store_true",
+        help="Skip pass1 if wordfish_authors_assignment CSV already exists in output dir.",
+    )
     return parser.parse_args()
 
 
@@ -133,12 +158,107 @@ def assign_bin_start_author(
     raise ValueError(f"unknown time_bin: {time_bin}")
 
 
+def read_parquet_shard_projected(shard: Path, columns: Sequence[str]) -> Optional[pd.DataFrame]:
+    """Function summary: read parquet with column projection; skip corrupt/empty files.
+
+    Parameters:
+    - shard: path to monthly parquet.
+    - columns: desired columns (intersected with file schema).
+
+    Returns:
+    - DataFrame or None.
+    """
+    if not shard.is_file() or shard.stat().st_size < 8:
+        return None
+    try:
+        import pyarrow.parquet as pq
+
+        available = set(pq.ParquetFile(shard).schema.names)
+        use_cols = [c for c in columns if c in available]
+        if not use_cols:
+            return None
+        return pd.read_parquet(shard, columns=use_cols)
+    except Exception:
+        try:
+            df = pd.read_parquet(shard)
+            if df is None or df.empty:
+                return None
+            use_cols = [c for c in columns if c in df.columns]
+            return df[use_cols].copy()
+        except Exception:
+            return None
+
+
+def enumerate_shard_paths(
+    shard_root: Path,
+    subreddits: Sequence[str],
+    max_shards: Optional[int],
+) -> List[Tuple[str, Path]]:
+    """Function summary: list (subreddit, parquet path) tasks in stable scan order.
+
+    Parameters:
+    - shard_root: cleaned_monthly_chunks root.
+    - subreddits: forum list.
+    - max_shards: optional per-forum cap.
+
+    Returns:
+    - List of (subreddit name, shard path).
+    """
+    tasks: List[Tuple[str, Path]] = []
+    for sub in subreddits:
+        shard_dir = shard_root / sub
+        if not shard_dir.is_dir():
+            continue
+        shards = sorted(shard_dir.glob("*.parquet"))
+        if max_shards is not None:
+            shards = shards[: max_shards]
+        for shard in shards:
+            tasks.append((sub, shard))
+    return tasks
+
+
+def filter_political_chunk(
+    df: Optional[pd.DataFrame],
+    subreddit: str,
+    start: str,
+    end_excl: str,
+) -> Optional[pd.DataFrame]:
+    """Function summary: political-universe filter and date window on a projected shard.
+
+    Parameters:
+    - df: raw projected frame or None.
+    - subreddit: forum name to attach.
+    - start: inclusive window start YYYY-MM-DD.
+    - end_excl: exclusive window end.
+
+    Returns:
+    - Filtered frame or None if empty/unusable.
+    """
+    if df is None or df.empty:
+        return None
+    if "comment_in_political_universe" not in df.columns:
+        return None
+    chunk = df.copy()
+    chunk["subreddit"] = subreddit
+    chunk = chunk[chunk["comment_in_political_universe"].astype(bool)]
+    if "is_deleted_author" in chunk.columns:
+        chunk = chunk[~chunk["is_deleted_author"].fillna(False).astype(bool)]
+    if "date_utc" not in chunk.columns:
+        return None
+    chunk["date_utc"] = chunk["date_utc"].astype(str).str[:10]
+    chunk = chunk[(chunk["date_utc"] >= start) & (chunk["date_utc"] < end_excl)]
+    if chunk.empty:
+        return None
+    return chunk
+
+
 def iter_comment_chunks(
     shard_root: Path,
     subreddits: Sequence[str],
     max_shards: Optional[int],
     start: str,
     end_excl: str,
+    columns: Optional[Sequence[str]] = None,
 ):
     """Function summary: yield filtered political comment chunks from shards.
 
@@ -148,37 +268,322 @@ def iter_comment_chunks(
     - max_shards: optional per-forum cap.
     - start: window start YYYY-MM-DD.
     - end_excl: exclusive end date.
+    - columns: optional column projection (defaults to READ_COLUMNS).
 
     Yields:
     - DataFrame chunks with required columns.
     """
-    for sub in subreddits:
-        shard_dir = shard_root / sub
-        if not shard_dir.is_dir():
-            continue
-        shards = sorted(shard_dir.glob("*.parquet"))
-        if max_shards is not None:
-            shards = shards[: max_shards]
-        for shard in shards:
-            try:
-                df = pd.read_parquet(shard)
-            except Exception:
-                continue
-            if "comment_in_political_universe" not in df.columns:
-                continue
-            cols = [c for c in READ_COLUMNS if c in df.columns]
-            if not cols:
-                continue
-            chunk = df[cols].copy()
-            chunk["subreddit"] = sub
-            chunk = chunk[chunk["comment_in_political_universe"].astype(bool)]
-            if "is_deleted_author" in chunk.columns:
-                chunk = chunk[~chunk["is_deleted_author"].fillna(False).astype(bool)]
-            chunk["date_utc"] = chunk["date_utc"].astype(str).str[:10]
-            chunk = chunk[(chunk["date_utc"] >= start) & (chunk["date_utc"] < end_excl)]
-            if chunk.empty:
-                continue
+    use_cols = tuple(columns or READ_COLUMNS)
+    for sub, shard in enumerate_shard_paths(shard_root, subreddits, max_shards):
+        raw = read_parquet_shard_projected(shard, use_cols)
+        chunk = filter_political_chunk(raw, sub, start, end_excl)
+        if chunk is not None:
             yield chunk
+
+
+def accumulate_pass1_chunk(
+    chunk: pd.DataFrame,
+    author_langs: DefaultDict[str, Set[str]],
+    author_counts: DefaultDict[str, int],
+) -> None:
+    """Function summary: update author language sets from one filtered chunk.
+
+    Parameters:
+    - chunk: filtered political comments.
+    - author_langs: mutable author -> lexicon set map.
+    - author_counts: mutable author comment counts.
+
+    Returns:
+    - None (updates maps in place).
+    """
+    authors = chunk["author"].astype(str)
+    lexes = chunk["primary_lexicon"].astype(str).map(normalize_lexicon_code)
+    for author, lex in zip(authors, lexes):
+        if not author or author == "nan":
+            continue
+        author_langs[author].add(lex)
+        author_counts[author] += 1
+
+
+def accumulate_ideol_shard_parts(
+    chunk: pd.DataFrame,
+    ideol_parts: List[pd.DataFrame],
+) -> None:
+    """Function summary: append per-shard author ideology means (same logic as legacy second pass).
+
+    Parameters:
+    - chunk: filtered chunk with optional net_ideology / sem_axis_ideology.
+    - ideol_parts: list collecting per-shard groupby frames.
+
+    Returns:
+    - None.
+    """
+    if "net_ideology" not in chunk.columns:
+        return
+    part = (
+        chunk.groupby("author", as_index=False)
+        .agg(
+            net_ideology_mean=("net_ideology", "mean"),
+            sem_axis_ideology_mean=("sem_axis_ideology", "mean"),
+        )
+    )
+    ideol_parts.append(part)
+
+
+def finalize_comments_ideol(ideol_parts: List[pd.DataFrame]) -> pd.DataFrame:
+    """Function summary: merge per-shard ideology means into one author table.
+
+    Parameters:
+    - ideol_parts: shard-level author mean frames.
+
+    Returns:
+    - Author-level ideology dataframe.
+    """
+    if not ideol_parts:
+        return pd.DataFrame()
+    comments_ideol = pd.concat(ideol_parts, ignore_index=True)
+    return (
+        comments_ideol.groupby("author", as_index=False)
+        .agg(
+            net_ideology_mean=("net_ideology_mean", "mean"),
+            sem_axis_ideology_mean=("sem_axis_ideology_mean", "mean"),
+        )
+        .reset_index(drop=True)
+    )
+
+
+def vectorized_bin_start_series(
+    dates: pd.Series,
+    time_bin: str,
+    anchor: Any,
+    weekly_days: int,
+    window_start: str,
+) -> pd.Series:
+    """Function summary: vectorized bin_start for a comment date column.
+
+    Parameters:
+    - dates: YYYY-MM-DD strings.
+    - time_bin: week, day, or window.
+    - anchor: ban anchor date.
+    - weekly_days: week block width.
+    - window_start: whole-window label.
+
+    Returns:
+    - Series of bin_start strings aligned to dates.index.
+    """
+    dates = dates.astype(str).str[:10]
+    if time_bin == "window":
+        return pd.Series(window_start, index=dates.index)
+    if time_bin == "day":
+        return dates.map(bin_start_for_day)
+    if time_bin == "week":
+        return dates.map(lambda d: bin_start_for_week(d, anchor, weekly_days))
+    raise ValueError(f"unknown time_bin: {time_bin}")
+
+
+def accumulate_spec_bodies_chunk(
+    chunk: pd.DataFrame,
+    spec: Dict[str, Any],
+    author_assigned: Dict[str, str],
+    author_langs: Dict[str, Set[str]],
+    filter_to_assigned: bool,
+    drop_cross_language: bool,
+    anchor: Any,
+    window_start: str,
+    bodies: DefaultDict[Tuple[str, str, str], List[str]],
+    meta: Dict[Tuple[str, str, str], Dict[str, Any]],
+) -> None:
+    """Function summary: groupby-append comment bodies into author×bin×assigned-lang buckets.
+
+    Parameters:
+    - chunk: filtered political chunk with body column.
+    - spec: time_bins entry.
+    - author_assigned: author -> fit language.
+    - author_langs: author -> lexicons seen (cross-lang filter).
+    - filter_to_assigned: keep only comments matching assigned lexicon.
+    - drop_cross_language: exclude multi-lexicon authors.
+    - anchor: ban anchor for week bins.
+    - window_start: window spec left edge.
+    - bodies: mutable (author, bin_start, lang) -> body strings.
+    - meta: mutable per-key coverage metadata.
+
+    Returns:
+    - None.
+    """
+    work = chunk.copy()
+    work["author"] = work["author"].astype(str)
+    work["lex"] = work["primary_lexicon"].astype(str).map(normalize_lexicon_code)
+    valid = work["author"].notna() & (work["author"] != "") & (work["author"] != "nan")
+    work = work.loc[valid]
+    work["assigned"] = work["author"].map(author_assigned)
+    work = work.loc[work["assigned"].notna()]
+    if drop_cross_language:
+        cross = {a for a, langs in author_langs.items() if len(langs) >= 2}
+        work = work.loc[~work["author"].isin(cross)]
+    if filter_to_assigned:
+        work = work.loc[work["lex"] == work["assigned"]]
+    if work.empty:
+        return
+
+    time_bin = str(spec["time_bin"])
+    weekly_days = int(spec.get("weekly_bin_days", 7))
+    work["bin_start"] = vectorized_bin_start_series(
+        work["date_utc"], time_bin, anchor, weekly_days, window_start
+    )
+
+    grp = work.groupby(["author", "bin_start", "assigned"], sort=False)
+    for (author, bin_start, lang), g in grp:
+        key = (str(author), str(bin_start), str(lang))
+        bodies[key].extend(g["body"].fillna("").astype(str).tolist())
+        if key not in meta:
+            meta[key] = {
+                "dates": set(),
+                "subreddits": Counter(),
+                "n_words_proxy": 0,
+                "n_comments": 0,
+            }
+        m = meta[key]
+        m["dates"].update(g["date_utc"].astype(str).str[:10].unique())
+        m["subreddits"].update(g["subreddit"].astype(str).value_counts().to_dict())
+        if "n_words" in g.columns:
+            m["n_words_proxy"] += int(
+                pd.to_numeric(g["n_words"], errors="coerce").fillna(0).sum()
+            )
+        m["n_comments"] += len(g)
+
+
+@dataclass
+class ShardScanResult:
+    """Function summary: outputs from a two-phase single-list shard scan."""
+
+    author_langs: Dict[str, Set[str]]
+    author_counts: Dict[str, int]
+    comments_ideol: pd.DataFrame
+    bodies_by_spec: Dict[str, DefaultDict[Tuple[str, str, str], List[str]]]
+    meta_by_spec: Dict[str, Dict[Tuple[str, str, str], Dict[str, Any]]]
+
+
+def scan_shards_for_wordfish(
+    shard_root: Path,
+    subreddits: Sequence[str],
+    max_shards: Optional[int],
+    start: str,
+    end_excl: str,
+    specs: Sequence[Dict[str, Any]],
+    wfa_cfg: Dict[str, Any],
+    priority: Sequence[str],
+    author_assigned: Optional[Dict[str, str]] = None,
+    author_langs: Optional[Dict[str, Set[str]]] = None,
+    *,
+    skip_pass1_langs: bool = False,
+    progress: bool = True,
+) -> ShardScanResult:
+    """Function summary: two-phase shard scan (pass1+ideol, then all spec bodies); one read per phase.
+
+    Parameters:
+    - shard_root: interim shard root.
+    - subreddits: forums to scan.
+    - max_shards: optional per-forum cap.
+    - start, end_excl: event window.
+    - specs: time_bin spec dicts for body aggregation.
+    - wfa_cfg: wordfish authors config.
+    - priority: language priority for pass1 assignment when not reusing CSV.
+    - author_assigned: precomputed assignment (reuse-assignment); built after pass1 if None.
+    - author_langs: precomputed langs when skip_pass1_langs.
+    - skip_pass1_langs: if True, skip lexicon assignment scan (still scan ideology).
+    - progress: print shard progress every N files.
+
+    Returns:
+    - ShardScanResult with pass1, ideology, and per-spec body buffers.
+    """
+    tasks = enumerate_shard_paths(shard_root, subreddits, max_shards)
+    total = len(tasks)
+    anchor = parse_anchor_date(str(wfa_cfg["ban_anchor_date"]))
+    filter_assigned = bool(wfa_cfg.get("filter_comments_to_assigned_lang", True))
+    drop_cross_language = bool(wfa_cfg.get("drop_cross_language", False))
+
+    langs_acc: DefaultDict[str, Set[str]] = defaultdict(set)
+    counts_acc: DefaultDict[str, int] = defaultdict(int)
+    if author_langs:
+        for a, ls in author_langs.items():
+            langs_acc[a] = set(ls)
+    ideol_parts: List[pd.DataFrame] = []
+
+    phase1_label = "ideology" if skip_pass1_langs else "pass1+ideology"
+    print(
+        f"[prepare_wordfish_authors_v2] scan phase 1/2: {phase1_label} ({total} shards)",
+        flush=True,
+    )
+    for idx, (sub, shard) in enumerate(tasks, start=1):
+        raw = read_parquet_shard_projected(shard, PASS1_SCAN_COLUMNS)
+        chunk = filter_political_chunk(raw, sub, start, end_excl)
+        if chunk is not None:
+            if not skip_pass1_langs:
+                accumulate_pass1_chunk(chunk, langs_acc, counts_acc)
+            accumulate_ideol_shard_parts(chunk, ideol_parts)
+        if progress and (idx == 1 or idx % PROGRESS_EVERY_N_SHARDS == 0 or idx == total):
+            print(
+                f"[prepare_wordfish_authors_v2] phase 1: shard {idx}/{total} forum={sub}",
+                flush=True,
+            )
+
+    if skip_pass1_langs:
+        if author_langs is None:
+            raise ValueError("skip_pass1_langs requires author_langs")
+        author_langs_out = dict(author_langs)
+        author_counts_out = {}
+    else:
+        author_langs_out = dict(langs_acc)
+        author_counts_out = dict(counts_acc)
+
+    if author_assigned is None:
+        author_assigned = {
+            author: assign_primary_language(langs, priority)
+            for author, langs in author_langs_out.items()
+        }
+
+    bodies_by_spec: Dict[str, DefaultDict[Tuple[str, str, str], List[str]]] = {
+        str(s["name"]): defaultdict(list) for s in specs
+    }
+    meta_by_spec: Dict[str, Dict[Tuple[str, str, str], Dict[str, Any]]] = {
+        str(s["name"]): {} for s in specs
+    }
+
+    print(
+        f"[prepare_wordfish_authors_v2] scan phase 2/2: bodies ({total} shards, {len(specs)} specs)",
+        flush=True,
+    )
+    for idx, (sub, shard) in enumerate(tasks, start=1):
+        raw = read_parquet_shard_projected(shard, BODY_SCAN_COLUMNS)
+        chunk = filter_political_chunk(raw, sub, start, end_excl)
+        if chunk is not None:
+            for spec in specs:
+                spec_name = str(spec["name"])
+                accumulate_spec_bodies_chunk(
+                    chunk,
+                    spec,
+                    author_assigned,
+                    author_langs_out,
+                    filter_assigned,
+                    drop_cross_language,
+                    anchor,
+                    start,
+                    bodies_by_spec[spec_name],
+                    meta_by_spec[spec_name],
+                )
+        if progress and (idx == 1 or idx % PROGRESS_EVERY_N_SHARDS == 0 or idx == total):
+            print(
+                f"[prepare_wordfish_authors_v2] phase 2: shard {idx}/{total} forum={sub}",
+                flush=True,
+            )
+
+    return ShardScanResult(
+        author_langs=author_langs_out,
+        author_counts=author_counts_out,
+        comments_ideol=finalize_comments_ideol(ideol_parts),
+        bodies_by_spec=bodies_by_spec,
+        meta_by_spec=meta_by_spec,
+    )
 
 
 def pass1_author_languages(
@@ -202,16 +607,110 @@ def pass1_author_languages(
     """
     author_langs: DefaultDict[str, Set[str]] = defaultdict(set)
     author_counts: DefaultDict[str, int] = defaultdict(int)
-    for chunk in iter_comment_chunks(shard_root, subreddits, max_shards, start, end_excl):
-        for author, lex in zip(
-            chunk["author"].astype(str),
-            chunk["primary_lexicon"].astype(str).map(normalize_lexicon_code),
-        ):
-            if not author or author == "nan":
-                continue
-            author_langs[author].add(lex)
-            author_counts[author] += 1
+    for chunk in iter_comment_chunks(
+        shard_root, subreddits, max_shards, start, end_excl, columns=PASS1_SCAN_COLUMNS
+    ):
+        accumulate_pass1_chunk(chunk, author_langs, author_counts)
     return dict(author_langs), dict(author_counts)
+
+
+def load_assignment_from_csv(path: Path) -> Tuple[Dict[str, Set[str]], Dict[str, str], pd.DataFrame]:
+    """Function summary: load author assignment table written by a prior run.
+
+    Parameters:
+    - path: wordfish_authors_assignment CSV path.
+
+    Returns:
+    - Tuple (author_langs, author_assigned, assignment dataframe).
+    """
+    assignment = pd.read_csv(path)
+    author_langs: Dict[str, Set[str]] = {}
+    author_assigned: Dict[str, str] = {}
+    for _, row in assignment.iterrows():
+        author = str(row["author"])
+        author_assigned[author] = str(row["assigned_primary_lexicon"])
+        seen = str(row.get("lexicons_seen", "") or "")
+        author_langs[author] = set(seen.split(";")) if seen else set()
+    return author_langs, author_assigned, assignment
+
+
+def documents_from_buffers(
+    bodies: DefaultDict[Tuple[str, str, str], List[str]],
+    meta: Dict[Tuple[str, str, str], Dict[str, Any]],
+    spec: Dict[str, Any],
+    wfa_cfg: Dict[str, Any],
+    stopwords_by_lang: Dict[str, Set[str]],
+) -> Tuple[List[DocumentRecord], pd.DataFrame]:
+    """Function summary: tokenize aggregated bodies into DocumentRecords for one spec.
+
+    Parameters:
+    - bodies: (author, bin_start, lang) -> comment bodies.
+    - meta: per-key coverage metadata.
+    - spec: time_bins entry.
+    - wfa_cfg: merged wordfish_authors config.
+    - stopwords_by_lang: language -> stopword set.
+
+    Returns:
+    - Tuple (document records, coverage audit).
+    """
+    time_bin = str(spec["time_bin"])
+    min_doc_tokens = int(spec["min_doc_tokens"])
+    min_token_len = int(wfa_cfg["min_token_len"])
+    spec_name = str(spec["name"])
+    max_tok = int(wfa_cfg.get("max_tokens_per_doc", 0))
+    seed = int(wfa_cfg.get("token_subsample_seed", 42))
+
+    docs: List[DocumentRecord] = []
+    coverage_rows: List[Dict[str, Any]] = []
+
+    for (author, bin_start, lang), text_parts in bodies.items():
+        stopwords = stopwords_by_lang.get(lang, set())
+        text = " ".join(text_parts)
+        tokens = tokenize_document(text, stopwords, min_token_len)
+        n_tokens_raw = len(tokens)
+        truncated = False
+        if max_tok > 0:
+            tokens, n_tokens_raw, truncated = cap_document_tokens(tokens, max_tok, seed)
+        n_tokens = len(tokens)
+        m = meta.get((author, bin_start, lang))
+        if m is None:
+            continue
+        modal_sub = m["subreddits"].most_common(1)[0][0] if m["subreddits"] else ""
+        doc_id = f"{author}|{bin_start}"
+        rec = DocumentRecord(
+            doc_id=doc_id,
+            subreddit=modal_sub,
+            topic_family="",
+            primary_lexicon=lang,
+            bin_start=bin_start,
+            time_bin=time_bin,
+            n_days_in_bin=len(m["dates"]),
+            n_tokens=n_tokens,
+            tokens=tokens,
+            author=author,
+            n_words_proxy=int(m["n_words_proxy"]),
+        )
+        kept = n_tokens >= min_doc_tokens
+        if kept:
+            docs.append(rec)
+        coverage_rows.append(
+            {
+                "spec": spec_name,
+                "author": author,
+                "primary_lexicon": lang,
+                "time_bin": time_bin,
+                "bin_start": bin_start,
+                "n_comments": m["n_comments"],
+                "n_days_in_bin": len(m["dates"]),
+                "n_words_proxy": m["n_words_proxy"],
+                "n_tokens": n_tokens,
+                "n_tokens_raw": n_tokens_raw,
+                "tokens_truncated": int(truncated),
+                "doc_kept": kept,
+            }
+        )
+
+    return docs, pd.DataFrame(coverage_rows)
 
 
 def build_author_assignment_table(
@@ -271,7 +770,7 @@ def aggregate_author_documents(
     - author_assigned: author -> fit language.
     - spec: time_bins entry (name, time_bin, weekly_bin_days, min_doc_tokens).
     - wfa_cfg: merged wordfish_authors config.
-    - stopwords: language stopwords.
+    - stopwords: language stopwords for token_lang (or sole language in buffers).
     - filter_to_assigned: keep only assigned-lang comments.
     - drop_cross_language: exclude multi-lexicon authors.
     - author_langs: for cross-lang filter.
@@ -282,100 +781,41 @@ def aggregate_author_documents(
     - Tuple (document records, coverage audit).
     """
     anchor = parse_anchor_date(str(wfa_cfg["ban_anchor_date"]))
-    time_bin = str(spec["time_bin"])
-    weekly_days = int(spec.get("weekly_bin_days", 7))
-    min_doc_tokens = int(spec["min_doc_tokens"])
-    min_token_len = int(wfa_cfg["min_token_len"])
-    spec_name = str(spec["name"])
-
     bodies: DefaultDict[Tuple[str, str, str], List[str]] = defaultdict(list)
-    meta: DefaultDict[Tuple[str, str, str], Dict[str, Any]] = {}
+    meta: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+    filter_assigned = filter_to_assigned
 
-    for chunk in iter_comment_chunks(shard_root, subreddits, max_shards, start, end_excl):
-        chunk["lex"] = chunk["primary_lexicon"].astype(str).map(normalize_lexicon_code)
-        for row in chunk.itertuples(index=False):
-            author = str(getattr(row, "author", ""))
-            if not author or author == "nan":
+    for chunk in iter_comment_chunks(
+        shard_root, subreddits, max_shards, start, end_excl, columns=BODY_SCAN_COLUMNS
+    ):
+        work = chunk.copy()
+        if target_lang is not None:
+            work["assigned"] = work["author"].astype(str).map(author_assigned)
+            work = work.loc[work["assigned"] == target_lang]
+            if work.empty:
                 continue
-            if drop_cross_language and len(author_langs.get(author, set())) >= 2:
-                continue
-            assigned = author_assigned.get(author)
-            if not assigned:
-                continue
-            if target_lang is not None and assigned != target_lang:
-                continue
-            lex = str(getattr(row, "lex", ""))
-            if filter_to_assigned and lex != assigned:
-                continue
-            date_utc = str(getattr(row, "date_utc", ""))[:10]
-            bin_start = assign_bin_start_author(
-                date_utc, time_bin, anchor, weekly_days, window_start
-            )
-            key = (author, bin_start, assigned)
-            bodies[key].append(str(getattr(row, "body", "") or ""))
-            sub = str(getattr(row, "subreddit", ""))
-            if key not in meta:
-                meta[key] = {
-                    "dates": set(),
-                    "subreddits": Counter(),
-                    "n_words_proxy": 0,
-                    "n_comments": 0,
-                }
-            meta[key]["dates"].add(date_utc)
-            meta[key]["subreddits"][sub] += 1
-            meta[key]["n_words_proxy"] += int(getattr(row, "n_words", 0) or 0)
-            meta[key]["n_comments"] += 1
-
-    docs: List[DocumentRecord] = []
-    coverage_rows: List[Dict[str, Any]] = []
-
-    for (author, bin_start, lang), text_parts in bodies.items():
-        text = " ".join(text_parts)
-        tokens = tokenize_document(text, stopwords, min_token_len)
-        max_tok = int(wfa_cfg.get("max_tokens_per_doc", 0))
-        seed = int(wfa_cfg.get("token_subsample_seed", 42))
-        n_tokens_raw = len(tokens)
-        truncated = False
-        if max_tok > 0:
-            tokens, n_tokens_raw, truncated = cap_document_tokens(tokens, max_tok, seed)
-        n_tokens = len(tokens)
-        m = meta[(author, bin_start, lang)]
-        modal_sub = m["subreddits"].most_common(1)[0][0] if m["subreddits"] else ""
-        doc_id = f"{author}|{bin_start}"
-        rec = DocumentRecord(
-            doc_id=doc_id,
-            subreddit=modal_sub,
-            topic_family="",
-            primary_lexicon=lang,
-            bin_start=bin_start,
-            time_bin=time_bin,
-            n_days_in_bin=len(m["dates"]),
-            n_tokens=n_tokens,
-            tokens=tokens,
-            author=author,
-            n_words_proxy=int(m["n_words_proxy"]),
-        )
-        kept = n_tokens >= min_doc_tokens
-        if kept:
-            docs.append(rec)
-        coverage_rows.append(
-            {
-                "spec": spec_name,
-                "author": author,
-                "primary_lexicon": lang,
-                "time_bin": time_bin,
-                "bin_start": bin_start,
-                "n_comments": m["n_comments"],
-                "n_days_in_bin": len(m["dates"]),
-                "n_words_proxy": m["n_words_proxy"],
-                "n_tokens": n_tokens,
-                "n_tokens_raw": n_tokens_raw,
-                "tokens_truncated": int(truncated),
-                "doc_kept": kept,
-            }
+        accumulate_spec_bodies_chunk(
+            work,
+            spec,
+            author_assigned,
+            author_langs,
+            filter_assigned,
+            drop_cross_language,
+            anchor,
+            window_start,
+            bodies,
+            meta,
         )
 
-    return docs, pd.DataFrame(coverage_rows)
+    langs = {k[2] for k in bodies}
+    token_lang = target_lang or (next(iter(langs)) if len(langs) == 1 else "")
+    stopwords_by_lang = {lang: stopwords if lang == token_lang else set() for lang in langs}
+    docs, cov = documents_from_buffers(bodies, meta, spec, wfa_cfg, stopwords_by_lang)
+    if target_lang is not None:
+        docs = [d for d in docs if d.primary_lexicon == target_lang]
+        if not cov.empty:
+            cov = cov[cov["primary_lexicon"] == target_lang].copy()
+    return docs, cov
 
 
 def filter_docs_by_subreddit_set(
@@ -553,6 +993,39 @@ def author_positions_and_panels(
         )
 
     ext_df = pd.DataFrame(ext_rows)
+    pre_mask = ext_df["bin_start"].astype(str) < anchor_date
+    author_theta_pre = (
+        ext_df.loc[pre_mask]
+        .groupby("author")["theta"]
+        .agg(pre_n="count", author_pre_mean_theta="mean")
+    )
+    ext_df = ext_df.merge(author_theta_pre, on="author", how="left")
+    ext_df["extremity_within_author"] = np.where(
+        ext_df["pre_n"].fillna(0) >= 2,
+        (ext_df["theta"] - ext_df["author_pre_mean_theta"]).abs(),
+        np.nan,
+    )
+    lang_pre_stats: Dict[str, tuple[float, float]] = {}
+    for lang, grp in ext_df.loc[pre_mask].groupby("primary_lexicon"):
+        vals = grp["extremity_within_author"].dropna()
+        if len(vals) >= 2:
+            lang_pre_stats[str(lang)] = (float(vals.mean()), float(vals.std()))
+    ext_df["extremity_within_author_z"] = np.nan
+    for author, grp in ext_df.groupby("author"):
+        if float(grp["pre_n"].iloc[0] if "pre_n" in grp.columns else 0) < 2:
+            continue
+        pre_a = grp[grp["bin_start"].astype(str) < anchor_date]["extremity_within_author"].dropna()
+        lang = str(grp["primary_lexicon"].iloc[0])
+        if len(pre_a) >= 2 and pre_a.std() > 0:
+            mu_a, sd_a = float(pre_a.mean()), float(pre_a.std())
+        elif lang in lang_pre_stats and lang_pre_stats[lang][1] > 0:
+            mu_a, sd_a = lang_pre_stats[lang]
+        else:
+            continue
+        ext_df.loc[grp.index, "extremity_within_author_z"] = (
+            grp["extremity_within_author"] - mu_a
+        ) / sd_a
+    ext_df = ext_df.drop(columns=["pre_n", "author_pre_mean_theta"], errors="ignore")
     rolling_w = int(wfa_cfg.get("rolling_bins_w", 2))
     ext_df = compute_change_outcomes(ext_df, anchor_date, rolling_w, group_col="author")
 
@@ -808,20 +1281,10 @@ def main() -> None:
     shard_root = Path(config["paths"]["interim_dir"]) / "cleaned_monthly_chunks"
     stop_dir = PROJECT_ROOT / str(wfa_cfg.get("stopwords_dir", "config/lexicons"))
     priority = list(wfa_cfg.get("primary_lang_priority", ["it", "de", "en"]))
-    filter_assigned = bool(wfa_cfg.get("filter_comments_to_assigned_lang", True))
     drop_xlang = args.drop_cross_language or bool(wfa_cfg.get("drop_cross_language", False))
     suffix_xlang = "_noxlang" if drop_xlang else ""
 
     subs = [args.subreddit] if args.subreddit else resolve_primary_subreddits(config)
-
-    print("[prepare_wordfish_authors_v2] pass1: author language assignment", flush=True)
-    author_langs, _ = pass1_author_languages(shard_root, subs, args.max_shards, start, end_excl)
-    assignment = build_author_assignment_table(author_langs, priority)
-    author_assigned = {
-        row["author"]: row["assigned_primary_lexicon"]
-        for _, row in assignment.iterrows()
-    }
-    assignment.to_csv(out_dir / f"wordfish_authors_assignment{suffix_xlang}.csv", index=False)
 
     specs = list(wfa_cfg.get("time_bins", []))
     if args.spec != "all":
@@ -834,44 +1297,68 @@ def main() -> None:
     if args.language != "all":
         langs = [args.language]
 
+    assignment_path = out_dir / f"wordfish_authors_assignment{suffix_xlang}.csv"
+    reuse = bool(args.reuse_assignment and assignment_path.is_file())
+
+    pre_langs: Optional[Dict[str, Set[str]]] = None
+    pre_assigned: Optional[Dict[str, str]] = None
+    assignment: pd.DataFrame
+
+    if reuse:
+        print(
+            f"[prepare_wordfish_authors_v2] reusing assignment from {assignment_path}",
+            flush=True,
+        )
+        pre_langs, pre_assigned, assignment = load_assignment_from_csv(assignment_path)
+    else:
+        print("[prepare_wordfish_authors_v2] pass1: author language assignment", flush=True)
+
+    wfa_scan_cfg = dict(wfa_cfg)
+    if drop_xlang:
+        wfa_scan_cfg["drop_cross_language"] = True
+
+    scan = scan_shards_for_wordfish(
+        shard_root,
+        subs,
+        args.max_shards,
+        start,
+        end_excl,
+        specs,
+        wfa_scan_cfg,
+        priority,
+        author_assigned=pre_assigned,
+        author_langs=pre_langs,
+        skip_pass1_langs=reuse,
+    )
+    author_langs = scan.author_langs
+    if not reuse:
+        assignment = build_author_assignment_table(author_langs, priority)
+        assignment.to_csv(assignment_path, index=False)
+    author_assigned = {
+        row["author"]: row["assigned_primary_lexicon"] for _, row in assignment.iterrows()
+    }
+    comments_ideol = scan.comments_ideol
+
+    stopwords_by_lang = {
+        lang: load_stopwords(stop_dir / f"stopwords_{lang}.txt") for lang in langs
+    }
+
     fit_lines: List[str] = []
     all_validation: List[pd.DataFrame] = []
     all_gate: List[pd.DataFrame] = []
     all_by_author: List[pd.DataFrame] = []
     en_mode = str(wfa_cfg.get("en_fit_mode", "split_us_uk"))
-    comments_ideol_parts: List[pd.DataFrame] = []
     pos_by_spec_mode: Dict[Tuple[str, str], pd.DataFrame] = {}
 
-    for chunk in iter_comment_chunks(shard_root, subs, args.max_shards, start, end_excl):
-        if "net_ideology" not in chunk.columns:
-            continue
-        part = (
-            chunk.groupby("author")
-            .agg(
-                net_ideology_mean=("net_ideology", "mean"),
-                sem_axis_ideology_mean=("sem_axis_ideology", "mean"),
-            )
-            .reset_index()
-        )
-        comments_ideol_parts.append(part)
-    comments_ideol = (
-        pd.concat(comments_ideol_parts, ignore_index=True)
-        if comments_ideol_parts
-        else pd.DataFrame()
-    )
-    if not comments_ideol.empty:
-        comments_ideol = (
-            comments_ideol.groupby("author")
-            .agg(
-                net_ideology_mean=("net_ideology_mean", "mean"),
-                sem_axis_ideology_mean=("sem_axis_ideology_mean", "mean"),
-            )
-            .reset_index()
-        )
+    headline_spec = str(wfa_cfg.get("headline_spec", "week7"))
+    headline_mode = str(wfa_cfg.get("headline_mode", "balanced"))
 
     for spec in specs:
         spec_name = str(spec["name"])
         time_bin = str(spec["time_bin"])
+        parts_by_tag: DefaultDict[str, Dict[str, List[pd.DataFrame]]] = defaultdict(
+            lambda: {"pos": [], "ext": [], "disp": [], "cov": [], "val": []}
+        )
 
         lang_targets: List[Tuple[str, Optional[str]]] = []
         for lang in langs:
@@ -881,28 +1368,19 @@ def main() -> None:
             else:
                 lang_targets.append((lang, lang))
 
+        docs_all, cov = documents_from_buffers(
+            scan.bodies_by_spec[spec_name],
+            scan.meta_by_spec[spec_name],
+            spec,
+            wfa_cfg,
+            stopwords_by_lang,
+        )
+
         for fit_lang, token_lang in lang_targets:
-            stopwords = load_stopwords(stop_dir / f"stopwords_{token_lang}.txt")
             anchor_key = "en" if fit_lang.startswith("en_") else fit_lang
             anchor_sub = str((wfa_cfg.get("anchor_subreddit") or {}).get(anchor_key, ""))
 
-            docs_all, cov = aggregate_author_documents(
-                shard_root,
-                subs,
-                args.max_shards,
-                start,
-                end_excl,
-                author_assigned,
-                spec,
-                wfa_cfg,
-                stopwords,
-                filter_assigned,
-                drop_xlang,
-                author_langs,
-                window_start=start,
-                target_lang=token_lang,
-            )
-            lang_docs = docs_all
+            lang_docs = [d for d in docs_all if d.primary_lexicon == token_lang]
             if fit_lang == "en_us":
                 lang_docs = filter_docs_by_subreddit_set(lang_docs, US_POLITICAL_SUBREDDITS)
             elif fit_lang == "en_uk":
@@ -949,12 +1427,11 @@ def main() -> None:
                     docs, result, wfa_cfg, panel_mode, spec_name
                 )
                 if not pos.empty:
-                    pos["primary_lexicon"] = fit_lang
+                    pos["primary_lexicon"] = token_lang
                 if not ext.empty:
-                    ext["primary_lexicon"] = fit_lang
+                    ext["primary_lexicon"] = token_lang
                 if not disp.empty:
-                    disp["primary_lexicon"] = fit_lang
-                pos_by_spec_mode[(spec_name, panel_mode)] = pos
+                    disp["primary_lexicon"] = token_lang
 
                 n_top = int(wfa_cfg.get("top_axis_words", 25))
                 axis_df = pd.DataFrame(
@@ -973,27 +1450,27 @@ def main() -> None:
                         )
                     ]
                 )
-
-                pos.to_csv(out_dir / f"wordfish_authors_positions_{tag}.csv", index=False)
-                ext.to_csv(out_dir / f"wordfish_authors_extremity_panel_{tag}.csv", index=False)
-                disp.to_csv(
-                    out_dir / f"wordfish_authors_dispersion_panel_{tag}.csv", index=False
-                )
                 axis_df.to_csv(
-                    out_dir / f"wordfish_authors_axis_words_{lang}_{tag}.csv", index=False
+                    out_dir / f"wordfish_authors_axis_words_{token_lang}_{tag}.csv",
+                    index=False,
                 )
+
+                bucket = parts_by_tag[tag]
+                if not pos.empty:
+                    bucket["pos"].append(pos)
+                if not ext.empty:
+                    bucket["ext"].append(ext)
+                if not disp.empty:
+                    bucket["disp"].append(disp)
                 if not cov_lang.empty:
-                    cov_lang.assign(panel_mode=panel_mode, spec=spec_name).to_csv(
-                        out_dir / f"wordfish_authors_coverage_{tag}.csv",
-                        index=False,
+                    bucket["cov"].append(
+                        cov_lang.assign(panel_mode=panel_mode, spec=spec_name)
                     )
 
                 val = author_validation_correlations(pos, comments_ideol)
                 if not val.empty:
                     val["primary_lexicon"] = fit_lang
-                    val.to_csv(
-                        out_dir / f"wordfish_authors_validation_{tag}.csv", index=False
-                    )
+                    bucket["val"].append(val)
                     all_validation.append(val)
                     gate = author_validation_gate(val, wfa_cfg)
                     if not gate.empty:
@@ -1003,12 +1480,23 @@ def main() -> None:
                         by_auth["primary_lexicon"] = fit_lang
                         all_by_author.append(by_auth)
 
-                headline_spec = str(wfa_cfg.get("headline_spec", "week7"))
-                headline_mode = str(wfa_cfg.get("headline_mode", "balanced"))
+        for panel_mode in panel_modes:
+            tag = f"{panel_mode}_{spec_name}{suffix_xlang}"
+            bucket = parts_by_tag[tag]
+            if bucket["pos"]:
+                pos_all = pd.concat(bucket["pos"], ignore_index=True)
+                pos_by_spec_mode[(spec_name, panel_mode)] = pos_all
+                pos_all.to_csv(
+                    out_dir / f"wordfish_authors_positions_{tag}.csv", index=False
+                )
+            if bucket["ext"]:
+                ext_all = pd.concat(bucket["ext"], ignore_index=True)
+                ext_all.to_csv(
+                    out_dir / f"wordfish_authors_extremity_panel_{tag}.csv", index=False
+                )
                 if spec_name == headline_spec and panel_mode == headline_mode:
-                    shutil.copy(
-                        out_dir / f"wordfish_authors_extremity_panel_{tag}.csv",
-                        out_dir / "wordfish_authors_extremity_panel.csv",
+                    ext_all.to_csv(
+                        out_dir / "wordfish_authors_extremity_panel.csv", index=False
                     )
                     for lang_h in langs:
                         src = out_dir / f"wordfish_authors_axis_words_{lang_h}_{tag}.csv"
@@ -1017,6 +1505,18 @@ def main() -> None:
                                 src,
                                 out_dir / f"wordfish_authors_axis_words_{lang_h}.csv",
                             )
+            if bucket["disp"]:
+                pd.concat(bucket["disp"], ignore_index=True).to_csv(
+                    out_dir / f"wordfish_authors_dispersion_panel_{tag}.csv", index=False
+                )
+            if bucket["cov"]:
+                pd.concat(bucket["cov"], ignore_index=True).to_csv(
+                    out_dir / f"wordfish_authors_coverage_{tag}.csv", index=False
+                )
+            if bucket["val"]:
+                pd.concat(bucket["val"], ignore_index=True).to_csv(
+                    out_dir / f"wordfish_authors_validation_{tag}.csv", index=False
+                )
 
     if all_validation:
         val_all = pd.concat(all_validation, ignore_index=True)

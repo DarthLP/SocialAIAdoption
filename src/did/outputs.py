@@ -4,16 +4,120 @@ Write DiD tables and event-study figures.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from src.did.outcomes import FAMILY_FIGURE_DIRS, FIRST_STAGE_OUTCOMES, HEADLINE_OUTCOMES
-from src.did.specs import PLOT_STRATEGY_GROUPS, strategy_label
+from src.did.figure_readmes import write_overview_readme
+from src.did.outcomes import (
+    FAMILY_FIGURE_DIRS,
+    FIRST_STAGE_OUTCOMES,
+    HEADLINE_FOREST_STRATEGIES,
+    HEADLINE_OUTCOMES,
+    SUMMARY_THEMES,
+    outcome_label,
+)
+from src.did.specs import (
+    PLOT_STRATEGY_GROUPS,
+    POST_PHASE_MODES,
+    spec_label_parenthetical,
+    spec_label_short,
+    strategy_label,
+)
+
+HEADLINE_STRATEGY_ORDER = list(PLOT_STRATEGY_GROUPS["headline"])
+
+FOREST_XLIM_BY_OUTCOME: dict[str, tuple[float, float]] = {
+    "sem_axis_ideology": (-0.02, 0.02),
+    "sem_axis_aggression": (-0.02, 0.02),
+    "ai_style_rate": (-0.05, 0.05),
+    "em_dash_rate": (-0.05, 0.05),
+    "wf_extremity_z": (-0.3, 0.3),
+}
+
+DDD_LEFT_OUTCOMES = (
+    "em_dash_rate",
+    "ai_style_rate",
+    "salience_rate",
+    "aggression_rate",
+    "avg_wps",
+)
+
+DDD_RIGHT_OUTCOMES = ("sentence_len_var", "exclamation_rate")
+
+
+def coefplot_strategies_for_family(family: str) -> List[str]:
+    """Function summary: strategy_ids for family headline coefplots.
+
+    Parameters:
+    - family: outcome family id.
+
+    Returns:
+    - List of strategy_id strings for plot_coef_comparison.
+    """
+    if family in ("wordfish_author", "wordfish_author_v2"):
+        return list(PLOT_STRATEGY_GROUPS["author_it"]) + list(PLOT_STRATEGY_GROUPS["author_cross"])
+    if family in ("lexical_comment", "semantic_axis_comment", "lexical_author_day", "semantic_axis_author_day"):
+        return list(PLOT_STRATEGY_GROUPS["headline"]) + list(PLOT_STRATEGY_GROUPS["italy_only"])
+    return list(PLOT_STRATEGY_GROUPS["headline"]) + list(PLOT_STRATEGY_GROUPS["italy_only"])
+
+POST_PHASE_PLOT_COLORS: dict[str, str] = {
+    "post_short_3d": "#1d3557",
+    "post_medium_7d": "#457b9d",
+    "post_long_tail": "#89c2d9",
+}
+
+
+def _ensure_spec_column(sub: pd.DataFrame) -> pd.DataFrame:
+    """Function summary: guarantee a spec column (default full_ban) for plotting.
+
+    Parameters:
+    - sub: summary slice.
+
+    Returns:
+    - Copy with spec column.
+    """
+    out = sub.copy()
+    if "spec" not in out.columns:
+        out["spec"] = "full_ban"
+    return out
+
+
+def disambiguate_with_spec(base_labels: pd.Series, specs: pd.Series) -> pd.Series:
+    """Function summary: append (full ban) / (early ban) when a base label repeats.
+
+    Parameters:
+    - base_labels: strategy or outcome display names.
+    - specs: post-window spec per row.
+
+    Returns:
+    - Labels with parenthetical spec suffix only on duplicated base names.
+    """
+    base = base_labels.astype(str)
+    spec = specs.astype(str)
+    dup = base.duplicated(keep=False)
+    suffixed = base + " " + spec.map(spec_label_parenthetical)
+    return base.where(~dup, suffixed)
+
+
+def _strategy_plot_labels(sub: pd.DataFrame, *, short: bool = True) -> pd.Series:
+    """Function summary: strategy y-axis labels with post-window disambiguation."""
+    work = _ensure_spec_column(sub)
+    base = work["strategy_id"].astype(str).map(lambda s: strategy_label(s, short=short))
+    return disambiguate_with_spec(base, work["spec"])
+
+
+def _outcome_plot_labels(sub: pd.DataFrame, *, short: bool = True) -> pd.Series:
+    """Function summary: outcome y-axis labels with post-window disambiguation."""
+    work = _ensure_spec_column(sub)
+    base = work["outcome_id"].astype(str).map(lambda o: outcome_label(o, short=short))
+    return disambiguate_with_spec(base, work["spec"])
 
 
 def figure_path(fig_dir: Path, family: str, plot_type: str, outcome_id: str, suffix: str = "png") -> Path:
@@ -56,6 +160,141 @@ def add_strategy_labels(summary: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _strategy_sort_key(strategy_id: str) -> tuple:
+    """Function summary: sort headline strategies first, then alphabetically."""
+    sid = str(strategy_id)
+    if sid in HEADLINE_STRATEGY_ORDER:
+        return (0, HEADLINE_STRATEGY_ORDER.index(sid))
+    return (1, sid)
+
+
+def _format_beta_line(row: pd.Series) -> str:
+    """Function summary: one-line TWFE result for text summaries."""
+    label = row.get("strategy_label") or strategy_label(str(row.get("strategy_id", "")))
+    note = str(row.get("estimation_note", "ok"))
+    beta = row.get("beta")
+    if pd.isna(beta):
+        return f"  {label}: (no estimate) [{note}]"
+    se = row.get("se", float("nan"))
+    pval = row.get("pvalue", float("nan"))
+    n_obs = row.get("n_obs", "")
+    n_cl = row.get("n_clusters", "")
+    flags: List[str] = []
+    if note and note != "ok":
+        flags.append(note)
+    if int(row.get("sign_only_cross_country", 0) or 0):
+        flags.append("sign-only cross-country")
+    sid = str(row.get("strategy_id", ""))
+    if sid in HEADLINE_STRATEGY_ORDER:
+        flags.append("headline")
+    pq = str(row.get("pretrend_quality", "") or "")
+    if pq and pq != "ok":
+        flags.append(f"pretrend:{pq}")
+    flag_s = f" [{', '.join(flags)}]" if flags else ""
+    return (
+        f"  {label}: β={beta:.4f} (SE={se:.4f}), p={pval:.4g}, "
+        f"N={n_obs}, clusters={n_cl}{flag_s}"
+    )
+
+
+def _write_summary_txt(sub: pd.DataFrame, path: Path, title: str, launch_date: str) -> None:
+    """Function summary: write human-readable DiD summary text file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        title,
+        "=" * min(72, len(title)),
+        f"Ban date: {launch_date}",
+        "",
+    ]
+    if sub.empty:
+        lines.append("(no estimates)")
+    else:
+        for outcome_id, grp in sub.groupby("outcome_id", sort=True):
+            fam = grp["outcome_family"].iloc[0] if "outcome_family" in grp.columns else ""
+            lines.append(f"Outcome: {outcome_id} ({fam})")
+            ordered = grp.copy()
+            ordered["_sort"] = ordered["strategy_id"].map(_strategy_sort_key)
+            ordered = ordered.sort_values("_sort").drop(columns="_sort", errors="ignore")
+            for _, row in ordered.iterrows():
+                lines.append(_format_beta_line(row))
+            lines.append("")
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def write_summary_exports(
+    summary_df: pd.DataFrame,
+    summary_dir: Path,
+    launch_date: str,
+) -> None:
+    """Function summary: write sliced CSV and TXT summaries under estimates/summary/.
+
+    Parameters:
+    - summary_df: full did_summary table.
+    - summary_dir: estimates/summary/ path.
+    - launch_date: ban launch YYYY-MM-DD for headers.
+    """
+    if summary_df.empty:
+        return
+    labeled = add_strategy_labels(summary_df)
+    summary_dir.mkdir(parents=True, exist_ok=True)
+
+    master_csv, master_labeled = (
+        summary_dir / "did_summary.csv",
+        summary_dir / "did_summary_labeled.csv",
+    )
+    summary_df.to_csv(master_csv, index=False)
+    labeled.to_csv(master_labeled, index=False)
+    _write_summary_txt(
+        labeled,
+        summary_dir / "did_summary_all.txt",
+        "DiD summary — all outcomes",
+        launch_date,
+    )
+
+    by_family = summary_dir / "by_family"
+    by_outcome = summary_dir / "by_outcome"
+    by_theme = summary_dir / "by_theme"
+    for sub in (by_family, by_outcome, by_theme):
+        sub.mkdir(parents=True, exist_ok=True)
+    for family, grp in summary_df.groupby("outcome_family", sort=True):
+        grp.to_csv(by_family / f"{family}.csv", index=False)
+        _write_summary_txt(
+            add_strategy_labels(grp),
+            by_family / f"{family}.txt",
+            f"DiD summary — {family}",
+            launch_date,
+        )
+
+    for outcome_id, grp in summary_df.groupby("outcome_id", sort=True):
+        grp.to_csv(by_outcome / f"{outcome_id}.csv", index=False)
+        fam = grp["outcome_family"].iloc[0] if "outcome_family" in grp.columns else ""
+        _write_summary_txt(
+            add_strategy_labels(grp),
+            by_outcome / f"{outcome_id}.txt",
+            f"DiD summary — {outcome_id} ({fam})",
+            launch_date,
+        )
+
+    for theme, outcome_ids in SUMMARY_THEMES.items():
+        if theme == "all":
+            sub = summary_df
+        elif theme == "wordfish":
+            sub = summary_df[summary_df["outcome_family"].astype(str).str.startswith("wordfish")]
+        elif theme == "lexical":
+            sub = summary_df[summary_df["outcome_family"] == "lexical"]
+        else:
+            sub = summary_df[summary_df["outcome_id"].isin(outcome_ids)]
+        if sub.empty:
+            continue
+        sub.to_csv(by_theme / f"{theme}.csv", index=False)
+        _write_summary_txt(
+            add_strategy_labels(sub),
+            by_theme / f"{theme}.txt",
+            f"DiD summary — theme: {theme}",
+            launch_date,
+        )
+
+
 def _subtitle_for_family(family: str) -> str:
     """Function summary: family-specific plot subtitle."""
     if family == "wordfish_forum":
@@ -69,6 +308,59 @@ def _subtitle_for_family(family: str) -> str:
     return ""
 
 
+EVENT_STUDY_OVERLAY_STYLES: tuple[dict[str, Any], ...] = (
+    {"color": "black", "marker": "o", "mfc": "white", "label": ""},
+    {"color": "#1f4e79", "marker": "D", "mfc": "white", "label": ""},
+    {"color": "#555555", "marker": "s", "mfc": "white", "label": ""},
+    {"color": "#8b0000", "marker": "P", "mfc": "white", "label": ""},
+    {"color": "#2d6a4f", "marker": "^", "mfc": "white", "label": ""},
+)
+
+
+@dataclass(frozen=True)
+class EventStudySeries:
+    """Function summary: one strategy's event-study coefficients for overlay plotting."""
+
+    label: str
+    es_df: pd.DataFrame
+    rel_col: str = "event_time"
+
+
+def _prepare_event_study_plot_df(
+    es_df: pd.DataFrame,
+    rel_col: str,
+    ref_time: int = -1,
+) -> pd.DataFrame:
+    """Function summary: sort ES rows and append normalized reference period at coef=0."""
+    if es_df.empty:
+        return es_df
+    time_col = rel_col if rel_col in es_df.columns else "rel_day"
+    work = es_df.sort_values(time_col).copy()
+    work = work.rename(columns={time_col: "event_time"})
+    if ref_time not in set(work["event_time"].astype(int)):
+        ref_row = {
+            "event_time": ref_time,
+            "gamma": 0.0,
+            "se": 0.0,
+            "ci_low": 0.0,
+            "ci_high": 0.0,
+        }
+        work = pd.concat([work, pd.DataFrame([ref_row])], ignore_index=True)
+    return work.sort_values("event_time")
+
+
+def apply_event_study_axes_style(ax: plt.Axes, *, xlabel: str = "Event Time") -> None:
+    """Function summary: classic boxed event-study axes (zero line, ban marker)."""
+    ax.axhline(0, color="black", linewidth=0.9, zorder=0)
+    ax.axvline(-0.5, color="black", linestyle="--", linewidth=0.9, zorder=0)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Coefficient")
+    ax.grid(False)
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_color("black")
+
+
 def plot_event_study(
     es_df: pd.DataFrame,
     outcome_id: str,
@@ -76,30 +368,395 @@ def plot_event_study(
     launch_label: str = "2023-03-31",
     title: Optional[str] = None,
     subtitle: str = "",
+    rel_col: str = "rel_day",
 ) -> None:
-    """Function summary: leads/lags plot with ban vertical line at k=0."""
+    """Function summary: single-series classic event-study plot."""
+    del launch_label, subtitle
     if es_df.empty:
         return
+    plot = _prepare_event_study_plot_df(es_df, rel_col)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(9, 4))
+    fig, ax = plt.subplots(figsize=(8, 4))
+    mask = plot["se"].fillna(0) > 0
     ax.errorbar(
-        es_df["rel_day"],
-        es_df["gamma"],
-        yerr=1.96 * es_df["se"],
-        fmt="o-",
+        plot.loc[mask, "event_time"],
+        plot.loc[mask, "gamma"],
+        yerr=1.96 * plot.loc[mask, "se"],
+        fmt="none",
+        ecolor="black",
         capsize=3,
-        color="#1f4e79",
+        zorder=2,
     )
-    ax.axvline(0, color="red", linestyle=":", linewidth=1.0, label=f"Ban {launch_label}")
-    ax.axhline(0, color="gray", linewidth=0.8)
-    ax.set_xlabel("Days relative to ban (ref = -1)")
-    ax.set_ylabel("γ_k (treated × day)")
-    ax.set_title(title or f"Event study: {outcome_id}")
-    if subtitle:
-        ax.text(0.02, 0.02, subtitle, transform=ax.transAxes, fontsize=8, color="#555")
-    ax.legend(loc="best")
+    ax.plot(
+        plot["event_time"],
+        plot["gamma"],
+        linestyle="none",
+        marker="o",
+        markerfacecolor="white",
+        markeredgecolor="black",
+        markeredgewidth=1.0,
+        zorder=3,
+    )
+    apply_event_study_axes_style(ax)
+    ax.set_title(title or outcome_label(outcome_id, short=True))
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+
+
+def plot_event_study_overlay(
+    series_list: Sequence[EventStudySeries],
+    outcome_id: str,
+    out_path: Path,
+    title: Optional[str] = None,
+    max_series: int = 5,
+) -> None:
+    """Function summary: overlay up to max_series event studies with horizontal dodge."""
+    usable = [s for s in series_list if s.es_df is not None and not s.es_df.empty]
+    if not usable:
+        return
+    usable = usable[:max_series]
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    all_times = sorted(
+        {
+            int(v)
+            for s in usable
+            for v in _prepare_event_study_plot_df(s.es_df, s.rel_col)["event_time"].astype(int)
+        }
+    )
+    if not all_times:
+        plt.close(fig)
+        return
+    n = len(usable)
+    dodge_span = 0.85
+    offsets = np.linspace(-dodge_span / 2, dodge_span / 2, n) if n > 1 else [0.0]
+    for idx, (series, style) in enumerate(zip(usable, EVENT_STUDY_OVERLAY_STYLES)):
+        plot = _prepare_event_study_plot_df(series.es_df, series.rel_col)
+        off = offsets[idx]
+        x = plot["event_time"].astype(float) + off
+        se = plot["se"].fillna(0)
+        mask = se > 0
+        ax.errorbar(
+            x[mask],
+            plot.loc[mask, "gamma"],
+            yerr=1.96 * se[mask],
+            fmt="none",
+            ecolor=style["color"],
+            capsize=3,
+            elinewidth=1.0,
+            zorder=2 + idx,
+        )
+        ax.plot(
+            x,
+            plot["gamma"],
+            linestyle="none",
+            marker=style["marker"],
+            markerfacecolor=style.get("mfc", "white"),
+            markeredgecolor=style["color"],
+            markeredgewidth=1.0,
+            label=series.label,
+            zorder=3 + idx,
+        )
+    xlabel = "Event Time"
+    if any(s.rel_col == "rel_period" for s in usable):
+        xlabel = "Event Time (3-day periods)"
+    apply_event_study_axes_style(ax, xlabel=xlabel)
+    ax.set_xticks(all_times)
+    ax.set_title(title or outcome_label(outcome_id, short=True))
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=min(n, 3), frameon=False)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _post_ban_gamma_summary(es_df: pd.DataFrame, rel_col: str) -> tuple[float, float]:
+    """Function summary: mean post-ban treat×time γ and two-sided p from normal SE."""
+    if es_df.empty:
+        return float("nan"), float("nan")
+    time_col = rel_col if rel_col in es_df.columns else "rel_day"
+    post = es_df[es_df[time_col].astype(int) >= 0]
+    if post.empty:
+        return float("nan"), float("nan")
+    beta = float(post["gamma"].mean())
+    se_vals = post["se"].replace(0, np.nan).dropna()
+    if se_vals.empty:
+        return beta, float("nan")
+    se_mean = float(se_vals.mean())
+    if se_mean <= 0 or np.isnan(se_mean):
+        return beta, float("nan")
+    from scipy import stats
+
+    z = abs(beta / se_mean)
+    p = float(2 * (1 - stats.norm.cdf(z)))
+    return beta, p
+
+
+def _format_p_value(p: float) -> str:
+    """Function summary: compact p-value string for figure titles."""
+    if p is None or (isinstance(p, float) and np.isnan(p)):
+        return "p=—"
+    if p < 0.001:
+        return "p<.001"
+    return f"p={p:.3f}".lstrip("0") if p < 1 else f"p={p:.2f}"
+
+
+def tail_shift_interpretation_title(
+    left_beta: float,
+    left_p: float,
+    right_beta: float,
+    right_p: float,
+) -> str:
+    """Function summary: one-line title for dual-tail semantic ideology event study."""
+    def _part(label: str, beta: float, p: float, direction: str) -> str:
+        if beta is None or (isinstance(beta, float) and np.isnan(beta)):
+            return f"{label} (n/a)"
+        sign = "+" if beta >= 0 else ""
+        return f"{label} {direction} ({sign}{beta:.3f}, {_format_p_value(p)})"
+
+    left_dir = "up" if (not np.isnan(left_beta) and left_beta > 0) else "down"
+    right_dir = "up" if (not np.isnan(right_beta) and right_beta > 0) else "down"
+    left_part = _part("extreme-LEFT share", left_beta, left_p, left_dir)
+    right_part = _part("extreme-RIGHT share", right_beta, right_p, right_dir)
+    if (
+        not np.isnan(left_beta)
+        and not np.isnan(right_beta)
+        and left_beta > 0
+        and right_beta < 0
+    ):
+        interp = "leftward location shift, not symmetric tail-widening"
+    elif (
+        not np.isnan(left_beta)
+        and not np.isnan(right_beta)
+        and left_beta > 0
+        and right_beta > 0
+    ):
+        interp = "both tails up (dispersion / tail-widening)"
+    elif (
+        not np.isnan(left_beta)
+        and not np.isnan(right_beta)
+        and left_beta < 0
+        and right_beta < 0
+    ):
+        interp = "both tails down"
+    else:
+        interp = "mixed tail movement"
+    return f"Semantic axis: {left_part}, {right_part} → {interp}"
+
+
+def plot_sem_axis_ideology_tail_shift_event_study(
+    left: EventStudySeries,
+    right: EventStudySeries,
+    out_path: Path,
+    *,
+    bin_days: int = 1,
+    strategy_label_text: str = "",
+) -> None:
+    """Function summary: dual-tail event study (p10 left vs p90 right) on one axes.
+
+    Parameters:
+    - left: extreme-left tail EventStudySeries.
+    - right: extreme-right tail EventStudySeries.
+    - out_path: PNG destination.
+    - bin_days: 1 or 3 (controls x-axis label).
+    - strategy_label_text: optional subtitle context (unused in title if empty).
+
+    Returns:
+    - None; skips if both series empty.
+    """
+    del strategy_label_text
+    if (left.es_df is None or left.es_df.empty) and (right.es_df is None or right.es_df.empty):
+        return
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    styles = (
+        {
+            "color": "#1f4e79",
+            "marker": "o",
+            "mfc": "white",
+            "label": "extreme-LEFT tail share (sem axis, <p10)",
+        },
+        {
+            "color": "#8b0000",
+            "marker": "s",
+            "mfc": "white",
+            "label": "extreme-RIGHT tail share (sem axis, >p90)",
+        },
+    )
+    left_plot = _prepare_event_study_plot_df(left.es_df, left.rel_col)
+    right_plot = _prepare_event_study_plot_df(right.es_df, right.rel_col)
+    for plot_df, style in ((left_plot, styles[0]), (right_plot, styles[1])):
+        if plot_df.empty:
+            continue
+        mask = plot_df["se"].fillna(0) > 0
+        ax.errorbar(
+            plot_df.loc[mask, "event_time"],
+            plot_df.loc[mask, "gamma"],
+            yerr=1.96 * plot_df.loc[mask, "se"],
+            fmt="none",
+            ecolor=style["color"],
+            capsize=3,
+            zorder=2,
+        )
+        ax.plot(
+            plot_df["event_time"],
+            plot_df["gamma"],
+            linestyle="none",
+            marker=style["marker"],
+            markerfacecolor=style["mfc"],
+            markeredgecolor=style["color"],
+            markeredgewidth=1.0,
+            label=style["label"],
+            zorder=3,
+        )
+    xlabel = "days rel. to ban onset"
+    if int(bin_days) > 1:
+        xlabel = f"days rel. to ban onset ({int(bin_days)}-day bins)"
+    apply_event_study_axes_style(ax, xlabel=xlabel)
+    ax.set_ylabel("IT × bin coefficient")
+    all_times = sorted(
+        set(left_plot["event_time"].astype(int).tolist())
+        | set(right_plot["event_time"].astype(int).tolist())
+    )
+    if all_times:
+        ax.set_xticks(all_times)
+    lb, lp = _post_ban_gamma_summary(left.es_df, left.rel_col)
+    rb, rp = _post_ban_gamma_summary(right.es_df, right.rel_col)
+    ax.set_title(tail_shift_interpretation_title(lb, lp, rb, rp), fontsize=9)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=1, frameon=False, fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_coef_post_phases(
+    summary: pd.DataFrame,
+    outcome_id: str,
+    out_path: Path,
+    strategies: Optional[Sequence[str]] = None,
+    phase_specs: Optional[Sequence[str]] = None,
+    title: Optional[str] = None,
+) -> None:
+    """Function summary: horizontal coef plot with short/medium/long post-phase β per headline strategy.
+
+    Parameters:
+    - summary: did_summary-like frame with strategy_id, spec, beta, se.
+    - outcome_id: outcome slug.
+    - out_path: PNG path.
+    - strategies: headline strategy_ids; default PLOT_STRATEGY_GROUPS['headline'].
+    - phase_specs: post_mode ids; default POST_PHASE_MODES.
+    - title: optional plot title.
+    """
+    del title  # use outcome_label below
+    phase_specs = tuple(phase_specs or POST_PHASE_MODES)
+    strategies = list(strategies or PLOT_STRATEGY_GROUPS["headline"])
+    sub = summary[(summary["outcome_id"] == outcome_id) & (summary["strategy_id"].isin(strategies))].copy()
+    sub = sub[sub["spec"].astype(str).isin(phase_specs)]
+    sub = _ensure_spec_column(sub)
+    sub = sub.dropna(subset=["beta"], how="all")
+    if sub.empty or sub["beta"].notna().sum() == 0:
+        return
+    sub = sub[sub["beta"].notna()]
+    if sub.empty:
+        return
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    n = len(strategies)
+    n_phase = len(phase_specs)
+    offsets = np.linspace(-(n_phase - 1) * 0.11 / 2, (n_phase - 1) * 0.11 / 2, n_phase) if n_phase > 1 else [0.0]
+    fig, ax = plt.subplots(figsize=(10, max(4, 0.55 * n)))
+    handles = []
+    labels = []
+    for j, spec in enumerate(phase_specs):
+        color = POST_PHASE_PLOT_COLORS.get(str(spec), "#333333")
+        for i, sid in enumerate(strategies):
+            rows = sub[(sub["strategy_id"] == sid) & (sub["spec"].astype(str) == spec)]
+            if rows.empty:
+                continue
+            row = rows.iloc[0]
+            beta = float(row["beta"])
+            se = float(row.get("se", float("nan")) or float("nan"))
+            y = i + offsets[j]
+            if np.isfinite(se) and se > 0:
+                ax.errorbar(
+                    beta,
+                    y,
+                    xerr=1.96 * se,
+                    fmt="none",
+                    ecolor=color,
+                    capsize=2,
+                    elinewidth=1.0,
+                    zorder=2,
+                )
+            ax.scatter(
+                [beta],
+                [y],
+                s=42,
+                color="white",
+                edgecolors=color,
+                linewidths=1.2,
+                zorder=3,
+            )
+        handles.append(
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="w",
+                markerfacecolor="white",
+                markeredgecolor=color,
+                markersize=8,
+            )
+        )
+        labels.append(spec_label_short(str(spec)))
+    ax.axvline(0, color="gray", linewidth=0.8)
+    ax.set_yticks(range(n))
+    ax.set_yticklabels([strategy_label(s, short=True) for s in strategies], fontsize=8)
+    ax.set_xlabel("β")
+    ax.set_title(f"Post phases: {outcome_label(outcome_id, short=True)}")
+    ax.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, -0.28), ncol=3, frameon=False)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_post_phase_comparison(summary: pd.DataFrame, outcome_id: str, out_path: Path) -> None:
+    """Function summary: vertical bar chart of short/medium/long post-phase β (cross_country_all)."""
+    sub = summary[
+        (summary["outcome_id"] == outcome_id)
+        & (summary["strategy_id"] == "cross_country_all")
+        & (summary["spec"].astype(str).isin(POST_PHASE_MODES))
+    ].copy()
+    sub = _ensure_spec_column(sub)
+    if sub.empty:
+        return
+    records: List[Dict[str, Any]] = []
+    for spec in POST_PHASE_MODES:
+        r = sub[sub["spec"].astype(str) == spec]
+        if r.empty or pd.isna(r["beta"].iloc[0]):
+            continue
+        records.append(
+            {
+                "phase": spec_label_short(str(spec)),
+                "beta": float(r["beta"].iloc[0]),
+                "se": float(r["se"].iloc[0]) if pd.notna(r["se"].iloc[0]) else float("nan"),
+            }
+        )
+    if not records:
+        return
+    plot_df = pd.DataFrame(records)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(7, 4))
+    x = np.arange(len(plot_df))
+    yerr = plot_df["se"].fillna(0).astype(float) * 1.96
+    yerr = yerr.where(yerr > 0, 0)
+    ax.bar(x, plot_df["beta"], yerr=yerr, color="#457b9d", capsize=4, error_kw={"linewidth": 1.0})
+    ax.axhline(0, color="gray", linewidth=0.8)
+    ax.set_xticks(x)
+    ax.set_xticklabels(plot_df["phase"].astype(str), rotation=15, ha="right", fontsize=9)
+    ax.set_ylabel("β")
+    ax.set_title(f"Post phases — {strategy_label('cross_country_all', short=True)}: {outcome_label(outcome_id, short=True)}")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -111,13 +768,17 @@ def plot_coef_comparison(
     label_col: str = "strategy_label",
     title: Optional[str] = None,
     subtitle: str = "",
+    outcome_family: Optional[str] = None,
 ) -> None:
     """Function summary: coefficient plot across strategies for one outcome."""
     sub = summary[summary["outcome_id"] == outcome_id].copy()
     if strategies:
         sub = sub[sub["strategy_id"].isin(strategies)]
-    if label_col not in sub.columns:
-        sub[label_col] = sub["strategy_id"].astype(str).map(strategy_label)
+    sub = _ensure_spec_column(sub)
+    sub = sub[sub["spec"].astype(str) == "full_ban"]
+    absorbed = sub[sub["estimation_note"].astype(str) == "no_treat_variation"]
+    sub = sub[sub["estimation_note"].astype(str) != "no_treat_variation"]
+    sub["plot_label"] = _strategy_plot_labels(sub)
     sub = sub.dropna(subset=["beta"], how="all")
     if sub.empty or sub["beta"].notna().sum() == 0:
         return
@@ -135,12 +796,17 @@ def plot_coef_comparison(
     )
     ax.axvline(0, color="gray", linewidth=0.8)
     ax.set_yticks(list(y_pos))
-    ax.set_yticklabels(sub[label_col].astype(str), fontsize=8)
-    ax.set_xlabel("β (treat × post)")
-    ax.set_title(title or f"DiD estimates: {outcome_id}")
-    if subtitle:
+    ax.set_yticklabels(sub["plot_label"].astype(str), fontsize=8)
+    ax.set_xlabel("β")
+    ax.set_title(title or f"DiD: {outcome_label(outcome_id, short=True)}")
+    if outcome_family in ("wordfish_author_v2",) and not absorbed.empty:
+        note_txt = (
+            f"n strategies plotted: {len(sub)} "
+            "(author_it_vs_de absorbed by author FE)"
+        )
+        ax.text(0.02, 0.98, note_txt, transform=ax.transAxes, fontsize=8, va="top", color="#555")
+    elif subtitle:
         ax.text(0.02, 0.98, subtitle, transform=ax.transAxes, fontsize=8, va="top", color="#555")
-    note = sub.get("estimation_note", pd.Series(dtype=str))
     if "estimation_note" in sub.columns:
         for i, (_, row) in enumerate(sub.iterrows()):
             if str(row.get("estimation_note", "ok")) != "ok":
@@ -163,7 +829,7 @@ def plot_placebo_robustness(rob_df: pd.DataFrame, outcome_id: str, out_path: Pat
     fig, ax = plt.subplots(figsize=(7, 4))
     sns.barplot(data=rob_df, x="check", y="beta", ax=ax, color="#457b9d")
     ax.axhline(0, color="gray", linewidth=0.8)
-    ax.set_title(f"Robustness: {outcome_id}")
+    ax.set_title(f"Robustness: {outcome_label(outcome_id, short=True)}")
     plt.xticks(rotation=30, ha="right")
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
@@ -172,15 +838,17 @@ def plot_placebo_robustness(rob_df: pd.DataFrame, outcome_id: str, out_path: Pat
 
 def plot_first_stage(summary: pd.DataFrame, out_path: Path) -> None:
     """Function summary: AI-writing first-stage coefs across strategies."""
-    fs = summary[summary["outcome_id"].isin(FIRST_STAGE_OUTCOMES)]
+    fs = _ensure_spec_column(summary[summary["outcome_id"].isin(FIRST_STAGE_OUTCOMES)])
+    fs = fs[fs["spec"].astype(str) == "full_ban"]
     if fs.empty:
         return
     agg = fs.groupby("outcome_id", as_index=False)["beta"].mean()
+    agg["plot_label"] = agg["outcome_id"].map(lambda o: outcome_label(str(o), short=True))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(8, 4))
-    sns.barplot(data=agg, x="outcome_id", y="beta", ax=ax, color="#e76f51")
+    sns.barplot(data=agg, x="plot_label", y="beta", ax=ax, color="#e76f51")
     ax.axhline(0, color="gray", linewidth=0.8)
-    ax.set_title("First stage: AI-writing stylometrics (mean β across strategies)")
+    ax.set_title("First stage (AI stylometrics)")
     plt.xticks(rotation=20, ha="right")
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
@@ -190,52 +858,148 @@ def plot_first_stage(summary: pd.DataFrame, out_path: Path) -> None:
 def plot_significance_heatmap(summary: pd.DataFrame, out_path: Path) -> None:
     """Function summary: outcome × strategy heatmap of sign and significance."""
     headline = list(PLOT_STRATEGY_GROUPS["headline"]) + list(PLOT_STRATEGY_GROUPS["by_topic"])
-    sub = summary[summary["strategy_id"].isin(headline)].copy()
+    raw = _ensure_spec_column(summary[summary["strategy_id"].isin(headline)].copy())
+    raw = raw[raw["spec"].astype(str) == "full_ban"]
+    if raw.empty:
+        return
+    sub = raw[
+        (raw["estimation_note"].astype(str) == "ok")
+        & (raw["beta"].abs() <= 1e3)
+        & raw["pvalue"].notna()
+    ].copy()
     if sub.empty:
         return
-    if "strategy_label" not in sub.columns:
-        sub["strategy_label"] = sub["strategy_id"].map(strategy_label)
-    pivot_beta = sub.pivot_table(index="outcome_id", columns="strategy_label", values="beta", aggfunc="first")
-    pivot_p = sub.pivot_table(index="outcome_id", columns="strategy_label", values="pvalue", aggfunc="first")
+    sub["plot_label"] = _strategy_plot_labels(sub)
+    sub["outcome_plot"] = _outcome_plot_labels(sub)
+    pivot_beta = sub.pivot_table(index="outcome_plot", columns="plot_label", values="beta", aggfunc="first")
+    pivot_p = sub.pivot_table(index="outcome_plot", columns="plot_label", values="pvalue", aggfunc="first")
+    pivot_n = sub.pivot_table(index="outcome_plot", columns="plot_label", values="n_clusters", aggfunc="first")
     if pivot_beta.empty:
         return
+    plot_beta = pivot_beta.copy()
+    oid_by_plot = sub.drop_duplicates("outcome_plot").set_index("outcome_plot")["outcome_id"].astype(str)
+    for idx in plot_beta.index:
+        oid = oid_by_plot.get(idx, "")
+        if str(oid).startswith(("wf_", "wf2_", "wfa_", "wfa2_")):
+            row = plot_beta.loc[idx]
+            mx = row.abs().max(skipna=True)
+            if pd.notna(mx) and mx > 0:
+                plot_beta.loc[idx] = row / mx * 0.2
+    annot = pivot_p.map(lambda p: "*" if pd.notna(p) and p < 0.05 else "").astype(object)
+    for _, row in sub.iterrows():
+        ridx = row["outcome_plot"]
+        cidx = row["plot_label"]
+        star = "*" if pd.notna(row["pvalue"]) and row["pvalue"] < 0.05 else ""
+        ncl = row.get("n_clusters", float("nan"))
+        txt = f"{star}\nN={int(ncl)}".strip() if pd.notna(ncl) else star
+        if ridx in annot.index and cidx in annot.columns:
+            annot.loc[ridx, cidx] = txt
+    for _, row in raw.iterrows():
+        if str(row.get("estimation_note")) != "degenerate_collinear":
+            continue
+        rlab = outcome_label(str(row["outcome_id"]), short=True)
+        slab = strategy_label(str(row["strategy_id"]), short=True)
+        matches = sub[(sub["outcome_plot"] == rlab) & (sub["plot_label"] == slab)]
+        if matches.empty and rlab in annot.index:
+            for cidx in annot.columns:
+                if slab in str(cidx) or strategy_label(str(row["strategy_id"])) in str(cidx):
+                    annot.loc[rlab, cidx] = "deg"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(max(8, pivot_beta.shape[1] * 0.9), max(5, pivot_beta.shape[0] * 0.35)))
     sns.heatmap(
-        pivot_beta,
+        plot_beta,
         cmap="RdBu_r",
         center=0,
-        annot=pivot_p.map(lambda p: "*" if pd.notna(p) and p < 0.05 else ""),
+        vmin=-0.2,
+        vmax=0.2,
+        annot=annot,
         fmt="",
         ax=ax,
-        cbar_kws={"label": "β"},
+        cbar_kws={"label": "β (row-norm WF)"},
     )
-    ax.set_title("DiD coefficients (* p<0.05)")
+    ax.set_title("DiD β (* p<0.05; N=clusters)")
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", fontsize=7)
+    plt.setp(ax.get_yticklabels(), fontsize=7)
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
 
 
+def _strategy_suffix(strategy_id: str) -> str:
+    """Function summary: short strategy label suffix for forest annotations."""
+    if strategy_id == "cross_country_all":
+        return "pooled"
+    if strategy_id == "cross_country_it_political":
+        return "it_pol"
+    if strategy_id == "cross_country_it_others":
+        return "it_oth"
+    return strategy_id.replace("cross_country_", "")
+
+
 def plot_headline_forest(summary: pd.DataFrame, out_path: Path) -> None:
-    """Function summary: forest plot for pre-registered headline outcomes."""
+    """Function summary: faceted forest for headline outcomes × three cross-country strategies."""
     sub = summary[
         (summary["outcome_id"].isin(HEADLINE_OUTCOMES))
-        & (summary["strategy_id"] == "cross_country_all")
+        & (summary["strategy_id"].isin(HEADLINE_FOREST_STRATEGIES))
     ].copy()
-    if sub.empty or sub["beta"].notna().sum() == 0:
+    sub = _ensure_spec_column(sub)
+    sub = sub[sub["spec"].astype(str) == "full_ban"]
+    sub = sub[sub["estimation_note"].astype(str) == "ok"]
+    if sub.empty:
         return
-    sub = sub[sub["beta"].notna()]
+    outcomes = [o for o in HEADLINE_OUTCOMES if o in set(sub["outcome_id"])]
+    if not outcomes:
+        return
+    ncols = len(HEADLINE_FOREST_STRATEGIES)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(8, max(3, 0.4 * len(sub))))
-    y_pos = range(len(sub))
-    ax.errorbar(sub["beta"], list(y_pos), xerr=1.96 * sub["se"], fmt="o", color="#1d3557", capsize=3)
-    ax.axvline(0, color="gray", linewidth=0.8)
-    ax.set_yticks(list(y_pos))
-    ax.set_yticklabels(sub["outcome_id"].astype(str))
-    ax.set_xlabel("β (Italian forums vs controls, full ban)")
-    ax.set_title("Headline outcomes: cross-country DiD")
+    fig, axes = plt.subplots(
+        nrows=len(outcomes),
+        ncols=ncols,
+        figsize=(3.2 * ncols, max(2.5, 1.1 * len(outcomes))),
+        squeeze=False,
+    )
+    off_scale_notes: List[str] = []
+    for i, oid in enumerate(outcomes):
+        xlim = FOREST_XLIM_BY_OUTCOME.get(oid, (-0.05, 0.05))
+        for j, sid in enumerate(HEADLINE_FOREST_STRATEGIES):
+            ax = axes[i, j]
+            row = sub[(sub["outcome_id"] == oid) & (sub["strategy_id"] == sid)]
+            if row.empty or pd.isna(row["beta"].iloc[0]):
+                ax.set_visible(False)
+                continue
+            beta = float(row["beta"].iloc[0])
+            se = float(row["se"].iloc[0]) if pd.notna(row["se"].iloc[0]) else float("nan")
+            if np.isfinite(beta) and (beta < xlim[0] or beta > xlim[1]):
+                off_scale_notes.append(f"{oid}/{_strategy_suffix(sid)}")
+                ax.axvline(0, color="gray", linewidth=0.6)
+                ax.set_xlim(xlim)
+                ax.set_yticks([0])
+                ax.set_yticklabels([outcome_label(oid, short=True) if j == 0 else ""])
+                ax.text(0.5, 0.5, "(off-scale)", transform=ax.transAxes, ha="center", color="red", fontsize=7)
+            else:
+                if np.isfinite(se) and se > 0:
+                    ax.errorbar([beta], [0], xerr=1.96 * se, fmt="o", color="#1d3557", capsize=3)
+                else:
+                    ax.scatter([beta], [0], color="#1d3557")
+                ax.axvline(0, color="gray", linewidth=0.6)
+                ax.set_xlim(xlim)
+                ax.set_yticks([0])
+                ax.set_yticklabels([outcome_label(oid, short=True) if j == 0 else ""])
+                ax.text(
+                    beta,
+                    0.35,
+                    _strategy_suffix(sid),
+                    fontsize=6,
+                    ha="center",
+                    va="bottom",
+                )
+            if i == 0:
+                ax.set_title(strategy_label(sid, short=True), fontsize=8)
+    if off_scale_notes:
+        fig.text(0.5, 0.01, "Off-scale: " + ", ".join(off_scale_notes), ha="center", color="red", fontsize=7)
+    fig.suptitle("Headline outcomes (cross-country strategies)", fontsize=10, y=1.02)
     fig.tight_layout()
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -250,38 +1014,69 @@ def plot_early_ban_comparison(summary: pd.DataFrame, outcome_id: str, out_path: 
     sub = summary[(summary["outcome_id"] == outcome_id) & (summary["strategy_id"].isin(ids))].copy()
     if sub.empty:
         return
-    if "strategy_label" not in sub.columns:
-        sub["strategy_label"] = sub["strategy_id"].map(strategy_label)
+    if "spec" not in sub.columns:
+        sub["spec"] = "full_ban"
+    sub = sub.drop_duplicates(subset=["strategy_id", "spec"], keep="last")
+    sub["plot_label"] = sub.apply(
+        lambda r: (
+            f"{strategy_label(str(r['strategy_id']), short=True)} "
+            f"{spec_label_parenthetical(str(r['spec']))}"
+        ),
+        axis=1,
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(8, 4))
-    sns.barplot(data=sub, x="strategy_label", y="beta", ax=ax, color="#457b9d")
+    sns.barplot(data=sub, x="plot_label", y="beta", ax=ax, color="#457b9d")
     ax.axhline(0, color="gray", linewidth=0.8)
-    ax.set_title(f"Early-ban vs full ban: {outcome_id}")
-    plt.xticks(rotation=25, ha="right")
+    ax.set_title(f"Early-ban: {outcome_label(outcome_id, short=True)}")
+    plt.xticks(rotation=35, ha="right", fontsize=8)
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
 
 
+def _plot_ddd_subpanel(ax: plt.Axes, sub: pd.DataFrame, outcome_ids: Sequence[str], xlim: Optional[tuple] = None) -> None:
+    """Function summary: draw one DDD forest subpanel for selected outcomes."""
+    rows = sub[sub["outcome_id"].isin(outcome_ids)].dropna(subset=["beta"])
+    rows = rows.drop_duplicates(subset=["outcome_id"], keep="last")
+    order = [o for o in outcome_ids if o in set(rows["outcome_id"])]
+    if not order:
+        ax.set_visible(False)
+        return
+    rows = rows.set_index("outcome_id").loc[order].reset_index()
+    y_pos = range(len(rows))
+    ax.errorbar(
+        rows["beta"],
+        list(y_pos),
+        xerr=1.96 * rows["se"],
+        fmt="o",
+        color="#6a4c93",
+        capsize=3,
+    )
+    ax.axvline(0, color="gray", linewidth=0.8)
+    ax.set_yticks(list(y_pos))
+    ax.set_yticklabels(rows["outcome_id"].map(lambda o: outcome_label(o, short=True)), fontsize=8)
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    ax.set_xlabel("β")
+
+
 def plot_ddd_panel(summary: pd.DataFrame, out_path: Path) -> None:
-    """Function summary: within-Italy triple-diff coefficients across outcomes."""
-    sub = summary[summary["strategy_id"] == "within_italy_ddd"].copy()
+    """Function summary: within-Italy triple-diff — rates vs variance outcomes side by side."""
+    sub = _ensure_spec_column(summary[summary["strategy_id"] == "within_italy_ddd"].copy())
+    sub = sub[sub["spec"].astype(str) == "full_ban"]
     sub = sub[sub["beta"].notna()]
     if sub.empty:
         return
-    if "strategy_label" not in sub.columns:
-        sub["strategy_label"] = sub["strategy_id"].map(strategy_label)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(8, max(4, 0.35 * len(sub))))
-    y_pos = range(len(sub))
-    ax.errorbar(sub["beta"], list(y_pos), xerr=1.96 * sub["se"], fmt="o", color="#6a4c93", capsize=3)
-    ax.axvline(0, color="gray", linewidth=0.8)
-    ax.set_yticks(list(y_pos))
-    ax.set_yticklabels(sub["outcome_id"].astype(str), fontsize=8)
-    ax.set_xlabel("β (IT × post × political tree)")
-    ax.set_title("Within-Italy triple-difference")
+    fig, (ax_left, ax_right) = plt.subplots(1, 2, figsize=(12, max(4, 0.35 * len(DDD_LEFT_OUTCOMES))))
+    _plot_ddd_subpanel(ax_left, sub, DDD_LEFT_OUTCOMES, xlim=(-1.0, 1.0))
+    ax_left.set_title("Rates / levels (0–1 scale)")
+    _plot_ddd_subpanel(ax_right, sub, DDD_RIGHT_OUTCOMES, xlim=None)
+    ax_right.set_title("Variance-style outcomes")
+    fig.suptitle("Within-IT triple-diff", fontsize=11)
     fig.tight_layout()
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -291,17 +1086,26 @@ def plot_pretrend_summary(summary: pd.DataFrame, out_path: Path) -> None:
         (summary["outcome_id"].isin(HEADLINE_OUTCOMES))
         & (summary["strategy_id"] == "cross_country_all")
     ].copy()
+    sub = _ensure_spec_column(sub)
+    sub = sub[sub["spec"].astype(str) == "full_ban"]
+    if "pretrend_quality" in sub.columns:
+        sub = sub[sub["pretrend_quality"].astype(str) == "ok"]
+    else:
+        sub = sub[sub["estimation_note"].astype(str) == "ok"]
+        sub = sub[sub["beta"].notna()]
     if "pretrend_F_p" not in sub.columns or sub["pretrend_F_p"].notna().sum() == 0:
         return
     sub = sub.dropna(subset=["pretrend_F_p"])
     if sub.empty:
         return
+    sub = _ensure_spec_column(sub.copy())
+    sub["plot_label"] = _outcome_plot_labels(sub)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(8, 4))
-    sns.barplot(data=sub, x="outcome_id", y="pretrend_F_p", ax=ax, color="#a8dadc")
+    sns.barplot(data=sub, x="plot_label", y="pretrend_F_p", ax=ax, color="#a8dadc")
     ax.axhline(0.05, color="red", linestyle="--", linewidth=0.8, label="α=0.05")
-    ax.set_title("Pre-trend joint F-test p-values (cross_country_all)")
-    plt.xticks(rotation=25, ha="right")
+    ax.set_title("Pre-trend F p-values")
+    plt.xticks(rotation=25, ha="right", fontsize=8)
     ax.legend()
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
@@ -309,13 +1113,80 @@ def plot_pretrend_summary(summary: pd.DataFrame, out_path: Path) -> None:
 
 
 def generate_overview_figures(summary: pd.DataFrame, fig_dir: Path) -> None:
-    """Function summary: write all overview/ diagnostic figures."""
+    """Function summary: write all overview/ diagnostic figures and overview/README.md."""
     overview = fig_dir / "overview"
     plot_significance_heatmap(summary, overview / "significance_heatmap.png")
     plot_headline_forest(summary, overview / "headline_forest_lexical_semantic.png")
     plot_ddd_panel(summary, overview / "ddd_political_specificity.png")
     plot_first_stage(summary, overview / "first_stage_aiwriting.png")
     plot_pretrend_summary(summary, overview / "pretrend_summary.png")
-    for oid in ("net_ideology", "ai_style_rate", "sem_axis_ideology"):
+    overview_outcomes = (
+        "net_ideology",
+        "pole_share",
+        "esteban_ray",
+        "sem_axis_ideology",
+        "sem_axis_ideology_pole_share",
+        "sem_axis_ideology_esteban_ray",
+        "ai_style_rate",
+    )
+    for oid in overview_outcomes:
         if (summary["outcome_id"] == oid).any():
             plot_early_ban_comparison(summary, oid, overview / f"early_ban_{oid}.png")
+            plot_post_phase_comparison(summary, oid, overview / f"post_phase_{oid}.png")
+    write_overview_readme(overview)
+
+
+def regenerate_did_figures(
+    summary_df: pd.DataFrame,
+    fig_dir: Path,
+    *,
+    families: Optional[Sequence[str]] = None,
+    full_coefplots: bool = False,
+) -> Dict[str, List[str]]:
+    """Function summary: rebuild DiD coefplots and overview figures from did_summary.csv.
+
+    Parameters:
+    - summary_df: master summary table.
+    - fig_dir: did figures root.
+    - families: optional subset of outcome_family ids; default all in summary.
+    - full_coefplots: also write coefplots_full/ per outcome.
+
+    Returns:
+    - outcome_ids_by_family map used for README generation.
+    """
+    labeled = add_strategy_labels(summary_df)
+    fam_filter = set(families) if families else None
+    outcome_ids_by_family: Dict[str, List[str]] = {}
+
+    for oid in summary_df["outcome_id"].unique():
+        rows = summary_df[summary_df["outcome_id"] == oid]
+        fam = str(rows["outcome_family"].iloc[0])
+        if fam_filter is not None and fam not in fam_filter:
+            continue
+        outcome_ids_by_family.setdefault(fam, []).append(str(oid))
+        fam_strats = coefplot_strategies_for_family(fam)
+        if fam in ("wordfish_author", "wordfish_author_v2"):
+            plot_coef_comparison(
+                labeled,
+                str(oid),
+                figure_path(fig_dir, fam, "coefplots_headline", str(oid)),
+                strategies=fam_strats,
+                outcome_family=fam,
+            )
+        else:
+            plot_coef_post_phases(
+                labeled,
+                str(oid),
+                figure_path(fig_dir, fam, "coefplots_headline", str(oid)),
+                strategies=list(PLOT_STRATEGY_GROUPS["headline"]),
+            )
+        if full_coefplots:
+            plot_coef_comparison(
+                labeled,
+                str(oid),
+                figure_path(fig_dir, fam, "coefplots_full", str(oid)),
+                strategies=None,
+            )
+
+    generate_overview_figures(labeled, fig_dir)
+    return outcome_ids_by_family

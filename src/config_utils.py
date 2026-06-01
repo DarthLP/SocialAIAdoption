@@ -942,7 +942,7 @@ def user_week_composites(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     uw = user_week_section(config)
     out: List[Dict[str, Any]] = []
-    for key in ("polarization_composite", "style_composite"):
+    for key in ("polarization_composite", "style_composite", "semantic_composite"):
         block = uw.get(key)
         if not isinstance(block, dict):
             continue

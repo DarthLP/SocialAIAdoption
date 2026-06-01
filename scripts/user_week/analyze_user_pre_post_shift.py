@@ -94,6 +94,7 @@ ENRICHED_FEATURE_SPECS: Dict[str, Dict[str, str]] = {
     "left_rate_100w": {"kind": "rate_100w", "raw_hits_col": "left_hits"},
     "right_rate_100w": {"kind": "rate_100w", "raw_hits_col": "right_hits"},
     "center_rate_100w": {"kind": "rate_100w", "raw_hits_col": "center_hits"},
+    "pole_share": {"kind": "pole_share"},
     "net_ideology": {"kind": "mean"},
     "extremity": {"kind": "mean"},
     "ambivalence": {"kind": "mean"},
@@ -106,6 +107,10 @@ ENRICHED_FEATURE_SPECS: Dict[str, Dict[str, str]] = {
     "comment_length_words": {"kind": "mean"},
     "avg_words_per_sentence_comment": {"kind": "mean"},
     "complexity_index": {"kind": "complexity"},
+    "sem_axis_ideology": {"kind": "mean"},
+    "sem_axis_emotion": {"kind": "mean"},
+    "sem_axis_aggression": {"kind": "mean"},
+    "sem_axis_coverage": {"kind": "mean"},
 }
 
 # Set per run in main() from config composites.
@@ -126,6 +131,8 @@ def composite_file_slug(composite_name: str) -> str:
     """
     if composite_name.startswith("polarization"):
         return "polarization"
+    if composite_name.startswith("semantic"):
+        return "semantic"
     if "style" in composite_name:
         return "style"
     return composite_name.replace("_user_week", "").replace("_composite", "")
@@ -596,6 +603,13 @@ def _build_panel_user_features(
                     arr = sub[col].astype(float).values
                     base_cols[f"__pre_{col}_{feat}"] = np.where(is_pre, arr, 0.0)
                     base_cols[f"__post_{col}_{feat}"] = np.where(is_post, arr, 0.0)
+        elif kind == "pole_share" and {"left_hits", "right_hits", "center_hits"}.issubset(sub.columns):
+            for side, col in (("left", "left_hits"), ("right", "right_hits"), ("center", "center_hits")):
+                hits = sub[col].astype(float).values
+                base_cols[f"__pre_{side}_{feat}"] = np.where(is_pre, hits, 0.0)
+                base_cols[f"__post_{side}_{feat}"] = np.where(is_post, hits, 0.0)
+            base_cols[f"__pre_words_{feat}"] = np.where(is_pre, n_words, 0.0)
+            base_cols[f"__post_words_{feat}"] = np.where(is_post, n_words, 0.0)
 
     flat = pd.DataFrame(base_cols)
     flat["author"] = sub["author"].astype(str).values
@@ -685,6 +699,20 @@ def _build_panel_user_features(
             post_var = ((qq - qn * post_rate ** 2) / (qn - 1).where(qn > 1, np.nan)).clip(lower=0)
             pre_se = np.sqrt(pre_var / pn.where(pn > 0, np.nan))
             post_se = np.sqrt(post_var / qn.where(qn > 0, np.nan))
+        elif kind == "pole_share" and f"__pre_left_{feat}" in user_sums.columns:
+            pl = user_sums[f"__pre_left_{feat}"].astype(float)
+            pr = user_sums[f"__pre_right_{feat}"].astype(float)
+            pc = user_sums[f"__pre_center_{feat}"].astype(float)
+            ql = user_sums[f"__post_left_{feat}"].astype(float)
+            qr = user_sums[f"__post_right_{feat}"].astype(float)
+            qc = user_sums[f"__post_center_{feat}"].astype(float)
+            pre_total = pl + pr + pc
+            post_total = ql + qr + qc
+            eps = 1.0e-6
+            pre_rate = (pl + pr) / pre_total.where(pre_total > 0, np.nan)
+            post_rate = (ql + qr) / post_total.where(post_total > 0, np.nan)
+            pre_se = np.sqrt((pl + pr).clip(lower=0)) / pre_total.where(pre_total > 0, np.nan)
+            post_se = np.sqrt((ql + qr).clip(lower=0)) / post_total.where(post_total > 0, np.nan)
         elif kind == "complexity":
             words_pre = user_sums.get(f"__pre_n_words_{feat}", pd.Series(0.0, index=user_sums.index)).astype(float)
             chars_pre = user_sums.get(f"__pre_total_word_chars_comment_{feat}", pd.Series(0.0, index=user_sums.index)).astype(float)
@@ -1180,9 +1208,10 @@ def write_methods_note(path: Path, ban_iso_str: str) -> None:
         "   variance. Composite SE is the quadrature sum of component SE/sd contributions",
         "   (independence approximation, called out here).",
         "",
-        "Composites (from config user_week.style_composite / polarization_composite):",
+        "Composites (from config user_week composites):",
         "  polarization_composite_user_week: extremity, net_ideology, other_side_salience, aggression.",
         "  ai_style_composite_user_week: ai_style, semicolon, em_dash, hedging rates.",
+        "  semantic_composite_user_week: sem_axis_ideology, emotion, aggression (within-language shift interpretation).",
         "Legacy comment_features stack: scripts/archive/user_week/ with ai_adoption config.",
         "Z-scales are frozen on the pre-ban user-week pool and persisted to",
         "composite_zscale_pre_<cohort>_<polarization|style>.json.",

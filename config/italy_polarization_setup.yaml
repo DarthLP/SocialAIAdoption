@@ -9,6 +9,15 @@ event_window:
   start_utc: '2023-03-01T00:00:00Z'
   end_utc_exclusive: '2023-05-01T00:00:00Z'
   launch_day_utc: '2023-03-31T00:00:00Z'
+# Optional calendar rel_day windows for post-phase TWFE summaries (short / medium / long).
+# Omitted keys use defaults: short 0–2, medium 3–9, long 10+ (through event_window end).
+did:
+  # Author Wordfish bin width for did_event_study (week7 headline; week3 robustness).
+  author_wordfish_spec: week7
+  post_phases:
+    short: { rel_day_min: 0, rel_day_max: 2 }
+    medium: { rel_day_min: 3, rel_day_max: 9 }
+    long: { rel_day_min: 10, rel_day_max: null }
 discovery_window:
   start_utc: '2023-03-01T00:00:00Z'
   end_utc_exclusive: '2023-03-04T00:00:00Z'
@@ -521,9 +530,17 @@ user_week:
     - hedging_phrase_rate_100w
     - other_side_salience_rate_100w
     - aggression_rate_100w
+    - left_rate_100w
+    - right_rate_100w
+    - center_rate_100w
+    - pole_share
     - extremity
     - net_ideology
     - complexity_index
+    - sem_axis_ideology
+    - sem_axis_emotion
+    - sem_axis_aggression
+    - sem_axis_coverage
   style_composite:
     name: ai_style_composite_user_week
     components:
@@ -546,6 +563,24 @@ user_week:
         sign: 1
       - feature: aggression_rate_100w
         sign: 1
+  semantic_composite:
+    name: semantic_composite_user_week
+    components:
+      - feature: sem_axis_ideology
+        sign: 1
+      - feature: sem_axis_emotion
+        sign: 1
+      - feature: sem_axis_aggression
+        sign: 1
+  author_ideology_buckets:
+    method: tertiles_within_lexicon
+    cohort_default: strict
+    min_pre_words: 400
+    min_pre_weeks: 4
+    bucket_labels:
+      low: conservative_leaning
+      mid: neutral
+      high: liberal_leaning
 paths:
   political_lexicon_parallel: data/raw/political_lexicon_parallel.csv
   polarization_lexicon_parallel: data/raw/polarization_lexicon_parallel.csv

@@ -38,6 +38,56 @@ def weighted_mean(series: pd.Series, weights: pd.Series) -> float:
     return float((series.astype(float) * w).sum() / w.sum())
 
 
+def weighted_mean_nan(series: pd.Series, weights: pd.Series) -> float:
+    """Function summary: weighted mean ignoring NaN values (pairs with finite weight).
+
+    Parameters:
+    - series: values (may contain NaN).
+    - weights: non-negative weights aligned with series.
+
+    Returns:
+    - Weighted mean over finite (value, weight) pairs, or NaN if none qualify.
+    """
+    s = series.astype(float)
+    w = weights.astype(float)
+    ok = s.notna() & w.notna() & (w > 0)
+    if not ok.any():
+        return float("nan")
+    s_ok = s[ok]
+    w_ok = w[ok]
+    return float((s_ok * w_ok).sum() / w_ok.sum())
+
+
+def pooled_variance(
+    means: pd.Series,
+    variances: pd.Series,
+    weights: pd.Series,
+) -> float:
+    """Function summary: combine subgroup means/variances into one dispersion measure.
+
+    Parameters:
+    - means: subgroup means (e.g. subreddit-day ideology mean).
+    - variances: subgroup within-group variances; NaN treated as 0 (undefined single-comment bins).
+    - weights: subgroup weights (e.g. comment counts).
+
+    Returns:
+    - Pooled variance across subgroups, or NaN when no finite mean/weight pairs exist.
+    """
+    m = means.astype(float)
+    v = variances.astype(float)
+    w = weights.astype(float)
+    ok = m.notna() & w.notna() & (w > 0)
+    if not ok.any():
+        return float("nan")
+    m_ok = m[ok]
+    w_ok = w[ok]
+    v_ok = v[ok].fillna(0.0)
+    w_sum = float(w_ok.sum())
+    mu = float((w_ok * m_ok).sum() / w_sum)
+    second_moment = float((w_ok * (v_ok + m_ok * m_ok)).sum() / w_sum)
+    return second_moment - mu * mu
+
+
 def ban_phase(date_utc: str, launch: str, lift: str) -> str:
     """Function summary: assign pre/ban/post label from calendar date.
 
@@ -133,7 +183,12 @@ def bin_lexical_daily_panel(
         row["bin_days"] = bd
         row["post"] = int(str(row["period_start"]) >= str(launch))
         for col in outcome_cols:
-            row[col] = weighted_mean(grp[col], w)
+            if col.endswith("_var"):
+                mean_col = col.replace("_var", "_mean")
+                if mean_col in grp.columns:
+                    row[col] = pooled_variance(grp[mean_col], grp[col], w)
+                    continue
+            row[col] = weighted_mean_nan(grp[col], w)
         records.append(row)
     return pd.DataFrame(records)
 

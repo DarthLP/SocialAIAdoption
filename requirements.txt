@@ -19,5 +19,6 @@ torch
 sentencepiece
 stopwordsiso
 linearmodels
+pyfixest
 statsmodels
 scipy

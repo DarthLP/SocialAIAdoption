@@ -125,6 +125,7 @@ from src.config_utils import (  # noqa: E402
     subreddit_topic_map,
     tables_subdir,
 )
+from src.political_lexicon import esteban_ray_index  # noqa: E402
 from src.semantic_axis_stats import (  # noqa: E402
     PoleBucketSpec,
     absolute_threshold,
@@ -135,6 +136,8 @@ from src.semantic_axis_stats import (  # noqa: E402
     percentile_lookup_from_csv,
     pole_column_prefix,
 )
+
+POLE_SHARE_EPS = 1e-9
 
 
 def parse_args() -> argparse.Namespace:
@@ -335,6 +338,48 @@ def _accumulate_group(
             acc["pole"][lk]["n_words"] += float(nw[low_mask].sum())
 
 
+def _ideology_bucket_metric(out: Dict[str, Any], label: str, field: str) -> float | None:
+    """Function summary: read ideology pole share or n_comments; prefer abs then tau25 columns."""
+    for suffix in ("abs", "tau25"):
+        if field == "share":
+            key = f"sem_axis_ideology_share_{label}_{suffix}"
+        else:
+            key = f"sem_axis_ideology_n_comments_{label}_{suffix}"
+        if key not in out:
+            continue
+        val = out[key]
+        if val is None or (isinstance(val, float) and np.isnan(val)):
+            continue
+        return float(val)
+    return None
+
+
+def _append_ideology_derived_metrics(out: Dict[str, Any]) -> None:
+    """Function summary: add sem_axis_ideology_pole_share and sem_axis_ideology_esteban_ray to panel row."""
+    n_comments = int(out.get("n_comments") or 0)
+    share_unscored = float(out.get("share_unscored") or 0.0)
+    if np.isnan(share_unscored):
+        share_unscored = 0.0
+    left_s = _ideology_bucket_metric(out, "left", "share")
+    right_s = _ideology_bucket_metric(out, "right", "share")
+    if left_s is not None and right_s is not None:
+        center_s = max(0.0, 1.0 - left_s - right_s - share_unscored)
+        denom = left_s + right_s + center_s + POLE_SHARE_EPS
+        out["sem_axis_ideology_pole_share"] = float((left_s + right_s) / denom) if denom > 0 else float("nan")
+    else:
+        out["sem_axis_ideology_pole_share"] = float("nan")
+    n_left = _ideology_bucket_metric(out, "left", "n_comments")
+    n_right = _ideology_bucket_metric(out, "right", "n_comments")
+    if n_left is not None and n_right is not None:
+        n_scored = int(round(n_comments * (1.0 - share_unscored))) if n_comments else 0
+        n_center = max(0, n_scored - int(n_left) - int(n_right))
+        out["sem_axis_ideology_esteban_ray"] = float(
+            esteban_ray_index(float(n_left), float(n_center), float(n_right))
+        )
+    else:
+        out["sem_axis_ideology_esteban_ray"] = float("nan")
+
+
 def _finalize_accumulator(
     acc: Dict[str, Any],
     bucket_specs: Sequence[PoleBucketSpec],
@@ -405,6 +450,7 @@ def _finalize_accumulator(
         n_days = 1
     out["n_days_in_bin"] = int(n_days)
     out["is_partial_bin"] = bool(int(bin_days) > 1 and n_days < int(bin_days))
+    _append_ideology_derived_metrics(out)
     return out
 
 
@@ -599,6 +645,9 @@ def _write_panels_from_accumulators(
                 )
             path = out_dir / f"semantic_axis_panel_{slug}_{int(bin_days)}d.csv"
             panel.to_csv(path, index=False)
+            if slug == "by_forum" and int(bin_days) == 1:
+                alias = out_dir / "semantic_axis_panel.csv"
+                panel.to_csv(alias, index=False)
             print(
                 f"[prepare_semantic_axis_descriptives] panel_level={panel_level} "
                 f"bin_days={bin_days} rows={len(panel)} -> {path.name}",

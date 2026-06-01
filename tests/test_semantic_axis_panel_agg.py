@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 
@@ -42,7 +43,7 @@ def _default_sem_cfg() -> dict:
         "pole_thresholds_by_lexicon": {
             "en": {"ideology": 0.25, "emotion": 0.25, "aggression": 0.25},
         },
-        "pole_percentiles": [],
+        "pole_percentiles": [10, 90],
     }
 
 
@@ -74,6 +75,33 @@ def test_semantic_axis_agg_ideology_left_right_counts() -> None:
     assert out["sem_axis_ideology_n_words_right_abs"] == 10.0
     assert out["sem_axis_ideology_n_words_left_abs"] == 20.0
     assert out["sem_axis_emotion_n_comments_pos_abs"] == 0
+    assert 0.0 < out["sem_axis_ideology_pole_share"] <= 1.0
+    assert out["sem_axis_ideology_esteban_ray"] >= 0.0
+
+
+def test_ideology_derived_metrics_with_percentile_tails() -> None:
+    """Percentile tails and derived pole_share / esteban_ray are populated."""
+    mod = _load_prepare_mod()
+    from src.semantic_axis_stats import build_pole_bucket_specs
+
+    sem_cfg = _default_sem_cfg()
+    specs = build_pole_bucket_specs(sem_cfg)
+    df = pd.DataFrame(
+        {
+            "primary_lexicon": ["en"] * 20,
+            "sem_axis_ideology": np.linspace(-1.0, 1.0, 20),
+            "sem_axis_emotion": [0.0] * 20,
+            "sem_axis_aggression": [0.0] * 20,
+            "sem_axis_coverage": [1.0] * 20,
+            "has_sem_axis": [1.0] * 20,
+            "net_ideology": [0.0] * 20,
+            "n_words": [5] * 20,
+        }
+    )
+    out = mod._semantic_axis_agg(df, specs, sem_cfg, {})
+    assert "sem_axis_ideology_share_left_below_p10" in out
+    assert "sem_axis_ideology_share_right_above_p90" in out
+    assert not np.isnan(out["sem_axis_ideology_pole_share"])
 
 
 def test_build_panel_language_universe_share() -> None:

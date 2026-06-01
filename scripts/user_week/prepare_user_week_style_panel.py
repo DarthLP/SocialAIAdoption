@@ -47,7 +47,10 @@ from pathlib import Path
 import importlib.util
 from typing import Any, Dict, Iterable, List
 
+import numpy as np
 import pandas as pd
+
+POLE_SHARE_EPS = 1.0e-6
 
 
 def _setup_project_root() -> Path:
@@ -118,6 +121,14 @@ ENRICHED_MEAN_FEATURES: List[str] = [
     "issue_migration_rate_100w",
     "issue_economy_rate_100w",
     "issue_culture_rate_100w",
+]
+
+# Semantic-axis weekly means (word-weighted; NaN comments excluded from n).
+SEM_AXIS_MEAN_FEATURES: List[str] = [
+    "sem_axis_ideology",
+    "sem_axis_emotion",
+    "sem_axis_aggression",
+    "sem_axis_coverage",
 ]
 
 # Complexity is a ratio-of-sums metric (matches `compute_complexity_index` in
@@ -240,6 +251,7 @@ def build_paths(config: Dict[str, Any]) -> RuntimePaths:
     user_week_tables_dir.mkdir(parents=True, exist_ok=True)
     interim_panel_dir.mkdir(parents=True, exist_ok=True)
     user_week_logs_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
     return RuntimePaths(
         input_shards_dir=interim_dir / "cleaned_monthly_chunks",
         input_mode="enriched_shards",
@@ -273,7 +285,7 @@ def mean_features_for_config(config: Dict[str, Any]) -> List[str]:
     - List of mean feature column names on shards.
     """
     _ = config
-    return list(MEAN_FEATURES_REQUIRED) + list(ENRICHED_MEAN_FEATURES)
+    return list(MEAN_FEATURES_REQUIRED) + list(ENRICHED_MEAN_FEATURES) + list(SEM_AXIS_MEAN_FEATURES)
 
 
 def normalize_input_shard(frame: pd.DataFrame) -> pd.DataFrame:
@@ -387,6 +399,7 @@ def select_shard_columns(frame: pd.DataFrame, config: Dict[str, Any]) -> pd.Data
     }
     needed.update(MEAN_FEATURES_REQUIRED)
     needed.update(mean_features_for_config(config))
+    needed.update({"has_sem_axis"})
     keep = [c for c in needed if c in frame.columns]
     return frame[keep].copy()
 
@@ -460,9 +473,13 @@ def aggregate_shard_to_user_week_subreddit(
     integer_sum_cols = [c for c in integer_sum_cols if c in df.columns]
     for col in integer_sum_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+    if "has_sem_axis" in df.columns:
+        df["has_sem_axis"] = pd.to_numeric(df["has_sem_axis"], errors="coerce").fillna(0.0)
 
     sum_specs: Dict[str, str] = {col: "sum" for col in integer_sum_cols}
     sum_specs["__one"] = "sum"
+    if "has_sem_axis" in df.columns:
+        sum_specs["has_sem_axis"] = "sum"
 
     for feat in mean_features_for_config(config):
         if feat not in df.columns:
@@ -486,6 +503,8 @@ def aggregate_shard_to_user_week_subreddit(
     rename_map = {"__one": "n_comments"}
     if "n_words_comment" in out.columns:
         rename_map["n_words_comment"] = "n_words"
+    if "has_sem_axis" in out.columns:
+        rename_map["has_sem_axis"] = "has_sem_axis_sum"
     if "list_structure_flag" in out.columns:
         rename_map["list_structure_flag"] = "list_structure_flag_sum"
     for feat in mean_features_for_config(config):
@@ -538,6 +557,7 @@ def merge_user_week_subreddit_rows(
         "left_hits",
         "right_hits",
         "center_hits",
+        "has_sem_axis_sum",
     ]
     sum_columns_int = [c for c in sum_columns_int if c in intermediate.columns]
 
@@ -618,7 +638,38 @@ def merge_user_week_subreddit_rows(
             n_safe = panel[n_col].astype(float).where(panel[n_col].astype(float) > 0)
             panel[f"{feat}_mean"] = (panel[sum_col].astype(float) / n_safe).where(n_safe.notna(), float("nan"))
 
+    panel = add_pole_share_column(panel)
+    if "has_sem_axis_sum" in panel.columns and "n_comments" in panel.columns:
+        denom = panel["n_comments"].astype(float).where(panel["n_comments"].astype(float) > 0)
+        panel["share_scored"] = (
+            panel["has_sem_axis_sum"].astype(float) / denom
+        ).where(denom.notna(), float("nan"))
     return panel.sort_values(["author", "iso_week_start"]).reset_index(drop=True)
+
+
+def add_pole_share_column(panel: pd.DataFrame, eps: float = POLE_SHARE_EPS) -> pd.DataFrame:
+    """Function summary: derive weekly pole_share from pooled left/right/center ideology hits.
+
+    Parameters:
+    - panel: user-week panel with left_hits, right_hits, center_hits.
+    - eps: stabilizer when ideology hit total is zero.
+
+    Returns:
+    - Copy with pole_share column (NaN when no ideology hits in the week).
+    """
+    if panel.empty or not {"left_hits", "right_hits", "center_hits"}.issubset(panel.columns):
+        return panel
+    out = panel.copy()
+    left = out["left_hits"].astype(float)
+    right = out["right_hits"].astype(float)
+    center = out["center_hits"].astype(float)
+    ideology_total = left + right + center
+    out["pole_share"] = np.where(
+        ideology_total > 0,
+        (left + right) / (ideology_total + float(eps)),
+        np.nan,
+    )
+    return out
 
 
 # ----------------------------- Per-shard processing pipeline -----------------------------
@@ -738,8 +789,11 @@ def write_notes(path: Path, groups: Dict[str, List[str]]) -> None:
         "- formality_balance_100w computed from full_form_count and contraction_count.",
         "- list_structure_intensity = list_structure_flag_sum / n_comments (mean of binary flag).",
         "- complexity_index from weekly totals (n_words, total_word_chars_comment, sentence_count_comment).",
+        "- pole_share: (left_hits + right_hits) / (left + right + center + eps) from weekly hit totals.",
         "- mean features: <feat>_mean (display), <feat>_sum, <feat>_sumsq, <feat>_n; n counts only",
         "  comments with non-NaN values so coverage stays honest.",
+        "- semantic axes (sem_axis_*): word-weighted weekly means from enriched shards; do not interpret",
+        "  raw levels across languages (same rule as forum semantic DiD). share_scored = has_sem_axis_sum / n_comments.",
         "- subreddit mix: top_subreddit, subreddit_concentration (Herfindahl), n_subreddits, top_topic.",
         "",
         "Topic mapping (top_topic, loaded from config/topics):",
@@ -794,7 +848,12 @@ def main() -> None:
 
     stats = ProfilingStats()
     intermediate_parts: List[pd.DataFrame] = []
+    shards_missing_sem_axis = 0
     for subreddit, file_path in month_jobs:
+        import pyarrow.parquet as pq
+
+        if "sem_axis_ideology" not in pq.ParquetFile(file_path).schema.names:
+            shards_missing_sem_axis += 1
         part = process_shard(
             file_path=file_path,
             subreddit=subreddit,
@@ -804,11 +863,17 @@ def main() -> None:
         )
         if not part.empty:
             intermediate_parts.append(part)
+    if shards_missing_sem_axis:
+        print(
+            f"[prepare_user_week_style_panel] shards_missing_sem_axis={shards_missing_sem_axis} "
+            f"(of {len(month_jobs)}); run compute_enriched_shard_features.py --pass all",
+            flush=True,
+        )
 
     if not intermediate_parts:
         print("[prepare_user_week_style_panel] no_intermediate_rows: nothing to merge", flush=True)
         emit_profiling(stats=stats, profile=bool(args.profile), profile_output=str(args.profile_output or ""))
-        return
+        sys.exit(1)
 
     intermediate = pd.concat(intermediate_parts, ignore_index=True)
     print(
@@ -817,6 +882,10 @@ def main() -> None:
     )
 
     panel = merge_user_week_subreddit_rows(intermediate, config_topic_map, config)
+    if panel.empty:
+        print("[prepare_user_week_style_panel] panel_empty after merge: nothing to write", flush=True)
+        emit_profiling(stats=stats, profile=bool(args.profile), profile_output=str(args.profile_output or ""))
+        sys.exit(1)
     if int(args.min_words_per_week_for_keep) > 0:
         before = int(len(panel))
         panel = panel[panel["n_words"].astype(float) >= float(args.min_words_per_week_for_keep)].copy()

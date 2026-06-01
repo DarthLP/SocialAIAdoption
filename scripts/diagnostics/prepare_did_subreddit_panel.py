@@ -45,6 +45,7 @@ PROJECT_ROOT = _setup_project_root()
 
 from scripts.diagnostics.descriptives_util import event_dates_from_config  # noqa: E402
 from src.config_utils import load_config, tables_subdir  # noqa: E402
+from src.did.paths import did_panels_dir  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -114,7 +115,7 @@ def main() -> None:
     config = load_config(PROJECT_ROOT / args.config)
     start, end_excl, launch, _lift = event_dates_from_config(config)
     desc_dir = tables_subdir(config, "descriptives")
-    did_dir = tables_subdir(config, "did")
+    did_dir = did_panels_dir(config, "subreddit")
     did_dir.mkdir(parents=True, exist_ok=True)
 
     sub_path = desc_dir / "daily_by_subreddit.csv"

@@ -415,18 +415,27 @@ def _plot_panel_bundle(
             pos.groupby(["author", "primary_lexicon"], as_index=False)["theta"]
             .mean()
         )
-        merged_all = auth_theta.merge(ideol, on="author", how="inner")
+        # ideol CSV also has theta (balanced week7 author mean); suffix so we keep positions theta.
+        merged_all = auth_theta.merge(
+            ideol, on="author", how="inner", suffixes=("", "_ideol")
+        )
+        if "theta_ideol" in merged_all.columns:
+            merged_all = merged_all.drop(columns=["theta_ideol"])
         for lang in wfa.get("languages", ["it", "en", "de"]):
             sub_pos = pos[pos["primary_lexicon"] == lang]
             if sub_pos.empty:
                 continue
-            sub = merged_all[merged_all["primary_lexicon"] == lang]
+            sub = merged_all[merged_all["primary_lexicon"] == lang].copy()
             if sub.empty:
                 sub = (
                     sub_pos.groupby("author", as_index=False)["theta"]
                     .mean()
-                    .merge(ideol, on="author", how="inner")
+                    .merge(ideol, on="author", how="inner", suffixes=("", "_ideol"))
                 )
+                if "theta_ideol" in sub.columns:
+                    sub = sub.drop(columns=["theta_ideol"])
+            if sub.empty:
+                continue
             out = fig_dir / f"authors_theta_vs_lexicon_scatter_{lang}_{tag}.png"
             _plot_theta_scatter(sub, out, lang)
             n_written += 1

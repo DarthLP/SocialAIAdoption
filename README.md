@@ -132,10 +132,16 @@ Run in order (`.venv` active):
 # Preflight: one shard must contain net_ideology and semicolon_count
 .venv/bin/python -c "import pandas as pd; from pathlib import Path; p=next(Path('data/interim/italy_polarization/cleaned_monthly_chunks').rglob('*.parquet')); d=pd.read_parquet(p); assert 'net_ideology' in d.columns and 'semicolon_count' in d.columns"
 
-# Optional — within-user pre/post (author × ISO week) on enriched shards
+# Optional — within-user pre/post (author × ISO week) on enriched shards (needs semaxis on shards)
 .venv/bin/python scripts/user_week/prepare_user_week_style_panel.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/user_week/analyze_user_pre_post_shift.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/user_week/plot_user_pre_post_shift.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/user_week/plot_user_semantic_by_lexicon.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/user_week/assign_author_ideology_buckets.py --config config/italy_polarization_setup.yaml --cohort both
+.venv/bin/python scripts/user_week/compare_lexical_semantic_author_buckets.py --config config/italy_polarization_setup.yaml --cohort both
+.venv/bin/python scripts/user_week/plot_user_shift_by_ideology_bucket.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/diagnostics/prepare_did_author_semantic_week_panel.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/analysis/did_event_study.py --config config/italy_polarization_setup.yaml --families semantic_axis_author_week
 
 .venv/bin/python scripts/diagnostics/audit_polarization_lexicons.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/diagnostics/prepare_polarization_descriptives.py --config config/italy_polarization_setup.yaml
@@ -157,6 +163,7 @@ Run in order (`.venv` active):
 # Headline panel for prompt 04: wordfish_extremity_panel.csv (extremity_z, change_z, placebo flags; day-primary time_bin)
 # Wordfish v2 (additive; legacy wordfish/ + wordfish_authors/ unchanged):
 .venv/bin/python scripts/diagnostics/prepare_wordfish_authors_v2.py --config config/italy_polarization_setup.yaml
+# Optional: --reuse-assignment after wordfish_authors_assignment.csv exists (skip pass1 lexicon scan)
 .venv/bin/python scripts/diagnostics/plot_wordfish_authors_v2.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/diagnostics/prepare_wordfish_forum_v2.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/diagnostics/plot_wordfish_forum_v2.py --config config/italy_polarization_setup.yaml
@@ -247,7 +254,7 @@ Replicates Kreitmeir & Raschky (2023) proxies around Italy’s ChatGPT ban: **To
 
 Writes under `data/raw/circumvention/` (raw per-country files + combined CSVs + `_manifest.json`). **`data/` is gitignored** — the script is the reproducible artifact; archive outputs to external disk with other raw data.
 
-DiD tables: `prepare_polarization_descriptives.py`, `prepare_circumvention_descriptives.py`, `prepare_semantic_axis_descriptives.py --panels-only`, then `prepare_did_merged_panels.py` → `results/tables/italy_polarization/did/` (`did_country_panel_{1,3,7}d`, `did_semantic_{topic_family,language,language_universe}_{1,3,7}d`). Estimation (Python): `prepare_did_subreddit_panel.py` then `scripts/analysis/did_event_study.py` (`src/did/`, `linearmodels`) → `did_summary.csv`, `did_summary_labeled.csv`, nested figures under `results/figures/italy_polarization/did/{lexical,semantic_axis,wordfish_forum,wordfish_forum_v2,wordfish_author,wordfish_author_v2,overview}/`. Wordfish v2 DiD runs when `wordfish_forum_v2/` / `wordfish_authors_v2/` extremity panels exist. Semantic intensity: `vpn_interest_it` / `tor_*_it` only; lexical country rows use geo-matched circumvention per `country_panel`.
+DiD tables: `prepare_polarization_descriptives.py`, `prepare_circumvention_descriptives.py`, `prepare_semantic_axis_descriptives.py --panels-only`, then `prepare_did_merged_panels.py` → `did/panels/{country,semantic}/`, `prepare_did_subreddit_panel.py` → `did/panels/subreddit/`, `prepare_did_comment_panel.py` → `did/panels/comment/` (after enriched shards), and `prepare_did_aggregated_panels.py` → `did/panels/aggregated/`. Estimation: `scripts/analysis/did_event_study.py` (forum TWFE + `italy_only_post` Italy-only entity FE; comment-level `pyfixest` via `--families lexical_comment,semantic_axis_comment`; author×day robustness `*_author_day`; `--author-spec week3`; `did_summary` post-phase specs under `did.post_phases`) and `scripts/analysis/did_aggregated_event_study.py` (bundled PNGs under `did/event_study/{panel}/{bundle}/{1,3}d/` plus dual-tail `sem_axis_ideology_tail_shift*.png` on all bundles × `{1,3}d`; e.g. `language/subreddit/`, `language/hub_pooled/`, `language_universe/in_out_slice/` with `_in_tree` / `_out_tree` variants; stale flat `language/1d/` trees are deleted on full run) (`src/did/`, `linearmodels`) → `did/estimates/summary/` (`did_summary.csv`, `by_family/`, `by_outcome/`, `by_theme/` CSV+txt for all/aggression/ideology/emotion/ai_style/wordfish/lexical) and `did/estimates/{family}/{coefficients,robustness,event_study}/`. Migrate legacy flat files: `scripts/devtools/migrate_did_table_layout.py`. Figures: `results/figures/italy_polarization/did/{lexical,semantic_axis,wordfish_*,overview}/` (headline coefplots show short/medium/long post phases; forest/heatmap use `full_ban`; duplicate rows disambiguated with `(full ban)` / `(early ban)` / phase parentheticals; per-folder `README.md`; `--figures-only` rebuilds PNGs from `did_summary.csv`). Wordfish v2 DiD runs when forum/author v2 extremity panels exist. Semantic intensity: `vpn_interest_it` / `tor_*_it` only; lexical country rows use geo-matched circumvention per `country_panel`.
 
 **Google Trends caveat:** each country geo is scaled 0–100 **within that country and window**; compare **within-country over time**, not levels across countries.
 

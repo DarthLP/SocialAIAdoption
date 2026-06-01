@@ -8,7 +8,13 @@ import pandas as pd
 
 from scripts.diagnostics.prepare_did_merged_panels import TOPIC_FAMILY_TO_COUNTRY_PANEL
 from src.config_utils import load_config
-from src.did.panels import slice_panel_for_ddd, wordfish_forum_v2_available
+from src.did.paths import resolve_panel_path
+from src.did.panels import (
+    _author_extremity_panel_candidates,
+    resolve_author_wordfish_spec,
+    slice_panel_for_ddd,
+    wordfish_forum_v2_available,
+)
 
 
 def test_us_topic_family_maps() -> None:
@@ -19,8 +25,14 @@ def test_us_topic_family_maps() -> None:
 def test_did_subreddit_panel_exists() -> None:
     """Function summary: prepared subreddit panel has IT and rel_day."""
     root = Path(__file__).resolve().parents[1]
-    path = root / "results/tables/italy_polarization/did/did_subreddit_panel_1d.csv"
-    if not path.is_file():
+    cfg_path = root / "config/italy_polarization_setup.yaml"
+    if not cfg_path.is_file():
+        legacy = root / "results/tables/italy_polarization/did/did_subreddit_panel_1d.csv"
+        path = legacy if legacy.is_file() else None
+    else:
+        config = load_config(cfg_path)
+        path = resolve_panel_path(config, "subreddit", "did_subreddit_panel_1d.csv")
+    if path is None or not path.is_file():
         return
     df = pd.read_csv(path, nrows=50)
     assert "IT" in df.columns
@@ -47,6 +59,25 @@ def test_slice_panel_ddd_entity_subreddit() -> None:
     assert (ddd["entity_id"] == ddd["subreddit"]).all()
     pol_by_ent = ddd.groupby("entity_id")["universe_slice"].nunique()
     assert pol_by_ent.max() >= 2
+
+
+def test_resolve_author_wordfish_spec() -> None:
+    """Function summary: author spec resolves from did block then wordfish_authors headline."""
+    root = Path(__file__).resolve().parents[1]
+    cfg_path = root / "config/italy_polarization_setup.yaml"
+    if not cfg_path.is_file():
+        return
+    config = load_config(cfg_path)
+    assert resolve_author_wordfish_spec(config) in ("week7", "week3")
+    assert resolve_author_wordfish_spec(config, override="week3") == "week3"
+
+
+def test_author_extremity_panel_candidates_week3() -> None:
+    """Function summary: week3 spec produces balanced_week3 filenames first."""
+    tab = Path("/tmp/wordfish_authors")
+    cands = _author_extremity_panel_candidates(tab, "week3", lang="it")
+    assert "balanced_week3" in cands[0]
+    assert cands[0].endswith("balanced_week3_it.csv")
 
 
 def test_wordfish_v2_path_resolution() -> None:

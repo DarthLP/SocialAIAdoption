@@ -50,6 +50,20 @@ def _wordfish_author_specs(family: str, prefix: str) -> Tuple[OutcomeSpec, ...]:
         ),
         OutcomeSpec(f"{prefix}extremity", "extremity", family, panel_kind="author_bin"),
         OutcomeSpec(f"{prefix}change", "change", family, panel_kind="author_bin"),
+        OutcomeSpec(
+            f"{prefix}extremity_within_author",
+            "extremity_within_author",
+            family,
+            sign_only_cross_country=True,
+            panel_kind="author_bin",
+        ),
+        OutcomeSpec(
+            f"{prefix}extremity_within_author_z",
+            "extremity_within_author_z",
+            family,
+            sign_only_cross_country=True,
+            panel_kind="author_bin",
+        ),
     )
 
 
@@ -61,6 +75,9 @@ OUTCOME_REGISTRY: Tuple[OutcomeSpec, ...] = (
     OutcomeSpec("esteban_ray", "esteban_ray_index", "lexical", ddd_allowed=False),
     OutcomeSpec("bimodality", "bimodality_coefficient", "lexical", ddd_allowed=False),
     OutcomeSpec("pole_share", "pole_share", "lexical", ddd_allowed=False),
+    OutcomeSpec("left_rate", "left_rate_100w_mean", "lexical", ddd_allowed=False),
+    OutcomeSpec("right_rate", "right_rate_100w_mean", "lexical", ddd_allowed=False),
+    OutcomeSpec("center_rate", "center_rate_100w_mean", "lexical", ddd_allowed=False),
     OutcomeSpec("ai_style_rate", "ai_style_rate_100w_mean", "lexical"),
     OutcomeSpec("aggression_rate", "aggression_rate_100w_mean", "lexical"),
     OutcomeSpec("salience_rate", "other_side_salience_rate_100w_mean", "lexical"),
@@ -77,6 +94,84 @@ OUTCOME_REGISTRY: Tuple[OutcomeSpec, ...] = (
     OutcomeSpec("sem_axis_emotion", "sem_axis_emotion_mean", "semantic_axis"),
     OutcomeSpec("sem_axis_emotion_var", "sem_axis_emotion_var", "semantic_axis"),
     OutcomeSpec("sem_axis_aggression", "sem_axis_aggression_mean", "semantic_axis"),
+    OutcomeSpec(
+        "sem_axis_ideology_pole_share",
+        "sem_axis_ideology_pole_share",
+        "semantic_axis",
+        ddd_allowed=False,
+    ),
+    OutcomeSpec(
+        "sem_axis_ideology_esteban_ray",
+        "sem_axis_ideology_esteban_ray",
+        "semantic_axis",
+        ddd_allowed=False,
+    ),
+    OutcomeSpec(
+        "sem_axis_ideology_extreme_left",
+        "sem_axis_ideology_share_left_below_p10",
+        "semantic_axis",
+        ddd_allowed=False,
+    ),
+    OutcomeSpec(
+        "sem_axis_ideology_extreme_right",
+        "sem_axis_ideology_share_right_above_p90",
+        "semantic_axis",
+        ddd_allowed=False,
+    ),
+    # Comment-level (political universe; pyfixest author + day FE)
+    OutcomeSpec("net_ideology", "net_ideology", "lexical_comment", ddd_allowed=False, panel_kind="comment"),
+    OutcomeSpec("extremity", "extremity", "lexical_comment", ddd_allowed=False, panel_kind="comment"),
+    OutcomeSpec("ai_style_rate", "ai_style_rate_100w", "lexical_comment", panel_kind="comment"),
+    OutcomeSpec("sem_axis_ideology", "sem_axis_ideology", "semantic_axis_comment", panel_kind="comment"),
+    OutcomeSpec("sem_axis_emotion", "sem_axis_emotion", "semantic_axis_comment", panel_kind="comment"),
+    OutcomeSpec("sem_axis_aggression", "sem_axis_aggression", "semantic_axis_comment", panel_kind="comment"),
+    # Author×day robustness (PanelOLS TWFE)
+    OutcomeSpec(
+        "net_ideology",
+        "net_ideology",
+        "lexical_author_day",
+        ddd_allowed=False,
+        panel_kind="author_day",
+    ),
+    OutcomeSpec(
+        "sem_axis_ideology",
+        "sem_axis_ideology",
+        "semantic_axis_author_day",
+        ddd_allowed=False,
+        panel_kind="author_day",
+    ),
+    OutcomeSpec(
+        "sem_axis_emotion",
+        "sem_axis_emotion",
+        "semantic_axis_author_day",
+        ddd_allowed=False,
+        panel_kind="author_day",
+    ),
+    # Author×week semantic axis (user-week panel + wordfish assignment)
+    OutcomeSpec(
+        "sem_axis_ideology",
+        "sem_axis_ideology_mean",
+        "semantic_axis_author_week",
+        ddd_allowed=False,
+        sign_only_cross_country=True,
+        panel_kind="author_semantic_week",
+    ),
+    OutcomeSpec(
+        "sem_axis_emotion",
+        "sem_axis_emotion_mean",
+        "semantic_axis_author_week",
+        ddd_allowed=False,
+        sign_only_cross_country=True,
+        panel_kind="author_semantic_week",
+    ),
+    OutcomeSpec(
+        "sem_axis_aggression",
+        "sem_axis_aggression_mean",
+        "semantic_axis_author_week",
+        ddd_allowed=False,
+        sign_only_cross_country=True,
+        panel_kind="author_semantic_week",
+    ),
     # Forum Wordfish v1 (03)
     *_wordfish_forum_specs("wordfish_forum", "wf_"),
     # Author Wordfish v1 (03b)
@@ -90,7 +185,12 @@ OUTCOME_REGISTRY: Tuple[OutcomeSpec, ...] = (
 
 FAMILY_FIGURE_DIRS: dict[str, str] = {
     "lexical": "lexical",
+    "lexical_comment": "lexical_comment",
+    "lexical_author_day": "lexical_author_day",
     "semantic_axis": "semantic_axis",
+    "semantic_axis_comment": "semantic_axis_comment",
+    "semantic_axis_author_day": "semantic_axis_author_day",
+    "semantic_axis_author_week": "semantic_axis_author_week",
     "wordfish_forum": "wordfish_forum",
     "wordfish_author": "wordfish_author",
     "wordfish_forum_v2": "wordfish_forum_v2",
@@ -107,13 +207,38 @@ def outcomes_for_families(families: List[str]) -> Tuple[OutcomeSpec, ...]:
 FIRST_STAGE_OUTCOMES = ("ai_style_rate", "em_dash_rate", "exclamation_rate", "sentence_len_var", "avg_wps")
 
 HEADLINE_OUTCOMES = (
-    "net_ideology",
     "sem_axis_ideology",
-    "sem_axis_emotion",
+    "sem_axis_aggression",
     "ai_style_rate",
-    "pole_share",
+    "em_dash_rate",
     "wf_extremity_z",
-    "wf_change_z",
+)
+
+HEADLINE_FOREST_STRATEGIES = (
+    "cross_country_all",
+    "cross_country_it_political",
+    "cross_country_it_others",
+)
+
+HEADLINE_EVENT_STUDY_OUTCOMES = HEADLINE_OUTCOMES
+
+# Semantic-axis ideology tails for dual-line event-study figures (p10 / p90).
+SEM_AXIS_IDEOLOGY_EXTREME_LEFT_COL = "sem_axis_ideology_share_left_below_p10"
+SEM_AXIS_IDEOLOGY_EXTREME_RIGHT_COL = "sem_axis_ideology_share_right_above_p90"
+
+LEXICAL_BY_CONTROL_OUTCOMES = (
+    "em_dash_rate",
+    "ai_style_rate",
+    "exclamation_rate",
+    "net_ideology",
+)
+
+LEXICAL_BY_CONTROL_STRATEGIES = (
+    "cross_country_all",
+    "cross_country_vs_de",
+    "cross_country_vs_eu",
+    "cross_country_vs_uk",
+    "cross_country_vs_us",
 )
 
 DEFAULT_FAMILIES = (
@@ -124,3 +249,110 @@ DEFAULT_FAMILIES = (
     "wordfish_forum_v2",
     "wordfish_author_v2",
 )
+
+WORDFISH_OUTCOME_IDS: Tuple[str, ...] = tuple(
+    o.outcome_id for o in OUTCOME_REGISTRY if o.family.startswith("wordfish")
+)
+
+LEXICAL_OUTCOME_IDS: Tuple[str, ...] = tuple(
+    o.outcome_id for o in OUTCOME_REGISTRY if o.family == "lexical"
+)
+
+SUMMARY_THEMES: dict[str, Tuple[str, ...]] = {
+    "all": tuple(o.outcome_id for o in OUTCOME_REGISTRY),
+    "aggression": ("aggression_rate", "sem_axis_aggression"),
+    "ideology": (
+        "net_ideology",
+        "sem_axis_ideology",
+        "sem_axis_ideology_var",
+        "sem_axis_ideology_pole_share",
+        "sem_axis_ideology_esteban_ray",
+        "sem_axis_ideology_extreme_left",
+        "sem_axis_ideology_extreme_right",
+    ),
+    "ideology_poles": (
+        "pole_share",
+        "left_rate",
+        "right_rate",
+        "center_rate",
+        "sem_axis_ideology_pole_share",
+        "sem_axis_ideology_extreme_left",
+        "sem_axis_ideology_extreme_right",
+    ),
+    "emotion": ("sem_axis_emotion", "sem_axis_emotion_var"),
+    "ai_style": FIRST_STAGE_OUTCOMES,
+    "wordfish": WORDFISH_OUTCOME_IDS,
+    "lexical": LEXICAL_OUTCOME_IDS,
+}
+
+
+def outcome_family_map() -> dict[str, str]:
+    """Function summary: map outcome_id to family for migration and path resolution.
+
+    Returns:
+    - Dict outcome_id -> family.
+    """
+    return {o.outcome_id: o.family for o in OUTCOME_REGISTRY}
+
+
+OUTCOME_LABELS_SHORT: dict[str, str] = {
+    "net_ideology": "Net ideology",
+    "extremity": "Extremity",
+    "ambivalence": "Ambivalence",
+    "esteban_ray": "Esteban-Ray",
+    "bimodality": "Bimodality",
+    "pole_share": "Pole share",
+    "left_rate": "Left rate",
+    "right_rate": "Right rate",
+    "center_rate": "Center rate",
+    "ai_style_rate": "AI style rate",
+    "aggression_rate": "Aggression rate",
+    "salience_rate": "Other-side salience",
+    "negative_rate": "Negative rate",
+    "anger_rate": "Anger rate",
+    "pair_framing": "Pair framing",
+    "em_dash_rate": "Em-dash rate",
+    "exclamation_rate": "Exclamation rate",
+    "sentence_len_var": "Sentence len. var.",
+    "avg_wps": "Avg words/sent.",
+    "sem_axis_ideology": "Sem. ideology",
+    "sem_axis_ideology_var": "Sem. ideology var.",
+    "sem_axis_emotion": "Sem. emotion",
+    "sem_axis_emotion_var": "Sem. emotion var.",
+    "sem_axis_aggression": "Sem. aggression",
+    "sem_axis_ideology_pole_share": "Sem. pole share",
+    "sem_axis_ideology_esteban_ray": "Sem. Esteban-Ray",
+    "sem_axis_ideology_extreme_left": "Sem. extreme left",
+    "sem_axis_ideology_extreme_right": "Sem. extreme right",
+    "wf_extremity": "WF extremity",
+    "wf_extremity_z": "WF extremity (z)",
+    "wf_change_z": "WF change (z)",
+    "wf_change": "WF change",
+    "wfa_extremity_z": "WFA extremity (z)",
+    "wfa_change_z": "WFA change (z)",
+    "wfa_extremity": "WFA extremity",
+    "wfa_change": "WFA change",
+    "wf2_extremity": "WF2 extremity",
+    "wf2_extremity_z": "WF2 extremity (z)",
+    "wf2_change_z": "WF2 change (z)",
+    "wf2_change": "WF2 change",
+    "wfa2_extremity_z": "WFA2 extremity (z)",
+    "wfa2_change_z": "WFA2 change (z)",
+    "wfa2_extremity": "WFA2 extremity",
+    "wfa2_change": "WFA2 change",
+}
+
+
+def outcome_label(outcome_id: str, *, short: bool = False) -> str:
+    """Function summary: human-readable outcome label for plots and READMEs.
+
+    Parameters:
+    - outcome_id: outcome key.
+    - short: if True, use compact label for figure axes.
+
+    Returns:
+    - Display label string.
+    """
+    if short and outcome_id in OUTCOME_LABELS_SHORT:
+        return OUTCOME_LABELS_SHORT[outcome_id]
+    return outcome_id.replace("_", " ")

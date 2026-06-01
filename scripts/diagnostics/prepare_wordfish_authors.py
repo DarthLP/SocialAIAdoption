@@ -530,6 +530,39 @@ def author_positions_and_panels(
         )
 
     ext_df = pd.DataFrame(ext_rows)
+    pre_mask = ext_df["bin_start"].astype(str) < anchor_date
+    author_theta_pre = (
+        ext_df.loc[pre_mask]
+        .groupby("author")["theta"]
+        .agg(pre_n="count", author_pre_mean_theta="mean")
+    )
+    ext_df = ext_df.merge(author_theta_pre, on="author", how="left")
+    ext_df["extremity_within_author"] = np.where(
+        ext_df["pre_n"].fillna(0) >= 2,
+        (ext_df["theta"] - ext_df["author_pre_mean_theta"]).abs(),
+        np.nan,
+    )
+    lang_pre_stats: Dict[str, tuple[float, float]] = {}
+    for lang, grp in ext_df.loc[pre_mask].groupby("primary_lexicon"):
+        vals = grp["extremity_within_author"].dropna()
+        if len(vals) >= 2:
+            lang_pre_stats[str(lang)] = (float(vals.mean()), float(vals.std()))
+    ext_df["extremity_within_author_z"] = np.nan
+    for author, grp in ext_df.groupby("author"):
+        if float(grp["pre_n"].iloc[0] if "pre_n" in grp.columns else 0) < 2:
+            continue
+        pre_a = grp[grp["bin_start"].astype(str) < anchor_date]["extremity_within_author"].dropna()
+        lang = str(grp["primary_lexicon"].iloc[0])
+        if len(pre_a) >= 2 and pre_a.std() > 0:
+            mu_a, sd_a = float(pre_a.mean()), float(pre_a.std())
+        elif lang in lang_pre_stats and lang_pre_stats[lang][1] > 0:
+            mu_a, sd_a = lang_pre_stats[lang]
+        else:
+            continue
+        ext_df.loc[grp.index, "extremity_within_author_z"] = (
+            grp["extremity_within_author"] - mu_a
+        ) / sd_a
+    ext_df = ext_df.drop(columns=["pre_n", "author_pre_mean_theta"], errors="ignore")
     rolling_w = int(wfa_cfg.get("rolling_bins_w", 2))
     ext_df = compute_change_outcomes(ext_df, anchor_date, rolling_w, group_col="author")
 
@@ -732,9 +765,12 @@ def main() -> None:
     if args.panel_mode != "all":
         panel_modes = [args.panel_mode]
 
-    langs = list(wfa_cfg.get("languages", list(FIT_LANGUAGES)))
+    all_langs = list(wfa_cfg.get("languages", list(FIT_LANGUAGES)))
+    langs = list(all_langs)
     if args.language != "all":
         langs = [args.language]
+    is_partial = (args.language != "all") and (len(langs) < len(all_langs))
+    tags_written: List[str] = []
 
     fit_lines: List[str] = []
     all_validation: List[pd.DataFrame] = []
@@ -878,36 +914,49 @@ def main() -> None:
                     val_parts.append(val)
                     all_validation.append(val)
 
-            if pos_parts:
-                pos_all = pd.concat(pos_parts, ignore_index=True)
-                pos_by_spec_mode[(spec_name, panel_mode)] = pos_all
-                pos_all.to_csv(out_dir / f"wordfish_authors_positions_{tag}.csv", index=False)
-            if ext_parts:
-                ext_all = pd.concat(ext_parts, ignore_index=True)
-                ext_all.to_csv(
-                    out_dir / f"wordfish_authors_extremity_panel_{tag}.csv", index=False
-                )
-                if spec_name == headline_spec and panel_mode == headline_mode:
-                    ext_all.to_csv(out_dir / "wordfish_authors_extremity_panel.csv", index=False)
-                    for lang_h in langs:
-                        src = out_dir / f"wordfish_authors_axis_words_{lang_h}_{tag}.csv"
-                        if src.is_file():
-                            shutil.copy(
-                                src,
-                                out_dir / f"wordfish_authors_axis_words_{lang_h}.csv",
-                            )
-            if disp_parts:
-                pd.concat(disp_parts, ignore_index=True).to_csv(
-                    out_dir / f"wordfish_authors_dispersion_panel_{tag}.csv", index=False
-                )
-            if cov_parts:
-                pd.concat(cov_parts, ignore_index=True).to_csv(
-                    out_dir / f"wordfish_authors_coverage_{tag}.csv", index=False
-                )
-            if val_parts:
-                pd.concat(val_parts, ignore_index=True).to_csv(
-                    out_dir / f"wordfish_authors_validation_{tag}.csv", index=False
-                )
+            if is_partial:
+                if ext_parts:
+                    ext_parts[0].to_csv(
+                        out_dir
+                        / f"wordfish_authors_extremity_panel_{tag}_{args.language}.csv",
+                        index=False,
+                    )
+            else:
+                if pos_parts:
+                    pos_all = pd.concat(pos_parts, ignore_index=True)
+                    pos_by_spec_mode[(spec_name, panel_mode)] = pos_all
+                    pos_all.to_csv(
+                        out_dir / f"wordfish_authors_positions_{tag}.csv", index=False
+                    )
+                if ext_parts:
+                    ext_all = pd.concat(ext_parts, ignore_index=True)
+                    ext_all.to_csv(
+                        out_dir / f"wordfish_authors_extremity_panel_{tag}.csv", index=False
+                    )
+                    if spec_name == headline_spec and panel_mode == headline_mode:
+                        ext_all.to_csv(
+                            out_dir / "wordfish_authors_extremity_panel.csv", index=False
+                        )
+                        for lang_h in langs:
+                            src = out_dir / f"wordfish_authors_axis_words_{lang_h}_{tag}.csv"
+                            if src.is_file():
+                                shutil.copy(
+                                    src,
+                                    out_dir / f"wordfish_authors_axis_words_{lang_h}.csv",
+                                )
+                    tags_written.append(tag)
+                if disp_parts:
+                    pd.concat(disp_parts, ignore_index=True).to_csv(
+                        out_dir / f"wordfish_authors_dispersion_panel_{tag}.csv", index=False
+                    )
+                if cov_parts:
+                    pd.concat(cov_parts, ignore_index=True).to_csv(
+                        out_dir / f"wordfish_authors_coverage_{tag}.csv", index=False
+                    )
+                if val_parts:
+                    pd.concat(val_parts, ignore_index=True).to_csv(
+                        out_dir / f"wordfish_authors_validation_{tag}.csv", index=False
+                    )
 
     if all_validation:
         pd.concat(all_validation, ignore_index=True).to_csv(
@@ -929,6 +978,23 @@ def main() -> None:
     (out_dir / "wordfish_authors_run_notes.txt").write_text(
         "\n".join(notes) + "\n", encoding="utf-8"
     )
+    if is_partial:
+        print(
+            "[prepare_wordfish_authors] Partial-language run; pooled headline files unchanged.",
+            flush=True,
+        )
+    expected_lex = set(all_langs)
+    for tag in tags_written:
+        panel_path = out_dir / f"wordfish_authors_extremity_panel_{tag}.csv"
+        if not panel_path.is_file():
+            continue
+        present = set(pd.read_csv(panel_path)["primary_lexicon"].dropna().astype(str).unique())
+        if present != expected_lex:
+            print(
+                f"[prepare_wordfish_authors] WARNING: {tag}: extremity panel has "
+                f"{sorted(present)}, expected {sorted(expected_lex)}",
+                flush=True,
+            )
     print(f"[prepare_wordfish_authors] wrote tables to {out_dir}", flush=True)
 
 

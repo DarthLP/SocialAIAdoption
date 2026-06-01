@@ -6,11 +6,9 @@ Functionality:
 - Lexical: bin daily_country_panel (and universe slice) to 1/3/7d, merge geo-matched circumvention.
 - Semantic: pass through semantic_axis_panel_* with Italy broadcast columns only (no geo-matched VPN).
 
-Outputs (under results/tables/.../did/):
-- did_country_panel_{1,3,7}d.csv, did_country_panel_by_universe_slice_{1,3,7}d.csv
-- did_semantic_topic_family_{1,3,7}d.csv
-- did_semantic_language_{1,3,7}d.csv
-- did_semantic_language_universe_{1,3,7}d.csv
+Outputs (under results/tables/.../did/panels/):
+- panels/country/: did_country_panel_{1,3,7}d.csv, did_country_panel_by_universe_slice_{1,3,7}d.csv
+- panels/semantic/: did_semantic_topic_family_{1,3,7}d.csv, language_*, language_universe_*
 
 How to apply/run:
   .venv/bin/python scripts/diagnostics/prepare_circumvention_descriptives.py --config config/italy_polarization_setup.yaml
@@ -53,6 +51,7 @@ from scripts.diagnostics.descriptives_util import (  # noqa: E402
 )
 from src.circumvention import GEO_MATCHED_INTENSITY_COLS, merge_circumvention_by_geo  # noqa: E402
 from src.config_utils import load_circumvention_config, load_config, tables_subdir  # noqa: E402
+from src.did.paths import did_panels_dir  # noqa: E402
 
 # topic_family on semantic panels -> country_panel labels in daily_country_panel.csv
 # EU_hub_en has no entry in circumvention.country_panel_geo_map; VPN columns stay NaN (by design).
@@ -194,13 +193,18 @@ def main() -> None:
     descriptives_dir = tables_subdir(config, "descriptives")
     circum_dir = tables_subdir(config, "circumvention")
     semantic_dir = tables_subdir(config, "semantic_axis")
-    did_dir = tables_subdir(config, "did")
-    did_dir.mkdir(parents=True, exist_ok=True)
+    country_dir = did_panels_dir(config, "country")
+    semantic_out_dir = did_panels_dir(config, "semantic")
+    country_dir.mkdir(parents=True, exist_ok=True)
+    semantic_out_dir.mkdir(parents=True, exist_ok=True)
 
     for bin_days in PANEL_BIN_DAYS:
-        _merge_country_daily(descriptives_dir, circum_dir, did_dir, geo_map, bin_days, launch)
-    _merge_semantic_panels(semantic_dir, did_dir)
-    print(f"[prepare_did_merged_panels] wrote merged tables to {did_dir}", flush=True)
+        _merge_country_daily(descriptives_dir, circum_dir, country_dir, geo_map, bin_days, launch)
+    _merge_semantic_panels(semantic_dir, semantic_out_dir)
+    print(
+        f"[prepare_did_merged_panels] wrote country -> {country_dir}, semantic -> {semantic_out_dir}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":
