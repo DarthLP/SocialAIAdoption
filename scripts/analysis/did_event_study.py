@@ -64,7 +64,7 @@ from src.did.estimate import (  # noqa: E402
     estimate_pretrend_f,
     run_strategy_twfe,
 )
-from src.did.inference import permutation_test_p, wild_cluster_bootstrap_p  # noqa: E402
+from src.did.inference import placebo_in_space_p, wild_cluster_bootstrap_p  # noqa: E402
 from src.did.outcomes import (  # noqa: E402
     DEFAULT_FAMILIES,
     FIRST_STAGE_OUTCOMES,
@@ -101,8 +101,10 @@ from src.did.specs import (  # noqa: E402
     author_strategies,
     filter_strategy_sample,
     is_author_strategy,
+    inference_role_for_strategy,
     is_cross_country_strategy,
     is_entity_fe_only_strategy,
+    is_wcb_eligible_strategy,
     strategies_for_outcome,
     strategy_label,
 )
@@ -127,7 +129,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--no-figures", action="store_true")
     parser.add_argument("--no-bootstrap", action="store_true")
-    parser.add_argument("--bootstrap-draws", type=int, default=199)
+    parser.add_argument("--bootstrap-draws", type=int, default=9999)
     parser.add_argument("--event-window", type=int, default=30)
     parser.add_argument(
         "--full-coefplots",
@@ -506,30 +508,34 @@ def run_estimation(
                     res["estimation_note"] = (
                         pretrend_note if note == "ok" else f"{note};{pretrend_note}"
                     )
-            wild_p = perm_p = float("nan")
-            skip_bootstrap = (
-                strat.strategy_id == "within_italy_ddd"
-                or is_author_strategy(strat.strategy_id)
-                or oc.panel_kind == "comment"
-            )
-            if do_bootstrap and not skip_bootstrap:
+            wild_p = float("nan")
+            p_placebo_space = float("nan")
+            placebo_p_floor = float("nan")
+            role = inference_role_for_strategy(strat.strategy_id)
+            if do_bootstrap:
                 try:
-                    wild_p = wild_cluster_bootstrap_p(
-                        work_panel,
-                        strat,
-                        y_col,
-                        n_draws=bootstrap_draws,
-                        entity_col=entity_col,
-                        time_col="time_id",
-                    )
-                    perm_p = permutation_test_p(
-                        work_panel,
-                        strat,
-                        y_col,
-                        n_draws=bootstrap_draws,
-                        entity_col=entity_col,
-                        time_col="time_id",
-                    )
+                    if is_wcb_eligible_strategy(strat.strategy_id) and oc.panel_kind != "comment":
+                        wcb_entity = entity_col
+                        if is_author_strategy(strat.strategy_id) and "author" in work_panel.columns:
+                            wcb_entity = "author"
+                        wild_p = wild_cluster_bootstrap_p(
+                            work_panel,
+                            strat,
+                            y_col,
+                            n_draws=bootstrap_draws,
+                            entity_col=wcb_entity,
+                            time_col="time_id",
+                        )
+                    if is_cross_country_strategy(strat.strategy_id):
+                        pis = placebo_in_space_p(
+                            work_panel,
+                            strat,
+                            y_col,
+                            entity_col=entity_col,
+                            time_col="time_id",
+                        )
+                        p_placebo_space = pis.p
+                        placebo_p_floor = pis.p_floor
                 except Exception:
                     pass
 
@@ -542,9 +548,12 @@ def run_estimation(
                 "spec": strat.post_mode,
                 "wordfish_tier": oc.tier or "",
                 "sign_only_cross_country": int(oc.sign_only_cross_country),
+                "inference_role": role,
                 **res,
                 "wild_p": wild_p,
-                "perm_p": perm_p,
+                "perm_p": p_placebo_space,
+                "p_placebo_space": p_placebo_space,
+                "placebo_p_floor": placebo_p_floor,
             }
             strategy_rows.append(row)
 

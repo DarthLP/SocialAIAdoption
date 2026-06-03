@@ -6,7 +6,7 @@ analysis. It consumes the per-user shift CSVs produced by
 `scripts/user_week/prepare_user_week_style_panel.py`, and writes a small set of figures
 that communicate the headline result and its sanity checks.
 
-Outputs (per cohort and composite under `paths.figures_dir/user_week/<cohort>/<polarization|style>/`):
+Outputs (per cohort and composite under `paths.figures_dir/user_week/<cohort>/<polarization|style|semantic>/`):
 - dist_std_delta_composite.png: histogram of weekly std_delta_composite with
   vertical lines at +/-1 and +/-2 SD; tail shares in legend.
 - dist_t_user_pooled_composite.png: same idea on the precision-aware pooled t.
@@ -63,6 +63,7 @@ def _setup_project_root() -> Path:
 PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import load_config, plot_reference_dates_calendar_utc, user_week_composites
+from src.user_week.figure_readmes import write_all_user_week_readmes
 
 
 def composite_file_slug(composite_name: str) -> str:
@@ -81,8 +82,8 @@ def composites_for_config(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     comps = user_week_composites(config)
     if not comps:
         raise ValueError(
-            "config user_week must define style_composite and polarization_composite "
-            "(see config/italy_polarization_setup.yaml)"
+            "config user_week must define polarization_composite, style_composite, "
+            "and semantic_composite (see config/italy_polarization_setup.yaml)"
         )
     return comps
 
@@ -503,6 +504,9 @@ def main() -> None:
                 component_feats=component_feats,
                 args=args,
             )
+    fig_root = Path(config["paths"]["figures_dir"]) / "user_week"
+    write_all_user_week_readmes(fig_root, cohorts=cohorts)
+    print(f"[plot_user_pre_post_shift] figure READMEs under {fig_root}", flush=True)
 
 
 if __name__ == "__main__":

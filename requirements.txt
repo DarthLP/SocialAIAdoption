@@ -20,5 +20,6 @@ sentencepiece
 stopwordsiso
 linearmodels
 pyfixest
+wildboottest
 statsmodels
 scipy

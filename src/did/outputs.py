@@ -168,6 +168,23 @@ def _strategy_sort_key(strategy_id: str) -> tuple:
     return (1, sid)
 
 
+def headline_pvalue(row: pd.Series) -> float:
+    """Function summary: primary inference p (placebo-space or WCB), else cluster p for display."""
+    role = str(row.get("inference_role", "") or "")
+    if role == "descriptive":
+        p = row.get("p_placebo_space", row.get("perm_p", float("nan")))
+        if pd.notna(p):
+            return float(p)
+    if role == "primary":
+        p = row.get("wild_p", float("nan"))
+        if pd.notna(p):
+            return float(p)
+    try:
+        return float(row.get("pvalue", float("nan")))
+    except (TypeError, ValueError):
+        return float("nan")
+
+
 def _format_beta_line(row: pd.Series) -> str:
     """Function summary: one-line TWFE result for text summaries."""
     label = row.get("strategy_label") or strategy_label(str(row.get("strategy_id", "")))
@@ -176,7 +193,9 @@ def _format_beta_line(row: pd.Series) -> str:
     if pd.isna(beta):
         return f"  {label}: (no estimate) [{note}]"
     se = row.get("se", float("nan"))
-    pval = row.get("pvalue", float("nan"))
+    p_cluster = row.get("pvalue", float("nan"))
+    pval = headline_pvalue(row)
+    role = str(row.get("inference_role", "") or "")
     n_obs = row.get("n_obs", "")
     n_cl = row.get("n_clusters", "")
     flags: List[str] = []
@@ -190,6 +209,10 @@ def _format_beta_line(row: pd.Series) -> str:
     pq = str(row.get("pretrend_quality", "") or "")
     if pq and pq != "ok":
         flags.append(f"pretrend:{pq}")
+    if role == "descriptive" and pd.notna(p_cluster):
+        flags.append(f"p_cluster={float(p_cluster):.4g}")
+    if role == "primary" and pd.notna(row.get("wild_p")):
+        flags.append("p_wcb")
     flag_s = f" [{', '.join(flags)}]" if flags else ""
     return (
         f"  {label}: β={beta:.4f} (SE={se:.4f}), p={pval:.4g}, "
@@ -872,7 +895,8 @@ def plot_significance_heatmap(summary: pd.DataFrame, out_path: Path) -> None:
     sub["plot_label"] = _strategy_plot_labels(sub)
     sub["outcome_plot"] = _outcome_plot_labels(sub)
     pivot_beta = sub.pivot_table(index="outcome_plot", columns="plot_label", values="beta", aggfunc="first")
-    pivot_p = sub.pivot_table(index="outcome_plot", columns="plot_label", values="pvalue", aggfunc="first")
+    sub["p_headline"] = sub.apply(headline_pvalue, axis=1)
+    pivot_p = sub.pivot_table(index="outcome_plot", columns="plot_label", values="p_headline", aggfunc="first")
     pivot_n = sub.pivot_table(index="outcome_plot", columns="plot_label", values="n_clusters", aggfunc="first")
     if pivot_beta.empty:
         return
@@ -889,7 +913,8 @@ def plot_significance_heatmap(summary: pd.DataFrame, out_path: Path) -> None:
     for _, row in sub.iterrows():
         ridx = row["outcome_plot"]
         cidx = row["plot_label"]
-        star = "*" if pd.notna(row["pvalue"]) and row["pvalue"] < 0.05 else ""
+        p_star = headline_pvalue(row)
+        star = "*" if pd.notna(p_star) and p_star < 0.05 else ""
         ncl = row.get("n_clusters", float("nan"))
         txt = f"{star}\nN={int(ncl)}".strip() if pd.notna(ncl) else star
         if ridx in annot.index and cidx in annot.columns:

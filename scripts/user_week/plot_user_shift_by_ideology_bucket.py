@@ -173,7 +173,8 @@ def run_cohort(config: dict, cohort: str, bucket_order: List[str]) -> None:
 
     readme = (
         "# Shifts by ideology bucket\n\n"
-        "Bucket labels use **pre-ban** tertiles (lexical net_ideology vs semantic sem_axis). "
+        "Bucket labels use **pre-ban** asymmetric rules (lexical: no L/R hits → neutral; "
+        "semantic: tail-week p10/p90). "
         "Deltas are **within-person** post minus pre; not cross-country DiD.\n"
     )
     fig_root.mkdir(parents=True, exist_ok=True)

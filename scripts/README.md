@@ -144,10 +144,11 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
 - Merge: `prepare_did_merged_panels.py` → `did/panels/country/` (lexical + geo VPN: `did_country_panel_{1,3,7}d.csv`, universe-slice variants) and `did/panels/semantic/` (`did_semantic_{topic_family,language,language_universe}_{1,3,7}d.csv`)
 - Plot: `plot_circumvention_descriptives.py` → `circumvention/daily/` (VPN/Tor daily), `semantic_ideology_vs_vpn_it.png`, `circumvention/bins_{1,3,7}d/vpn_geo_levels_vs_it_broadcast.png`
 - Config: `circumvention.country_panel_geo_map`, `circumvention.panel_bin_days`
-- **Estimate:** `prepare_did_subreddit_panel.py` → `did/panels/subreddit/`; optional `prepare_did_comment_panel.py` → `did/panels/comment/` (partitioned comment Parquet + `did_author_day_panel_1d.csv`) → `scripts/analysis/did_event_study.py` (TWFE DiD via `linearmodels`; comment-level via `pyfixest` author+calendar FE; strategies include `italy_only_post` entity-FE-only on IT forums/comments; `did.author_wordfish_spec` / `--author-spec week3` for author-bin robustness; `did_summary.spec` includes `full_ban`, early-ban, and post-phase windows per `did.post_phases`) → `did/estimates/summary/` and `did/estimates/{family}/`; figures under `results/figures/italy_polarization/did/{family}/` with per-folder `README.md`
+- **Estimate:** `prepare_did_subreddit_panel.py` → `did/panels/subreddit/`; optional `prepare_did_comment_panel.py` → `did/panels/comment/` (partitioned comment Parquet + `did_author_day_panel_1d.csv`) → `scripts/analysis/did_event_study.py` (TWFE DiD via `linearmodels`; comment-level via `pyfixest` author+calendar FE; strategies include `italy_only_post` entity-FE-only on IT forums/comments; `did.author_wordfish_spec` / `--author-spec week3` for author-bin robustness; `did_summary.spec` includes `full_ban`, early-ban, and post-phase windows per `did.post_phases`) → `did/estimates/summary/` and `did/estimates/{family}/`; figures under `results/figures/italy_polarization/did/{family}/` with per-folder `README.md`. **Inference:** `inference_role` on summary rows; cross-country forum-clustered p is descriptive; headline `p_placebo_space` + `scripts/analysis/run_did_gsynth.py`; within-Italy/author restricted WCB (`wildboottest`, default 9999 draws).
 - **Migrate** flat `did/*.csv`: `scripts/devtools/migrate_did_table_layout.py` (`--dry-run` optional)
 - Run: `.venv/bin/python scripts/diagnostics/prepare_did_subreddit_panel.py --config config/italy_polarization_setup.yaml` then `.venv/bin/python scripts/analysis/did_event_study.py --config config/italy_polarization_setup.yaml` (add `--no-bootstrap` for a fast pass; `--outcomes wf_change,wf_extremity_z` to filter outcome ids; `--full-coefplots` for all strategies per outcome; `--figures-only` to rebuild plots from `did_summary.csv` without re-estimating)
 - **Comment DiD:** after enriched shards + `--pass all`: `.venv/bin/python scripts/diagnostics/prepare_did_comment_panel.py --config config/italy_polarization_setup.yaml` then `.venv/bin/python scripts/analysis/did_event_study.py --families lexical_comment,semantic_axis_comment,lexical_author_day,semantic_axis_author_day --no-bootstrap` (smoke: `--max-shards 2` on prepare; `--comment-sample-frac 0.05` on estimate). **Italy-only forum:** `italy_only_post` included in default subreddit families. **Author bins:** `--author-spec week3` robustness pass.
+- **Bucket-then-comment event study** (polarization decomposition; DiD uses same **lexical** asymmetric rule as `user_week`, applied to each scheme’s March labeling-window comments—not peer tertiles): run `prepare_did_comment_panel.py --bin-days 3` once, then `scripts/analysis/bucket_event_study.py` (auto-loads `did/panels/comment/did_comment_panel_{1,3}d/` from config or `--bin-days`; otherwise streams shards). → `did/lean_buckets/` + `did/bucket_event_study/{1,3}d/` + `figures/.../did/bucket_event_study/{1,3}d/` (bin width from config or `--bin-days`; run each width separately). Config: `did.bucket_event_study` (schemes `split_sample` / `holdout_2wk` / `naive_full_march`; 3-day bins; `outcome_scale: raw|standardized`). **Table 1 static (headline):** `net_ideology ~ post + post:IT | author` (no bin FE). **Event study:** `i(rel_period, IT)` with `author + time_id` FE. **Robustness static:** `post:IT | author + time_id` only. Pooled + by-bucket; control variants; stacked DDD (liberal−conservative); trajectory descriptives; in-place wild-cluster bootstrap (49 draws by default in config; use `--no-bootstrap` for smoke). Smoke: `--max-shards 1 --scheme holdout_2wk --no-bootstrap --no-figures`.
 - Headline event-study overlays: `scripts/analysis/did_event_study_plots.py` → `did/event_study_{outcome}.csv` and `results/figures/.../did/event_study/*.png`
 - Overview-only replot: `scripts/diagnostics/plot_did_overview.py`
 - Lexical control heterogeneity: `scripts/diagnostics/plot_did_lexical_by_control.py` → `did/lexical/by_control_choice.png`
@@ -221,7 +222,7 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
 
 Prerequisites: enriched shards with polarization + AI + style columns (stage 4 above).
 
-- Scripts: `prepare_user_week_style_panel.py` → `analyze_user_pre_post_shift.py` → `plot_user_pre_post_shift.py` → `plot_user_pole_decomposition.py` → `plot_user_semantic_by_lexicon.py` → `assign_author_ideology_buckets.py` → `compare_lexical_semantic_author_buckets.py` → `plot_user_shift_by_ideology_bucket.py`
+- Scripts: `prepare_user_week_style_panel.py` → `analyze_user_pre_post_shift.py` → `plot_user_pre_post_shift.py` → `estimate_user_week_panel.py` → `plot_user_week_event_study.py` → `plot_user_pole_decomposition.py` → `plot_user_lexical_by_lexicon.py` → `plot_user_semantic_by_lexicon.py` → `plot_user_week_overview.py` → `assign_author_ideology_buckets.py` → `compare_lexical_semantic_author_buckets.py` → `plot_user_shift_by_ideology_bucket.py`
 - Pre/post split: `event_window.launch_day_utc` in Italy YAML (Italy ChatGPT ban onset).
 - Composites (config `user_week`): `polarization_composite_user_week`, `ai_style_composite_user_week`, `semantic_composite_user_week`
 - Default features include pole margins, `sem_axis_*` weekly means, and `share_scored` (semantic coverage QA). Requires enriched shards with semaxis pass (`compute_enriched_shard_features.py --pass all`).
@@ -229,18 +230,27 @@ Prerequisites: enriched shards with polarization + AI + style columns (stage 4 a
 - Outputs:
   - `results/tables/italy_polarization/user_week/user_week_panel.parquet` (`sem_axis_*_mean`, `share_scored`, `pole_share`)
   - `results/tables/italy_polarization/user_week/shift_per_user_<cohort>_<style|polarization|semantic>.csv`
-  - `results/figures/italy_polarization/user_week/<cohort>/<style|polarization|semantic>/`
-  - `results/figures/italy_polarization/user_week/<cohort>/semantic/by_primary_lexicon/` (descriptive; not causal IT vs control)
-  - `results/tables/italy_polarization/user_week/author_ideology_buckets_<cohort>.csv` (pre-ban lexical vs semantic tertiles: conservative / neutral / liberal-leaning)
-  - `results/tables/italy_polarization/user_week/ideology_bucket_agreement_<cohort>/` (κ, confusion, Spearman)
+  - `results/tables/italy_polarization/user_week/regression_summary_<cohort>.csv` (author FE: `y ~ post`, cluster author)
+  - `results/tables/italy_polarization/user_week/event_study_<cohort>_{net_ideology|sem_axis_ideology}.csv`
+  - `results/figures/italy_polarization/user_week/<cohort>/<style|polarization|semantic>/` (auto `README.md` via `src/user_week/figure_readmes.py`)
+  - `results/figures/italy_polarization/user_week/<cohort>/polarization|semantic/by_primary_lexicon/` (descriptive; not causal IT vs control)
+  - `results/figures/italy_polarization/user_week/<cohort>/event_study/`, `.../overview/`, `.../pole_decomposition/`
+  - `results/tables/italy_polarization/user_week/author_ideology_buckets_<cohort>.csv` (pre-ban **asymmetric** buckets: lexical neutral if no L/R hits; semantic neutral if no p25/p75 tail weeks (config `tail_percentiles`); `semantic_bucket_mag_band` for diagnostics)
+  - Prerequisite for assignment: `results/tables/italy_polarization/semantic_axis/semantic_axis_lexicon_percentile_thresholds.csv` from `prepare_semantic_axis_descriptives.py`
+  - `results/tables/italy_polarization/user_week/ideology_bucket_agreement_<cohort>/` (marginals, tail vs mag_band κ/confusion, pole-only agreement)
   - `results/figures/italy_polarization/user_week/<cohort>/ideology_bucket_agreement/` and `.../by_ideology_bucket/` (shift violins by bucket)
   - `results/tables/italy_polarization/did/panels/author/did_author_semantic_week_panel.csv`
 - Run (full panel; do not use `--max_total_month_files` for production):
   - `.venv/bin/python scripts/user_week/prepare_user_week_style_panel.py --config config/italy_polarization_setup.yaml`
   - `.venv/bin/python scripts/user_week/analyze_user_pre_post_shift.py --config config/italy_polarization_setup.yaml`
   - `.venv/bin/python scripts/user_week/plot_user_pre_post_shift.py --config config/italy_polarization_setup.yaml`
+  - `.venv/bin/python scripts/user_week/estimate_user_week_panel.py --config config/italy_polarization_setup.yaml --cohort both`
+  - `.venv/bin/python scripts/user_week/plot_user_week_event_study.py --config config/italy_polarization_setup.yaml`
   - `.venv/bin/python scripts/user_week/plot_user_pole_decomposition.py --config config/italy_polarization_setup.yaml`
+  - `.venv/bin/python scripts/user_week/plot_user_lexical_by_lexicon.py --config config/italy_polarization_setup.yaml`
   - `.venv/bin/python scripts/user_week/plot_user_semantic_by_lexicon.py --config config/italy_polarization_setup.yaml`
+  - `.venv/bin/python scripts/user_week/plot_user_week_overview.py --config config/italy_polarization_setup.yaml --cohort strict`
+  - `.venv/bin/python scripts/diagnostics/prepare_semantic_axis_descriptives.py --config config/italy_polarization_setup.yaml --panels-only` (if percentile thresholds missing)
   - `.venv/bin/python scripts/user_week/assign_author_ideology_buckets.py --config config/italy_polarization_setup.yaml --cohort both`
   - `.venv/bin/python scripts/user_week/compare_lexical_semantic_author_buckets.py --config config/italy_polarization_setup.yaml --cohort both`
   - `.venv/bin/python scripts/user_week/plot_user_shift_by_ideology_bucket.py --config config/italy_polarization_setup.yaml`

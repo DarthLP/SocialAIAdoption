@@ -370,6 +370,31 @@ def is_author_strategy(strategy_id: str) -> bool:
     return strategy_id.startswith("author_")
 
 
+def is_wcb_eligible_strategy(strategy_id: str) -> bool:
+    """Function summary: True when restricted wild cluster bootstrap is valid (many clusters).
+
+    Cross-country strategies have one treated country cluster (MacKinnon–Webb); use placebo-in-space.
+    """
+    if is_cross_country_strategy(strategy_id):
+        return False
+    if strategy_id == "within_italy_ddd":
+        return True
+    if is_author_strategy(strategy_id):
+        return True
+    if strategy_id == "italy_only_post":
+        return True
+    return False
+
+
+def inference_role_for_strategy(strategy_id: str) -> str:
+    """Function summary: descriptive vs primary inference routing for summary tables."""
+    if is_cross_country_strategy(strategy_id):
+        return "descriptive"
+    if strategy_id == "within_italy_ddd" or is_author_strategy(strategy_id):
+        return "primary"
+    return "secondary"
+
+
 ENTITY_FE_ONLY_STRATEGIES: frozenset[str] = frozenset({"author_it_ban", "italy_only_post"})
 
 

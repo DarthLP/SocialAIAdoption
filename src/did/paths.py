@@ -63,6 +63,46 @@ def did_summary_dir(config: Dict[str, Any]) -> Path:
     return did_estimates_dir(config) / "summary"
 
 
+def did_gsynth_dir(config: Dict[str, Any]) -> Path:
+    """Function summary: estimates/gsynth/ for generalized synthetic control outputs.
+
+    Parameters:
+    - config: loaded YAML.
+
+    Returns:
+    - Path to gsynth estimates directory.
+    """
+    return did_estimates_dir(config) / "gsynth"
+
+
+def did_gsynth_att_path(config: Dict[str, Any], outcome_id: str, bin_days: int = 3) -> Path:
+    """Function summary: ATT path CSV for one outcome and bin width.
+
+    Parameters:
+    - config: loaded YAML.
+    - outcome_id: outcome slug.
+    - bin_days: calendar bin width (1 or 3).
+
+    Returns:
+    - Path to att_{outcome}_{bin}d.csv.
+    """
+    return did_gsynth_dir(config) / f"att_{outcome_id}_{int(bin_days)}d.csv"
+
+
+def did_gsynth_inference_path(config: Dict[str, Any], outcome_id: str, bin_days: int = 3) -> Path:
+    """Function summary: inference summary CSV for gsynth run.
+
+    Parameters:
+    - config: loaded YAML.
+    - outcome_id: outcome slug.
+    - bin_days: calendar bin width.
+
+    Returns:
+    - Path to inference_{outcome}_{bin}d.csv.
+    """
+    return did_gsynth_dir(config) / f"inference_{outcome_id}_{int(bin_days)}d.csv"
+
+
 def did_summary_paths(config: Dict[str, Any]) -> Tuple[Path, Path]:
     """Function summary: master did_summary.csv and labeled variant paths.
 
@@ -233,6 +273,46 @@ def aggregated_tail_shift_figure_path(
 def _legacy_panel_path(root: Path, filename: str) -> Path:
     """Function summary: flat did/ path used before nested layout."""
     return root / filename
+
+
+def did_lean_buckets_dir(config: Dict[str, Any]) -> Path:
+    """Function summary: tables/.../did/lean_buckets/ for author ideology labels.
+
+    Parameters:
+    - config: loaded YAML.
+
+    Returns:
+    - Path to lean_buckets directory.
+    """
+    return did_root(config) / "lean_buckets"
+
+
+def did_bucket_event_study_dir(config: Dict[str, Any], bin_days: int = 3) -> Path:
+    """Function summary: tables/.../did/bucket_event_study/{bin_days}d/ for coef exports.
+
+    Parameters:
+    - config: loaded YAML.
+    - bin_days: event calendar bin width (1 or 3); separates 1d vs 3d result trees.
+
+    Returns:
+    - Path to bucket_event_study directory for this bin width.
+    """
+    return did_root(config) / "bucket_event_study" / f"{int(bin_days)}d"
+
+
+def bucket_event_study_figures_dir(config: Dict[str, Any], bin_days: int = 3) -> Path:
+    """Function summary: figures/.../did/bucket_event_study/{bin_days}d/ root.
+
+    Parameters:
+    - config: loaded study config with paths.figures_dir.
+    - bin_days: event calendar bin width (1 or 3).
+
+    Returns:
+    - Path under figures_dir for bucket event-study plots at this bin width.
+    """
+    from src.config_utils import figures_subdir
+
+    return figures_subdir(config, "did") / "bucket_event_study" / f"{int(bin_days)}d"
 
 
 def resolve_panel_path(config: Dict[str, Any], kind: PanelKind, filename: str) -> Path:

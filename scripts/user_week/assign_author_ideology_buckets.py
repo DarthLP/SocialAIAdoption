@@ -1,7 +1,7 @@
 """
 Script summary:
-Assign pre-ban liberal / neutral / conservative-leaning buckets per author using lexical
-(net_ideology) and semantic (sem_axis_ideology) tertiles within primary_lexicon.
+Assign pre-ban liberal / neutral / conservative-leaning buckets per author: asymmetric lexical
+(no L/R hits → neutral) and semantic tail-weeks (p10/p90), plus mag_band diagnostic column.
 
 How to apply/run:
   .venv/bin/python scripts/user_week/assign_author_ideology_buckets.py \\
@@ -92,21 +92,26 @@ def write_methods_note(
         f"Method: {bucket_cfg.method}",
         f"min_pre_words: {bucket_cfg.min_pre_words}",
         f"min_pre_weeks: {bucket_cfg.min_pre_weeks}",
+        f"min_share_scored: {bucket_cfg.min_share_scored}",
         f"Bucket labels (low/mid/high): {bucket_cfg.bucket_labels}",
         "",
-        "Lexical score: word-weighted pre-ban mean of net_ideology_mean.",
-        "Semantic score: word-weighted pre-ban mean of sem_axis_ideology_mean",
-        "  (multiplied by per-lexicon orientation from ideology_axis_orientation_report).",
+        "Lexical bucket: neutral if pre-ban left_hits + right_hits == 0; else pole from",
+        "  sign of word-weighted pre-ban net_ideology_mean.",
+        f"Semantic bucket (primary): tail-week rule using calibrated p{bucket_cfg.tail_percentile_low}/"
+        f"p{bucket_cfg.tail_percentile_high} on oriented",
+        "  sem_axis_ideology_mean; semantically_unscored if share_scored < min_share_scored.",
+        "Semantic bucket_mag_band: p25 |mean score| neutral band among scorable authors (diagnostic).",
         "",
         "Orientation multipliers applied:",
     ]
     for lang, mult in sorted(multipliers.items()):
         lines.append(f"  {lang}: {mult:+.0f}")
+    pct_path = bucket_cfg.percentile_thresholds_path or "(default semantic_axis tables path)"
     lines.extend(
         [
             f"Orientation report: {orientation_path}",
+            f"Percentile thresholds: {pct_path}",
             "",
-            "Tertiles computed separately within assigned_primary_lexicon (it, en, de).",
             "Do not compare raw score levels across languages.",
         ]
     )
@@ -145,6 +150,8 @@ def run_cohort(config: Dict[str, Any], cohort: str) -> None:
         bucket_cfg,
         cohort_authors,
         semantic_multipliers=multipliers,
+        config=config,
+        project_root=PROJECT_ROOT,
     )
     out_path = tables_dir / f"author_ideology_buckets_{cohort}.csv"
     out.to_csv(out_path, index=False)

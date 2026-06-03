@@ -9,7 +9,9 @@ import pytest
 from src.did.paths import (
     aggregated_event_study_figure_path,
     aggregated_tail_shift_figure_path,
+    bucket_event_study_figures_dir,
     did_aggregated_event_study_path,
+    did_bucket_event_study_dir,
     did_estimates_dir,
     did_event_study_path,
     did_outcome_table_path,
@@ -67,6 +69,16 @@ def test_summary_themes_non_empty() -> None:
     assert "aggression_rate" in SUMMARY_THEMES["aggression"]
     assert "net_ideology" in SUMMARY_THEMES["ideology"]
     assert len(SUMMARY_THEMES["all"]) > 0
+
+
+def test_bucket_event_study_paths_by_bin_days(config: dict) -> None:
+    """Function summary: bucket event-study tables/figures split 1d vs 3d."""
+    assert did_bucket_event_study_dir(config, 3) == did_root(config) / "bucket_event_study" / "3d"
+    assert did_bucket_event_study_dir(config, 1) == did_root(config) / "bucket_event_study" / "1d"
+    assert (
+        bucket_event_study_figures_dir(config, 3).name == "3d"
+        and bucket_event_study_figures_dir(config, 3).parent.name == "bucket_event_study"
+    )
 
 
 def test_aggregated_event_study_bundle_paths(config: dict, tmp_path: Path) -> None:

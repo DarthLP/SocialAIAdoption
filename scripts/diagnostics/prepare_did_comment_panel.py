@@ -40,6 +40,8 @@ COMMENT_COLUMNS: Tuple[str, ...] = (
     "primary_lexicon",
     "comment_in_political_universe",
     "net_ideology",
+    "left_hits",
+    "right_hits",
     "sem_axis_ideology",
     "sem_axis_emotion",
     "sem_axis_aggression",

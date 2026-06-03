@@ -136,7 +136,13 @@ Run in order (`.venv` active):
 .venv/bin/python scripts/user_week/prepare_user_week_style_panel.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/user_week/analyze_user_pre_post_shift.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/user_week/plot_user_pre_post_shift.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/user_week/estimate_user_week_panel.py --config config/italy_polarization_setup.yaml --cohort both
+.venv/bin/python scripts/user_week/plot_user_week_event_study.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/user_week/plot_user_pole_decomposition.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/user_week/plot_user_lexical_by_lexicon.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/user_week/plot_user_semantic_by_lexicon.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/user_week/plot_user_week_overview.py --config config/italy_polarization_setup.yaml --cohort strict
+.venv/bin/python scripts/diagnostics/prepare_semantic_axis_descriptives.py --config config/italy_polarization_setup.yaml --panels-only  # percentile thresholds for ideology buckets
 .venv/bin/python scripts/user_week/assign_author_ideology_buckets.py --config config/italy_polarization_setup.yaml --cohort both
 .venv/bin/python scripts/user_week/compare_lexical_semantic_author_buckets.py --config config/italy_polarization_setup.yaml --cohort both
 .venv/bin/python scripts/user_week/plot_user_shift_by_ideology_bucket.py --config config/italy_polarization_setup.yaml
@@ -201,6 +207,30 @@ Lexicon descriptives (pair framing, stance, valence) live under `results/figures
 
 **Stage 0 (raw only):** `plot_data_quality_trends.py` counts all NDJSON rows — it does **not** drop comments.
 
+### Cross-forum and cross-country author overlap
+
+Reddit `author` is globally unique, so overlap is an exact username match. Diagnostics live in [`scripts/diagnostics/user_overlap_across_forums.py`](scripts/diagnostics/user_overlap_across_forums.py) (any subreddit in the event window) and [`scripts/diagnostics/user_same_day_cross_forum.py`](scripts/diagnostics/user_same_day_cross_forum.py) (authors posting in ≥2 forums on the same UTC day). CSVs: `results/tables/italy_polarization/user_overlap/` (also indexed in [`MasterSystemPrompt.md`](MasterSystemPrompt.md)).
+
+Re-run (defaults: exclude `[deleted]` and known bots):
+
+```bash
+.venv/bin/python scripts/diagnostics/user_overlap_across_forums.py --config config/italy_polarization_setup.yaml
+.venv/bin/python scripts/diagnostics/user_same_day_cross_forum.py --config config/italy_polarization_setup.yaml
+```
+
+**Headline counts** on stage-1 `cleaned_monthly_chunks/` (Mar–Apr 2023, 117 primary subreddits, run 2026-06-03):
+
+| Metric | Count | Share of unique authors |
+|--------|------:|------------------------:|
+| Unique authors (all forums) | 182,191 | 100% |
+| Authors in **>1 subreddit** | 26,376 | **14.5%** |
+| Authors in **>1 country family** (`de`, `eu`, `uk`, `us`, `it_others` via config `subreddit_family_map`) | 10,491 | **5.8%** |
+| Authors in **Italian + any control** family | 1,884 | **1.0%** |
+
+Most multi-subreddit activity is within Italy (many discovered Italian communities); cross-country-family overlap is much smaller. The country-family row uses the static YAML topic→family map (discovered Italian subs → `it_others`); screening assigns `it_political` vs `it_others` for DiD but is not applied in this overlap scan. Wordfish author runs separately flag **cross-language** authors (`cross_language` in `wordfish_authors_assignment.csv`) for sign-only contrasts — a different notion from forum/country overlap.
+
+Distribution detail: `user_overlap/user_overlap_forum_count_distribution.csv` (e.g. 18,796 authors in exactly 2 subreddits; max 18 subreddits for one author).
+
 **Polarization lexicons (runtime):** `data/raw/polarization_lexicon_parallel.csv` (incl. **affect** buckets), `emotion_cognition_parallel.csv`, `style_phrase_parallel.csv` (incl. **hedging**), `italian_political_lexicon_v4.csv` (pairs). Archived txt: [`config/archive/lexicons/`](config/archive/lexicons/ARCHIVE.md). Methods: `results/tables/italy_polarization/descriptives/polarization_metrics_notes.txt`.
 
 ## Next steps (after measurement layer)
@@ -234,6 +264,7 @@ Lexicon descriptives (pair framing, stance, valence) live under `results/figures
 | `results/figures/italy_polarization/cleaning_pipeline/` | Nested QA figures (`volume/`, `stage1_drop_rates/`, `political_qa/`) |
 | `results/README.md` | Index of all tables, figures, logs |
 | `config/archive/lexicons/` | Archived txt/json snapshots; runtime uses `data/raw/*.csv` |
+| `results/tables/italy_polarization/user_overlap/` | Cross-forum / cross-country author overlap CSVs |
 | `results/tables/italy_polarization/discovery/` | Discovery CSVs |
 | `results/tables/italy_polarization/lexicon_export/` | v4 lexicon export audits |
 | `results/logs/italy_polarization/filter_dump/` | Filter resume state and logs |
@@ -254,7 +285,7 @@ Replicates Kreitmeir & Raschky (2023) proxies around Italy’s ChatGPT ban: **To
 
 Writes under `data/raw/circumvention/` (raw per-country files + combined CSVs + `_manifest.json`). **`data/` is gitignored** — the script is the reproducible artifact; archive outputs to external disk with other raw data.
 
-DiD tables: `prepare_polarization_descriptives.py`, `prepare_circumvention_descriptives.py`, `prepare_semantic_axis_descriptives.py --panels-only`, then `prepare_did_merged_panels.py` → `did/panels/{country,semantic}/`, `prepare_did_subreddit_panel.py` → `did/panels/subreddit/`, `prepare_did_comment_panel.py` → `did/panels/comment/` (after enriched shards), and `prepare_did_aggregated_panels.py` → `did/panels/aggregated/`. Estimation: `scripts/analysis/did_event_study.py` (forum TWFE + `italy_only_post` Italy-only entity FE; comment-level `pyfixest` via `--families lexical_comment,semantic_axis_comment`; author×day robustness `*_author_day`; `--author-spec week3`; `did_summary` post-phase specs under `did.post_phases`) and `scripts/analysis/did_aggregated_event_study.py` (bundled PNGs under `did/event_study/{panel}/{bundle}/{1,3}d/` plus dual-tail `sem_axis_ideology_tail_shift*.png` on all bundles × `{1,3}d`; e.g. `language/subreddit/`, `language/hub_pooled/`, `language_universe/in_out_slice/` with `_in_tree` / `_out_tree` variants; stale flat `language/1d/` trees are deleted on full run) (`src/did/`, `linearmodels`) → `did/estimates/summary/` (`did_summary.csv`, `by_family/`, `by_outcome/`, `by_theme/` CSV+txt for all/aggression/ideology/emotion/ai_style/wordfish/lexical) and `did/estimates/{family}/{coefficients,robustness,event_study}/`. Migrate legacy flat files: `scripts/devtools/migrate_did_table_layout.py`. Figures: `results/figures/italy_polarization/did/{lexical,semantic_axis,wordfish_*,overview}/` (headline coefplots show short/medium/long post phases; forest/heatmap use `full_ban`; duplicate rows disambiguated with `(full ban)` / `(early ban)` / phase parentheticals; per-folder `README.md`; `--figures-only` rebuilds PNGs from `did_summary.csv`). Wordfish v2 DiD runs when forum/author v2 extremity panels exist. Semantic intensity: `vpn_interest_it` / `tor_*_it` only; lexical country rows use geo-matched circumvention per `country_panel`.
+DiD tables: `prepare_polarization_descriptives.py`, `prepare_circumvention_descriptives.py`, `prepare_semantic_axis_descriptives.py --panels-only`, then `prepare_did_merged_panels.py` → `did/panels/{country,semantic}/`, `prepare_did_subreddit_panel.py` → `did/panels/subreddit/`, `prepare_did_comment_panel.py` → `did/panels/comment/` (after enriched shards), and `prepare_did_aggregated_panels.py` → `did/panels/aggregated/`. **Bucket comment DiD:** after `prepare_did_comment_panel.py --bin-days 3`, run `scripts/analysis/bucket_event_study.py` (loads prepared `did_comment_panel_3d` when available). Labels authors with asymmetric lexical buckets on scheme labeling-window comments (split_sample / holdout_2wk / naive_full_march), then pooled and by-bucket comment-level DiD/event studies (`did/lean_buckets/`, `did/bucket_event_study/{1,3}d/`). Estimation: `scripts/analysis/did_event_study.py` (forum TWFE + `italy_only_post` Italy-only entity FE; comment-level `pyfixest` via `--families lexical_comment,semantic_axis_comment`; author×day robustness `*_author_day`; `--author-spec week3`; `did_summary` post-phase specs under `did.post_phases`). **Inference routing** (`src/did/inference.py`): forum-clustered `pvalue` is **descriptive** for `cross_country_*` (one treated country); headline cross-country p uses **placebo-in-space** (p floor `1/5` with four controls) plus **gsynth** on `did/panels/aggregated/did_language_*d.csv` (`scripts/analysis/run_did_gsynth.py`); `within_italy_ddd` / `author_*` use restricted **wild cluster bootstrap** (`wildboottest`, 9999 draws). Compare before/after: `did/inference_before_after.md` from `scripts/diagnostics/build_inference_before_after.py`. Also `scripts/analysis/did_aggregated_event_study.py` (bundled PNGs under `did/event_study/{panel}/{bundle}/{1,3}d/` plus dual-tail `sem_axis_ideology_tail_shift*.png` on all bundles × `{1,3}d`; e.g. `language/subreddit/`, `language/hub_pooled/`, `language_universe/in_out_slice/` with `_in_tree` / `_out_tree` variants; stale flat `language/1d/` trees are deleted on full run) (`src/did/`, `linearmodels`) → `did/estimates/summary/` (`did_summary.csv`, `by_family/`, `by_outcome/`, `by_theme/` CSV+txt for all/aggression/ideology/emotion/ai_style/wordfish/lexical) and `did/estimates/{family}/{coefficients,robustness,event_study}/`. Migrate legacy flat files: `scripts/devtools/migrate_did_table_layout.py`. Figures: `results/figures/italy_polarization/did/{lexical,semantic_axis,wordfish_*,overview}/` (headline coefplots show short/medium/long post phases; forest/heatmap use `full_ban`; duplicate rows disambiguated with `(full ban)` / `(early ban)` / phase parentheticals; per-folder `README.md`; `--figures-only` rebuilds PNGs from `did_summary.csv`). Wordfish v2 DiD runs when forum/author v2 extremity panels exist. Semantic intensity: `vpn_interest_it` / `tor_*_it` only; lexical country rows use geo-matched circumvention per `country_panel`.
 
 **Google Trends caveat:** each country geo is scaled 0–100 **within that country and window**; compare **within-country over time**, not levels across countries.
 

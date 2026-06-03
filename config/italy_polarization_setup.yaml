@@ -18,6 +18,75 @@ did:
     short: { rel_day_min: 0, rel_day_max: 2 }
     medium: { rel_day_min: 3, rel_day_max: 9 }
     long: { rel_day_min: 10, rel_day_max: null }
+  # inference_role: cross_country_* -> descriptive cluster p; headline p_placebo_space + gsynth.
+  # within_italy_ddd / author_* -> primary wildboottest WCB (9999 draws).
+  inference:
+    bootstrap_draws: 9999
+    placebo_space_floor_controls: 4
+  gsynth:
+    bin_days: 3
+    panel: language
+  bucket_event_study:
+    enabled: true
+    schemes: [split_sample, holdout_2wk, naive_full_march]
+    outcome: net_ideology
+    political_universe_only: true
+    treated_families: [it_political, it_others]
+    bin_days: 3
+    ref_rel_period: -1
+    event_window_days: 30
+    # asymmetric_lexical: no L/R lexicon hits in labeling window -> neutral; else sign of mean net_ideology
+    # (same rule as user_week lexical buckets, applied to scheme labeling-window comments).
+    bucket_method: asymmetric_lexical
+    bucket_labels:
+      low: conservative_leaning
+      mid: neutral
+      high: liberal_leaning
+    min_selection_comments: 5
+    split_sample:
+      split_method: odd_even
+      n_splits: 5
+      seed: 42
+      min_half_comments: 3
+    holdout_2wk:
+      label_start: "2023-03-01"
+      label_end: "2023-03-14"
+      estimate_start: "2023-03-15"
+    naive_full_march:
+      label_month: "2023-03"
+    outcome_scale: raw
+    standardization_window: march_pre
+    control_variants:
+      - all_controls_pooled
+      - vs_de
+      - vs_en
+      - vs_uk
+      - it_political_vs_it_others
+    ddd_control_variants:
+      - all_controls_pooled
+    ddd_buckets: [liberal_leaning, conservative_leaning]
+    run_pooled: true
+    run_descriptive_trajectories: true
+    balanced_panel: true
+    static_robustness:
+      full_time_fe: true
+    inference:
+      bootstrap_draws: 49
+      bootstrap_seed: 42
+      cluster_robustness: [subreddit, author, two_way]
+    trajectory_series:
+      - id: it
+        label: Italy
+        filter: { IT: 1 }
+      - id: de
+        label: Germany
+        filter: { topic_family: de }
+      - id: en
+        label: English controls
+        filter: { primary_lexicon: en, IT: 0 }
+      - id: uk
+        label: UK
+        filter: { topic_family: uk }
 discovery_window:
   start_utc: '2023-03-01T00:00:00Z'
   end_utc_exclusive: '2023-03-04T00:00:00Z'
@@ -416,7 +485,7 @@ semantic_axis:
       ideology: 0.20
       emotion: 0.20
       aggression: 0.18
-  pole_percentiles: [10, 90]
+  pole_percentiles: [10, 20, 25, 75, 80, 90]
   percentile_calibration:
     enabled: true
     max_comments_per_lang: 50000
@@ -573,10 +642,13 @@ user_week:
       - feature: sem_axis_aggression
         sign: 1
   author_ideology_buckets:
-    method: tertiles_within_lexicon
+    method: asymmetric_v2
     cohort_default: strict
     min_pre_words: 400
     min_pre_weeks: 4
+    min_share_scored: 0.5
+    percentile_thresholds_path: results/tables/italy_polarization/semantic_axis/semantic_axis_lexicon_percentile_thresholds.csv
+    tail_percentiles: [25, 75]
     bucket_labels:
       low: conservative_leaning
       mid: neutral

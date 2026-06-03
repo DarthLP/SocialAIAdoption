@@ -11,12 +11,13 @@ Two parallel comparisons per user and feature:
      with winsorized SD floor; robust MAD; Welch-style across-weeks t.
   2. Pooled-comments view: pooled pre/post with Poisson/binomial/sumsq SEs.
 
-Italy (`enriched_shards`): runs polarization and style composites from config
-`user_week` (default `polarization_composite_user_week`, `ai_style_composite_user_week`).
+Italy (`enriched_shards`): runs polarization, style, and semantic composites from config
+`user_week` (`polarization_composite_user_week`, `ai_style_composite_user_week`,
+`semantic_composite_user_week`).
 Cohort thresholds: weekly (--min_pre_weeks, --min_post_weeks, --min_words_per_week)
 and pooled word totals. Users need both pre and post coverage; others go to audit CSVs.
 
-Outputs per cohort and composite slug: `shift_per_user_<cohort>_<polarization|style>.csv`,
+Outputs per cohort and composite slug: `shift_per_user_<cohort>_<polarization|style|semantic>.csv`,
 `shift_summary_*`, placebo row when `--placebo_offset_weeks` > 0.
 
 How to apply/run:
@@ -69,6 +70,7 @@ from src.config_utils import (
     user_week_drop_ban_week_default,
     user_week_placebo_offset_weeks_default,
 )
+from src.user_week.cohorts import CohortThresholds, build_audit_df
 
 
 # ----------------------------- Constants -----------------------------
@@ -157,25 +159,13 @@ def study_analysis_context(
     composites = user_week_composites(config)
     if not composites:
         raise ValueError(
-            "config user_week must define style_composite and polarization_composite "
-            "(see config/italy_polarization_setup.yaml)"
+            "config user_week must define polarization_composite, style_composite, "
+            "and semantic_composite (see config/italy_polarization_setup.yaml)"
         )
     return specs, defaults, composites
 
 
 # ----------------------------- CLI / dataclasses -----------------------------
-
-
-@dataclass
-class CohortThresholds:
-    """Function summary: cohort threshold bundle used to gate weekly and pooled views."""
-
-    label: str
-    min_words_per_week: int
-    min_pre_weeks: int
-    min_post_weeks: int
-    min_total_words_pre: int
-    min_total_words_post: int
 
 
 @dataclass
@@ -409,54 +399,6 @@ def panel_value_column_for_feature(feature: str, panel_columns: Iterable[str]) -
 
 
 # ----------------------------- Per-user table builder -----------------------------
-
-
-def _build_audit_df(panel: pd.DataFrame, thresholds: CohortThresholds) -> pd.DataFrame:
-    """Function summary: vectorized audit categorization (panel / pre_only / post_only / below_thresholds) per author."""
-    if panel.empty:
-        return pd.DataFrame()
-    n_words = panel["n_words"].astype(float)
-    is_pre = panel["period"].values == "pre"
-    is_post = panel["period"].values == "post"
-    is_good = (n_words >= float(thresholds.min_words_per_week)).values
-    df = pd.DataFrame(
-        {
-            "author": panel["author"].astype(str).values,
-            "n_pre_any_w": is_pre.astype(int),
-            "n_post_any_w": is_post.astype(int),
-            "n_good_pre_w": (is_pre & is_good).astype(int),
-            "n_good_post_w": (is_post & is_good).astype(int),
-            "good_pre_words": np.where(is_pre & is_good, n_words.values, 0.0),
-            "good_post_words": np.where(is_post & is_good, n_words.values, 0.0),
-            "n_comments_total": panel["n_comments"].astype(float).values,
-            "n_words_total": n_words.values,
-        }
-    )
-    user = df.groupby("author", sort=False).sum().reset_index()
-    user.rename(
-        columns={
-            "n_pre_any_w": "n_pre_weeks_any",
-            "n_post_any_w": "n_post_weeks_any",
-            "n_good_pre_w": "n_good_pre_weeks",
-            "n_good_post_w": "n_good_post_weeks",
-            "good_pre_words": "pre_words_total_good",
-            "good_post_words": "post_words_total_good",
-        },
-        inplace=True,
-    )
-    is_panel = (
-        (user["n_good_pre_weeks"] >= thresholds.min_pre_weeks)
-        & (user["n_good_post_weeks"] >= thresholds.min_post_weeks)
-        & (user["pre_words_total_good"] >= thresholds.min_total_words_pre)
-        & (user["post_words_total_good"] >= thresholds.min_total_words_post)
-    )
-    is_pre_only = (user["n_pre_weeks_any"] > 0) & (user["n_post_weeks_any"] == 0) & ~is_panel
-    is_post_only = (user["n_pre_weeks_any"] == 0) & (user["n_post_weeks_any"] > 0) & ~is_panel
-    user["audit_category"] = "below_thresholds"
-    user.loc[is_panel, "audit_category"] = "panel"
-    user.loc[is_pre_only, "audit_category"] = "pre_only"
-    user.loc[is_post_only, "audit_category"] = "post_only"
-    return user
 
 
 def _per_user_top_label(
@@ -1214,7 +1156,7 @@ def write_methods_note(path: Path, ban_iso_str: str) -> None:
         "  semantic_composite_user_week: sem_axis_ideology, emotion, aggression (within-language shift interpretation).",
         "Legacy comment_features stack: scripts/archive/user_week/ with ai_adoption config.",
         "Z-scales are frozen on the pre-ban user-week pool and persisted to",
-        "composite_zscale_pre_<cohort>_<polarization|style>.json.",
+        "composite_zscale_pre_<cohort>_<polarization|style|semantic>.json.",
         "",
         "Cohort gating:",
         "Hard pre-ban + post-ban requirement. Users who lack good pre or good post weeks",

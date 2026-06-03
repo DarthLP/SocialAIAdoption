@@ -129,8 +129,9 @@ def plot_pole_decomposition(
         plt.close(fig)
         return
     fig.suptitle(
-        f"Within-user pole margins ({cohort} cohort; ban {launch_day})",
-        fontsize=12,
+        f"Within-user pole margins ({cohort} cohort; ban {launch_day})\n"
+        "Bridges to forum-day pole_share DiD (descriptive, not cross-country)",
+        fontsize=11,
     )
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
