@@ -24,6 +24,14 @@ def _load_plot_mod():
     return mod
 
 
+def test_score_cols_cover_all_axes() -> None:
+    """Plot module exposes one score column per semantic axis."""
+    mod = _load_plot_mod()
+    from src.embeddings import ALL_AXIS_NAMES
+
+    assert len(mod.SCORE_COLS) == len(ALL_AXIS_NAMES)
+
+
 def test_level_out_dir_paths() -> None:
     """Level output paths follow bins_{bd}d/{level}/{chart_type}/ layout."""
     mod = _load_plot_mod()

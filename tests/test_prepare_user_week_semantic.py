@@ -34,3 +34,26 @@ def test_sem_axis_mean_aggregation_excludes_nan_comments() -> None:
     assert panel.loc[0, "sem_axis_ideology_n"] == 2
     assert abs(panel.loc[0, "sem_axis_ideology_mean"] - 0.55) < 1e-9
     assert abs(panel.loc[0, "share_scored"] - 2 / 3) < 1e-9
+
+
+def test_extended_sem_axis_mean_aggregation() -> None:
+    """Extended sem_axis_economic mean is word-weighted over scored comments only."""
+    frame = pd.DataFrame(
+        {
+            "id": ["a", "b"],
+            "subreddit": ["it", "it"],
+            "author": ["u1", "u1"],
+            "created_utc": [1_680_508_800, 1_680_595_200],
+            "n_words_comment": [50.0, 50.0],
+            "has_sem_axis": [1, 1],
+            "sem_axis_economic": [0.4, 0.8],
+            "total_word_chars_comment": [200.0, 200.0],
+            "sentence_count_comment": [2.0, 2.0],
+        }
+    )
+    config: dict = {}
+    slim = select_shard_columns(frame, config)
+    inter = aggregate_shard_to_user_week_subreddit(slim, subreddit="it", config=config)
+    panel = merge_user_week_subreddit_rows(inter, {"it": "it_political"}, config)
+    assert abs(panel.loc[0, "sem_axis_economic_mean"] - 0.6) < 1e-9
+    assert panel.loc[0, "sem_axis_economic_n"] == 2

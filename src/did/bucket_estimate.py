@@ -54,6 +54,7 @@ def _feols_fit(
     data: pd.DataFrame,
     coef_name: str,
     cluster_col: str = "subreddit",
+    weights_col: str | None = None,
 ) -> Dict[str, Any]:
     """Function summary: pyfixest feols with CRV1 cluster SE."""
     try:
@@ -69,7 +70,12 @@ def _feols_fit(
     n_cl = int(data[cluster_col].nunique()) if cluster_col in data.columns else data["author"].nunique()
     vcov: Any = {"CRV1": cluster_col} if cluster_col in data.columns else "iid"
     try:
-        fit = feols(formula, data=data, vcov=vcov)
+        feols_kw: Dict[str, Any] = {"vcov": vcov}
+        if weights_col and weights_col in data.columns:
+            feols_kw["weights"] = (
+                pd.to_numeric(data[weights_col], errors="coerce").astype(float).fillna(1.0).clip(lower=1e-9)
+            )
+        fit = feols(formula, data=data, **feols_kw)
         coefs = fit.coef()
         beta = float(coefs.loc[coef_name]) if coef_name in coefs.index else float("nan")
         se_frame = fit.se()
@@ -115,6 +121,62 @@ def estimate_static_paper_eq1(
     """
     work = prep_static_design(df, y_col, cluster_col)
     return feols_static_paper_eq1_prepped(work, cluster_col)
+
+
+def estimate_adopter_ddd_static(
+    df: pd.DataFrame,
+    y_col: str = "y",
+    flag_col: str = "flag",
+    cluster_col: str = "author",
+    coef_name: str = "post_IT_flag",
+) -> Dict[str, Any]:
+    """Function summary: static adopter DDD — y ~ post:flag + post:IT:flag | author + topic_family×date.
+
+    Parameters:
+    - df: comment panel with post, IT, author, date_utc, topic_family, flag.
+    - y_col: outcome column.
+    - flag_col: adopter indicator (0/1).
+    - cluster_col: cluster for SEs.
+    - coef_name: coefficient to return (post_IT_flag = triple-diff).
+
+    Returns:
+    - Result dict for target coefficient plus cell size metadata.
+    """
+    work = _prep_y(df, y_col)
+    if "topic_family" not in work.columns:
+        return _empty_result(len(work), 0, "missing_topic_family")
+    work["flag"] = work[flag_col].astype(float)
+    work["post_flag"] = work["post"] * work["flag"]
+    work["post_IT_flag"] = work["post"] * work["IT"] * work["flag"]
+    work["country_date"] = (
+        work["topic_family"].astype(str) + "_" + work["date_utc"].astype(str)
+    )
+    for need in ("post_flag", "post_IT_flag"):
+        if work[need].nunique() < 2:
+            return _empty_result(len(work), int(work[cluster_col].nunique()), "no_ddd_variation")
+    cells = work.groupby(["IT", "post", "flag"], observed=True).size()
+    meta = {
+        "n_obs": len(work),
+        "n_authors": int(work["author"].nunique()),
+        "n_comments": len(work),
+        "cell_IT0_post0_flag0": int(cells.get((0, 0, 0), 0)),
+        "cell_IT0_post0_flag1": int(cells.get((0, 0, 1), 0)),
+        "cell_IT0_post1_flag0": int(cells.get((0, 1, 0), 0)),
+        "cell_IT0_post1_flag1": int(cells.get((0, 1, 1), 0)),
+        "cell_IT1_post0_flag0": int(cells.get((1, 0, 0), 0)),
+        "cell_IT1_post0_flag1": int(cells.get((1, 0, 1), 0)),
+        "cell_IT1_post1_flag0": int(cells.get((1, 1, 0), 0)),
+        "cell_IT1_post1_flag1": int(cells.get((1, 1, 1), 0)),
+    }
+    res = _feols_fit(
+        "y ~ post_flag + post_IT_flag | author + country_date",
+        work,
+        coef_name,
+        cluster_col,
+    )
+    res.update(meta)
+    res["coef_name"] = coef_name
+    return res
 
 
 def estimate_static_full_time_fe(

@@ -40,6 +40,19 @@ def test_early_ban_post_window() -> None:
     assert list(out["post"]) == [0, 1, 1, 0, 0]
 
 
+def test_post_first_2bd_calendar_window() -> None:
+    """Function summary: post_first_2bd is 1 only on 2023-04-03 and 2023-04-04."""
+    df = pd.DataFrame(
+        {
+            "date_utc": ["2023-04-02", "2023-04-03", "2023-04-04", "2023-04-05"],
+            "rel_day": [2, 3, 4, 5],
+            "post": 1,
+        }
+    )
+    out = apply_post_window(df, "post_first_2bd", "2023-03-31")
+    assert list(out["post"]) == [0, 1, 1, 0]
+
+
 def test_post_phase_apply_post_window_defaults() -> None:
     """Function summary: post-phase post indicators match default rel_day windows."""
     activate_post_phases_from_config(None)
@@ -64,10 +77,10 @@ def test_load_post_phases_yaml_override_short() -> None:
 
 
 def test_post_phase_strategies_count() -> None:
-    """Function summary: post_phase_strategies yields 6 strategies × 3 phases."""
+    """Function summary: post_phase_strategies yields 6 strategies × 4 post phases (incl. post_first_2bd)."""
     from src.did.specs import headline_base_strategies, post_phase_strategies
 
-    assert len(post_phase_strategies()) == 18
+    assert len(post_phase_strategies()) == 24
     assert len(headline_base_strategies()) == 6
 
 

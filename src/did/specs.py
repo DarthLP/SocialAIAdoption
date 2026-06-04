@@ -69,6 +69,7 @@ SPEC_LABELS_SHORT: dict[str, str] = {
     "post_short_3d": "short 0–2d",
     "post_medium_7d": "mid 3–9d",
     "post_long_tail": "long 10d+",
+    "post_first_2bd": "first 2bd",
 }
 
 SPEC_LABELS_PAREN: dict[str, str] = {
@@ -78,10 +79,16 @@ SPEC_LABELS_PAREN: dict[str, str] = {
     "post_short_3d": "(short 0–2d)",
     "post_medium_7d": "(medium 3–9d)",
     "post_long_tail": "(long 10d+)",
+    "post_first_2bd": "(first 2 business days)",
 }
 
 # Calendar post-ban phase spec ids (post_mode) for TWFE; bounds merged from config did.post_phases.
-POST_PHASE_MODES: tuple[str, ...] = ("post_short_3d", "post_medium_7d", "post_long_tail")
+POST_PHASE_MODES: tuple[str, ...] = (
+    "post_short_3d",
+    "post_medium_7d",
+    "post_long_tail",
+    "post_first_2bd",
+)
 
 _DEFAULT_POST_PHASE_BOUNDS: dict[str, tuple[int, Optional[int]]] = {
     "post_short_3d": (0, 2),
@@ -450,6 +457,9 @@ def apply_post_window(df: pd.DataFrame, mode: str, launch: str) -> pd.DataFrame:
         return out
     if mode == "early_ban_14d":
         out["post"] = ((out["rel_day"] >= 0) & (out["rel_day"] <= 13)).astype(int)
+        return out
+    if mode == "post_first_2bd":
+        out["post"] = out["date_utc"].astype(str).isin(["2023-04-03", "2023-04-04"]).astype(int)
         return out
     phase_bounds = _effective_post_phase_bounds()
     if mode in phase_bounds:

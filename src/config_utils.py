@@ -612,6 +612,7 @@ def load_circumvention_config(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults: Dict[str, Any] = {
         "raw_dir": "data/raw/circumvention",
         "google_trends_combined": "google_trends_vpn_by_country.csv",
+        "google_trends_chatgpt_combined": "google_trends_chatgpt_by_country.csv",
         "tor_relay_combined": "tor_relay_users_by_country.csv",
         "tor_bridge_combined": "tor_bridge_users_by_country.csv",
         "treated_geo": "IT",

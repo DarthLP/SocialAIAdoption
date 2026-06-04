@@ -128,6 +128,10 @@ SEM_AXIS_MEAN_FEATURES: List[str] = [
     "sem_axis_ideology",
     "sem_axis_emotion",
     "sem_axis_aggression",
+    "sem_axis_economic",
+    "sem_axis_cultural",
+    "sem_axis_nationalism",
+    "sem_axis_anti_establishment",
     "sem_axis_coverage",
 ]
 

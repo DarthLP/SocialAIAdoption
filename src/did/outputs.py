@@ -859,7 +859,10 @@ def plot_placebo_robustness(rob_df: pd.DataFrame, outcome_id: str, out_path: Pat
     fig, ax = plt.subplots(figsize=(7, 4))
     sns.barplot(data=rob_df, x="check", y="beta", ax=ax, color="#457b9d")
     ax.axhline(0, color="gray", linewidth=0.8)
-    ax.set_title(f"Robustness: {outcome_label(outcome_id, short=True)}")
+    ax.set_title(
+        f"Robustness: {outcome_label(outcome_id, short=True)}\n"
+        "(descriptive placebo dates; unequal windows — not a permutation test)"
+    )
     plt.xticks(rotation=30, ha="right")
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)

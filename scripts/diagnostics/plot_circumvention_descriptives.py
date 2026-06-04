@@ -3,8 +3,8 @@ Script summary:
 Plot VPN/Tor circumvention time series for the Reddit study window and full download span.
 
 Functionality:
-- Four figures: Google Trends VPN and Tor bridge users, each for Mar–Apr 2023 (event_window)
-  and for the full Jan–Jun 2023 download window.
+- Five figures: Google Trends VPN and ChatGPT, plus Tor bridge users (study window);
+  VPN full-download panel retained.
 - Optional twin-axis overlay: semantic ideology vs Italy VPN (study window).
 - DiD audit QC: geo-matched VPN levels vs Italy broadcast on 7d bins.
 
@@ -150,6 +150,13 @@ def _plot_four_circumvention_panels(
             daily_study,
             f"Google Trends VPN — study window ({study_label})",
             daily_dir / "google_trends_vpn_study_window.png",
+        ),
+        (
+            "chatgpt_interest",
+            "Google Trends ChatGPT interest (topic; attention/salience)",
+            daily_study,
+            f"Google Trends ChatGPT — study window ({study_label})",
+            daily_dir / "google_trends_chatgpt_study_window.png",
         ),
         (
             "vpn_interest",

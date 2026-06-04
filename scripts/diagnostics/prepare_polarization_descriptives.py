@@ -61,6 +61,11 @@ READ_COLUMNS = [
     "avg_words_per_sentence_comment",
     "ambivalence",
     "pair_framing_net_strict",
+    "style_index_full",
+    "style_index_reduced",
+    "ttr_50w",
+    "readability",
+    "log_len",
 ]
 
 REQUIRED_FEATURE_COLUMNS = (
@@ -296,6 +301,18 @@ def style_aggregate_fields(grp: pd.DataFrame) -> Dict[str, float]:
             int(grp["total_word_chars_comment"].sum()),
             int(len(grp)),
         )
+    for col, out_col in (
+        ("style_index_full", "style_index_full_mean"),
+        ("style_index_reduced", "style_index_reduced_mean"),
+        ("ttr_50w", "ttr_50w_mean"),
+        ("readability", "readability_mean"),
+        ("log_len", "log_len_mean"),
+    ):
+        if col in grp.columns:
+            out[out_col] = weighted_mean(grp[col], nw)
+    if "n_words" in grp.columns:
+        ge20 = (grp["n_words"].astype(float) >= 20).astype(float)
+        out["share_ge20w"] = float(ge20.mean()) if len(grp) else float("nan")
     return out
 
 

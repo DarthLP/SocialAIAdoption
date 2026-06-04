@@ -492,14 +492,26 @@ semantic_axis:
       ideology: 0.12
       emotion: 0.12
       aggression: 0.08
+      economic: 0.12
+      cultural: 0.12
+      nationalism: 0.12
+      anti_establishment: 0.12
     en:
       ideology: 0.25
       emotion: 0.25
       aggression: 0.25
+      economic: 0.25
+      cultural: 0.25
+      nationalism: 0.25
+      anti_establishment: 0.25
     de:
       ideology: 0.20
       emotion: 0.20
       aggression: 0.18
+      economic: 0.20
+      cultural: 0.20
+      nationalism: 0.20
+      anti_establishment: 0.20
   pole_percentiles: [10, 20, 25, 75, 80, 90]
   percentile_calibration:
     enabled: true

@@ -7,6 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+from src.embeddings import EXTENDED_AXIS_NAMES
+
 
 @dataclass(frozen=True)
 class OutcomeSpec:
@@ -67,6 +69,37 @@ def _wordfish_author_specs(family: str, prefix: str) -> Tuple[OutcomeSpec, ...]:
     )
 
 
+def _extended_semantic_axis_specs() -> Tuple[OutcomeSpec, ...]:
+    """Function summary: DiD outcomes for extended issue-dimension semantic axes."""
+    specs: List[OutcomeSpec] = []
+    for axis in EXTENDED_AXIS_NAMES:
+        oid = f"sem_axis_{axis}"
+        specs.append(OutcomeSpec(oid, f"{oid}_mean", "semantic_axis"))
+        specs.append(
+            OutcomeSpec(oid, oid, "semantic_axis_comment", panel_kind="comment"),
+        )
+        specs.append(
+            OutcomeSpec(
+                oid,
+                oid,
+                "semantic_axis_author_day",
+                ddd_allowed=False,
+                panel_kind="author_day",
+            ),
+        )
+        specs.append(
+            OutcomeSpec(
+                oid,
+                f"{oid}_mean",
+                "semantic_axis_author_week",
+                ddd_allowed=False,
+                sign_only_cross_country=True,
+                panel_kind="author_semantic_week",
+            ),
+        )
+    return tuple(specs)
+
+
 OUTCOME_REGISTRY: Tuple[OutcomeSpec, ...] = (
     # Lexical / descriptives (00)
     OutcomeSpec("net_ideology", "net_ideology_mean", "lexical", ddd_allowed=False),
@@ -88,12 +121,19 @@ OUTCOME_REGISTRY: Tuple[OutcomeSpec, ...] = (
     OutcomeSpec("exclamation_rate", "exclamation_rate_100w_mean", "lexical"),
     OutcomeSpec("sentence_len_var", "sentence_length_variance_mean", "lexical"),
     OutcomeSpec("avg_wps", "avg_words_per_sentence_mean", "lexical"),
+    OutcomeSpec("style_index_full", "style_index_full_mean", "lexical"),
+    OutcomeSpec("style_index_reduced", "style_index_reduced_mean", "lexical"),
+    OutcomeSpec("log_len_mean", "log_len_mean", "lexical", ddd_allowed=False),
+    OutcomeSpec("share_ge20w", "share_ge20w", "lexical", ddd_allowed=False),
+    OutcomeSpec("ttr_50w", "ttr_50w_mean", "lexical", ddd_allowed=False),
+    OutcomeSpec("readability", "readability_mean", "lexical", ddd_allowed=False),
     # Semantic axis (01)
     OutcomeSpec("sem_axis_ideology", "sem_axis_ideology_mean", "semantic_axis"),
     OutcomeSpec("sem_axis_ideology_var", "sem_axis_ideology_var", "semantic_axis"),
     OutcomeSpec("sem_axis_emotion", "sem_axis_emotion_mean", "semantic_axis"),
     OutcomeSpec("sem_axis_emotion_var", "sem_axis_emotion_var", "semantic_axis"),
     OutcomeSpec("sem_axis_aggression", "sem_axis_aggression_mean", "semantic_axis"),
+    *_extended_semantic_axis_specs(),
     OutcomeSpec(
         "sem_axis_ideology_pole_share",
         "sem_axis_ideology_pole_share",
@@ -122,6 +162,10 @@ OUTCOME_REGISTRY: Tuple[OutcomeSpec, ...] = (
     OutcomeSpec("net_ideology", "net_ideology", "lexical_comment", ddd_allowed=False, panel_kind="comment"),
     OutcomeSpec("extremity", "extremity", "lexical_comment", ddd_allowed=False, panel_kind="comment"),
     OutcomeSpec("ai_style_rate", "ai_style_rate_100w", "lexical_comment", panel_kind="comment"),
+    OutcomeSpec("style_index_full", "style_index_full", "lexical_comment", panel_kind="comment"),
+    OutcomeSpec("style_index_reduced", "style_index_reduced", "lexical_comment", panel_kind="comment"),
+    OutcomeSpec("ttr_50w", "ttr_50w", "lexical_comment", panel_kind="comment", ddd_allowed=False),
+    OutcomeSpec("readability", "readability", "lexical_comment", panel_kind="comment", ddd_allowed=False),
     OutcomeSpec("sem_axis_ideology", "sem_axis_ideology", "semantic_axis_comment", panel_kind="comment"),
     OutcomeSpec("sem_axis_emotion", "sem_axis_emotion", "semantic_axis_comment", panel_kind="comment"),
     OutcomeSpec("sem_axis_aggression", "sem_axis_aggression", "semantic_axis_comment", panel_kind="comment"),
@@ -204,7 +248,27 @@ def outcomes_for_families(families: List[str]) -> Tuple[OutcomeSpec, ...]:
     return tuple(o for o in OUTCOME_REGISTRY if o.family in fam_set)
 
 
-FIRST_STAGE_OUTCOMES = ("ai_style_rate", "em_dash_rate", "exclamation_rate", "sentence_len_var", "avg_wps")
+def outcome_spec(outcome_id: str) -> Optional[OutcomeSpec]:
+    """Function summary: lookup one OutcomeSpec by outcome_id, or None if unknown."""
+    for spec in OUTCOME_REGISTRY:
+        if spec.outcome_id == outcome_id:
+            return spec
+    return None
+
+
+FIRST_STAGE_OUTCOMES = (
+    "ai_style_rate",
+    "em_dash_rate",
+    "exclamation_rate",
+    "sentence_len_var",
+    "avg_wps",
+    "style_index_full",
+    "style_index_reduced",
+    "ttr_50w",
+    "readability",
+    "log_len_mean",
+    "share_ge20w",
+)
 
 HEADLINE_OUTCOMES = (
     "sem_axis_ideology",
@@ -280,6 +344,7 @@ SUMMARY_THEMES: dict[str, Tuple[str, ...]] = {
         "sem_axis_ideology_extreme_right",
     ),
     "emotion": ("sem_axis_emotion", "sem_axis_emotion_var"),
+    "issue_axes": tuple(f"sem_axis_{axis}" for axis in EXTENDED_AXIS_NAMES),
     "ai_style": FIRST_STAGE_OUTCOMES,
     "wordfish": WORDFISH_OUTCOME_IDS,
     "lexical": LEXICAL_OUTCOME_IDS,
@@ -320,6 +385,10 @@ OUTCOME_LABELS_SHORT: dict[str, str] = {
     "sem_axis_emotion": "Sem. emotion",
     "sem_axis_emotion_var": "Sem. emotion var.",
     "sem_axis_aggression": "Sem. aggression",
+    "sem_axis_economic": "Sem. economic",
+    "sem_axis_cultural": "Sem. cultural",
+    "sem_axis_nationalism": "Sem. nationalism",
+    "sem_axis_anti_establishment": "Sem. anti-est.",
     "sem_axis_ideology_pole_share": "Sem. pole share",
     "sem_axis_ideology_esteban_ray": "Sem. Esteban-Ray",
     "sem_axis_ideology_extreme_left": "Sem. extreme left",

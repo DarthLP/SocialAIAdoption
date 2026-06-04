@@ -130,17 +130,18 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
   - Optional skips: `--skip-seed-validation`, `--skip-validation`, `--skip-examples` (seed check: `validate_semantic_axis_seeds.py`; one fastText load per language)
   - **Panels** (5 levels × 3 bin sizes): `semantic_axis_panel_by_{forum,topic_family,topic,language,language_universe}_{1,3,7}d.csv`
   - **Time bins:** 1d = calendar `period_start`; 3d/7d = launch-aligned (`2023-03-31`); `n_days_in_bin`, `is_partial_bin` on all panels
-  - **Pole buckets:** per-lexicon absolute (`*_abs`) + percentile (`above_p90` / `below_p10`); `share_unscored` (not saturated `sem_axis_coverage_mean`)
+  - **Axes:** seven (`ideology`, `emotion`, `aggression`, `economic`, `cultural`, `nationalism`, `anti_establishment`); pole buckets per-lexicon absolute (`*_abs`) + percentile (`above_p90` / `below_p10`); `share_unscored` (not saturated `sem_axis_coverage_mean`)
   - Calibration: `semantic_axis_lexicon_percentile_thresholds.csv`
   - Validation: `semantic_axis_validation.csv`, `semantic_axis_examples.csv`, `ideology_axis_orientation_report.csv`, seed OOV/sanity CSVs
 - Seeds: `data/raw/seeds/aggression_parallel.csv` (25 aligned insult concepts × IT/EN/DE)
-- Config: `pole_thresholds_by_lexicon`, `pole_percentiles`, `pole_cutoffs` (default `[0.25]` only), `panel_bin_days`
-- **DiD:** use `sem_axis_*_mean` within language; intensity `vpn_interest_it` / `tor_*_it` only on `did_semantic_*` (not geo-matched VPN). `prepare_did_merged_panels.py` maps `us`→`US_political`, `eu`→`EU_hub_en` (all six families retained).
+- Config: `pole_thresholds_by_lexicon` (all seven axes per `it`/`en`/`de`), `pole_percentiles`, `pole_cutoffs` (default `[0.25]` only), `panel_bin_days`
+- **DiD:** `src/did/outcomes.py` registers all seven `sem_axis_*` for `semantic_axis`, `semantic_axis_comment`, `semantic_axis_author_day`, and `semantic_axis_author_week` (use `sem_axis_*_mean` within language for forum panels); intensity `vpn_interest_it` / `tor_*_it` only on `did_semantic_*` (not geo-matched VPN). `prepare_did_merged_panels.py` maps `us`→`US_political`, `eu`→`EU_hub_en` (all six families retained).
 - Plot: `plot_semantic_axis_descriptives.py` → `results/figures/italy_polarization/semantic_axis/`:
   - `_global/` — seed OOV, score histograms, forum scatter
-  - `bins_{1,3,7}d/{topic_family,topic,language,language_universe}/{timeseries,pole_shares_abs,pole_percentiles}/` — ideology, emotion, aggression, share_unscored (+ pole charts per axis)
+  - `bins_{1,3,7}d/{topic_family,topic,language,language_universe}/{timeseries,pole_shares_abs,pole_percentiles}/` — all seven axes + `share_unscored` (+ pole charts per axis)
   - `bins_{bd}d/audit/` — bin completeness, Italy `vpn_interest_it`; `bins_{bd}d/lexical_country/` — from `did_country_panel_{bd}d`
 - Panels include Italy VPN/Tor (`vpn_interest_it`, `tor_bridge_users_it`, …) by `period_start` when circumvention tables exist.
+- **Extended axes full rerun** (after `compute_semantic_axis_extend.py` on shards): `prepare_semantic_axis_descriptives.py` → `plot_semantic_axis_descriptives.py` → `prepare_did_subreddit_panel.py` + `prepare_did_merged_panels.py` + `prepare_did_aggregated_panels.py` → `did_event_study.py` (default families include all seven forum semantic outcomes) → `did_aggregated_event_study.py`; comment/bucket: `prepare_did_comment_panel.py --bin-days 3` → `assign_author_ideology_buckets.py --cohort strict` → `bucket_event_study.py`; author-week: `prepare_user_week_style_panel.py` → `prepare_did_author_semantic_week_panel.py` → `did_event_study.py --families semantic_axis_author_week`. Smoke: `--outcome sem_axis_economic --no-bootstrap`.
 
 ### 4i-ter) Circumvention descriptives + DiD merges
 - Prepare: `prepare_circumvention_descriptives.py` → `results/tables/italy_polarization/circumvention/`
@@ -259,6 +260,25 @@ Prerequisites: enriched shards with polarization + AI + style columns (stage 4 a
   - `.venv/bin/python scripts/user_week/plot_user_shift_by_ideology_bucket.py --config config/italy_polarization_setup.yaml`
   - `.venv/bin/python scripts/diagnostics/prepare_did_author_semantic_week_panel.py --config config/italy_polarization_setup.yaml`
   - `.venv/bin/python scripts/analysis/did_event_study.py --config config/italy_polarization_setup.yaml --families semantic_axis_author_week`
+
+---
+
+## First-stage inference upgrades (Italy DiD)
+
+Run after `prepare_did_subreddit_panel.py` (and enriched shards for style index).
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/analysis/did_event_study.py --weights n_comments` | Comment-count weighted TWFE → `did/estimates_weighted/` |
+| `scripts/analysis/placebo_in_time.py` | Fixed 7d placebo-in-time + RI-t; `placebo_in_time.csv` |
+| `scripts/analysis/first_stage_mde.py` | MDE = 2.8×SE from saved `by_outcome/*.csv` |
+| `scripts/diagnostics/fit_style_index_stats.py` | Pre-period clip bounds → `did/style_index_stats.json` |
+| `scripts/features/compute_style_index_on_shards.py` | Persist `style_index_full` / `style_index_reduced` on shards |
+| `scripts/diagnostics/validate_style_index_gates.py` | Histogram, Spearman vs `ai_style_rate_100w`, pretrend F, 20+20 review CSV |
+| `scripts/analysis/prepare_adopter_flags.py` | Schemes 1–3 flags (thresholds **within country**) |
+| `scripts/analysis/adopter_ddd.py` | Triple-diff `post×flag`, `post×IT×flag` with `author` + `topic_family×date` FE |
+
+Descriptive date-placebo figures from `did_event_study.py` robustness grid are **not** permutation tests; do not merge into `placebo_in_time.csv`.
 
 ---
 

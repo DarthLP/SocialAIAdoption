@@ -31,29 +31,9 @@ from typing import Any, Dict, List, Mapping, MutableMapping, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
-# Columns for panel build + optional validation (no comment body).
-PANEL_COLUMNS: Tuple[str, ...] = (
-    "id",
-    "subreddit",
-    "date_utc",
-    "n_words",
-    "topic",
-    "topic_family",
-    "primary_lexicon",
-    "comment_in_political_universe",
-    "net_ideology",
-    "sem_axis_ideology",
-    "sem_axis_emotion",
-    "sem_axis_aggression",
-    "sem_axis_coverage",
-    "has_sem_axis",
-)
-
 VALIDATION_EXTRA_COLUMNS: Tuple[str, ...] = ("pair_framing_net_strict",)
 
 EXAMPLE_EXTRA_COLUMNS: Tuple[str, ...] = ("body",)
-
-READ_COLUMNS = list(PANEL_COLUMNS) + list(VALIDATION_EXTRA_COLUMNS) + list(EXAMPLE_EXTRA_COLUMNS)
 
 REQUIRED_FEATURE_COLUMNS = (
     "sem_axis_ideology",
@@ -63,16 +43,6 @@ REQUIRED_FEATURE_COLUMNS = (
 
 UNIVERSE_SLICE_IN = "in_political_tree"
 UNIVERSE_SLICE_OUT = "out_political_tree"
-
-SEMANTIC_AXES = ("ideology", "emotion", "aggression")
-
-WEIGHTED_MEAN_COLS = (
-    "sem_axis_ideology",
-    "sem_axis_emotion",
-    "sem_axis_aggression",
-    "sem_axis_coverage",
-    "net_ideology",
-)
 
 # panel_level -> (group_keys, file_slug, carry_first_columns)
 PANEL_SPECS: Dict[str, Tuple[List[str], str, Tuple[str, ...]]] = {
@@ -125,9 +95,11 @@ from src.config_utils import (  # noqa: E402
     subreddit_topic_map,
     tables_subdir,
 )
+from src.embeddings import ALL_AXIS_NAMES, AXIS_SCORE_COLUMNS  # noqa: E402
 from src.political_lexicon import esteban_ray_index  # noqa: E402
 from src.semantic_axis_stats import (  # noqa: E402
     PoleBucketSpec,
+    SEMANTIC_AXES,
     absolute_threshold,
     build_pole_bucket_specs,
     calibrate_lexicon_percentiles,
@@ -136,6 +108,24 @@ from src.semantic_axis_stats import (  # noqa: E402
     percentile_lookup_from_csv,
     pole_column_prefix,
 )
+
+_BASE_PANEL_COLUMNS: Tuple[str, ...] = (
+    "id",
+    "subreddit",
+    "date_utc",
+    "n_words",
+    "topic",
+    "topic_family",
+    "primary_lexicon",
+    "comment_in_political_universe",
+    "net_ideology",
+    "sem_axis_coverage",
+    "has_sem_axis",
+)
+_SCORE_PANEL_COLUMNS: Tuple[str, ...] = tuple(AXIS_SCORE_COLUMNS[axis] for axis in ALL_AXIS_NAMES)
+PANEL_COLUMNS: Tuple[str, ...] = _BASE_PANEL_COLUMNS + _SCORE_PANEL_COLUMNS
+READ_COLUMNS = list(PANEL_COLUMNS) + list(VALIDATION_EXTRA_COLUMNS) + list(EXAMPLE_EXTRA_COLUMNS)
+WEIGHTED_MEAN_COLS: Tuple[str, ...] = _SCORE_PANEL_COLUMNS + ("sem_axis_coverage", "net_ideology")
 
 POLE_SHARE_EPS = 1e-9
 
@@ -396,13 +386,7 @@ def _finalize_accumulator(
             float(n_comments - n_scored) / float(n_comments) if n_comments else float("nan")
         ),
     }
-    mean_names = {
-        "sem_axis_ideology": "sem_axis_ideology_mean",
-        "sem_axis_emotion": "sem_axis_emotion_mean",
-        "sem_axis_aggression": "sem_axis_aggression_mean",
-        "sem_axis_coverage": "sem_axis_coverage_mean",
-        "net_ideology": "net_ideology_mean",
-    }
+    mean_names = {col: f"{col}_mean" for col in WEIGHTED_MEAN_COLS}
     for col, out_name in mean_names.items():
         ws = acc["w_sums"].get(col, 0.0)
         out[out_name] = acc["wx_sums"][col] / ws if ws > 0 else float("nan")

@@ -160,6 +160,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Cap comment panel rows after sampling.",
     )
+    parser.add_argument(
+        "--weights",
+        type=str,
+        default=None,
+        help="Precision weights column (e.g. n_comments). Writes to estimates_weighted/ and did_weighted figures.",
+    )
     return parser.parse_args()
 
 
@@ -385,9 +391,12 @@ def run_estimation(
     author_wordfish_spec: Optional[str] = None,
     comment_sample_frac: Optional[float] = None,
     comment_max_rows: Optional[int] = None,
+    weights: Optional[str] = None,
 ) -> None:
     """Function summary: main estimation loop."""
     activate_post_phases_from_config(config)
+    weighted = bool(weights)
+    weights_col = weights if weighted else None
     families = _filter_families(families, config)
     panels = build_analysis_panels(
         config,
@@ -407,9 +416,9 @@ def run_estimation(
         print("[did_event_study] no estimation panels loaded", flush=True)
         return
     _, _, launch, _ = event_dates_from_config(config)
-    estimates_dir = did_estimates_dir(config)
-    summary_dir = did_summary_dir(config)
-    fig_dir = figures_subdir(config, "did")
+    estimates_dir = did_estimates_dir(config, weighted=weighted)
+    summary_dir = did_summary_dir(config, weighted=weighted)
+    fig_dir = figures_subdir(config, "did_weighted" if weighted else "did")
     estimates_dir.mkdir(parents=True, exist_ok=True)
     summary_dir.mkdir(parents=True, exist_ok=True)
     fig_dir.mkdir(parents=True, exist_ok=True)
@@ -423,7 +432,7 @@ def run_estimation(
 
     summary_rows: List[Dict[str, Any]] = []
     outcome_ids_by_family: Dict[str, List[str]] = {}
-    summary_path, _labeled_path = did_summary_paths(config)
+    summary_path, _labeled_path = did_summary_paths(config, weighted=weighted)
 
     auth_has_en_v1, auth_has_de_v1 = author_panel_has_multi_lang(panels.auth_v1)
     auth_has_en_v2, auth_has_de_v2 = author_panel_has_multi_lang(panels.auth_v2)
@@ -438,6 +447,10 @@ def run_estimation(
         if y_col is None:
             print(f"[did_event_study] skip {oc.outcome_id}: missing {oc.column}", flush=True)
             continue
+        if weights_col and weights_col not in panel.columns:
+            raise ValueError(
+                f"--weights {weights_col!r} requested but column missing for {oc.outcome_id} panel"
+            )
 
         if oc.family == "semantic_axis_author_week":
             has_en, has_de = auth_sem_has_en, auth_sem_has_de
@@ -493,6 +506,7 @@ def run_estimation(
                 time_col="time_id",
                 cluster_col=cluster_col,
                 panel_kind=oc.panel_kind,
+                weights=weights_col,
             )
             if strat.strategy_id != "within_italy_ddd" and not is_entity_fe_only_strategy(
                 strat.strategy_id
@@ -502,6 +516,7 @@ def run_estimation(
                     y_col,
                     entity_col=entity_col,
                     time_col="time_id",
+                    weights_col=weights_col,
                 )
                 res["pretrend_F_p"] = pretrend_p
                 if pretrend_note and res.get("estimation_note") in ("ok", "ok_entity_fe_only"):
@@ -511,6 +526,8 @@ def run_estimation(
                     )
             wild_p = float("nan")
             p_placebo_space = float("nan")
+            perm_p_beta = float("nan")
+            perm_p_t = float("nan")
             placebo_p_floor = float("nan")
             placebo_note = np.nan
             role = inference_role_for_strategy(strat.strategy_id)
@@ -538,6 +555,8 @@ def run_estimation(
                         )
                         p_placebo_space = pis.p
                         placebo_p_floor = pis.p_floor
+                        perm_p_beta = pis.perm_p_beta
+                        perm_p_t = pis.perm_p_t
                     elif is_cross_country_strategy(strat.strategy_id):
                         placebo_note = "not_applicable_single_country_contrast"
                 except Exception:
@@ -547,6 +566,7 @@ def run_estimation(
                 "outcome_id": oc.outcome_id,
                 "outcome_family": oc.family,
                 "column": y_col,
+                "weights": weights_col or "",
                 "strategy_id": strat.strategy_id,
                 "strategy_label": strategy_label(strat.strategy_id),
                 "spec": strat.post_mode,
@@ -556,6 +576,8 @@ def run_estimation(
                 **res,
                 "wild_p": wild_p,
                 "perm_p": p_placebo_space,
+                "perm_p_beta": perm_p_beta if is_placebo_in_space_eligible_strategy(strat.strategy_id) else float("nan"),
+                "perm_p_t": perm_p_t if is_placebo_in_space_eligible_strategy(strat.strategy_id) else float("nan"),
                 "p_placebo_space": p_placebo_space,
                 "placebo_p_floor": placebo_p_floor,
                 "placebo_note": placebo_note,
@@ -581,10 +603,11 @@ def run_estimation(
                 window=event_window,
                 entity_col=es_entity,
                 time_col="time_id",
+                weights_col=weights_col,
             )
             if not es_df.empty:
                 es_df["outcome_id"] = oc.outcome_id
-                es_path = did_event_study_path(config, oc.family, oc.outcome_id)
+                es_path = did_event_study_path(config, oc.family, oc.outcome_id, weighted=weighted)
                 es_path.parent.mkdir(parents=True, exist_ok=True)
                 es_df.to_csv(
                     es_path,
@@ -601,10 +624,11 @@ def run_estimation(
             rob = run_robustness_grid(panel, StrategySpec("cross_country_all"), y_col, launch)
             rob_df = pd.DataFrame(rob)
             rob_df["outcome_id"] = oc.outcome_id
-            rob_df.to_csv(
-                did_outcome_table_path(config, oc.family, "robustness", oc.outcome_id),
-                index=False,
+            rob_path = did_outcome_table_path(
+                config, oc.family, "robustness", oc.outcome_id, weighted=weighted
             )
+            rob_path.parent.mkdir(parents=True, exist_ok=True)
+            rob_df.to_csv(rob_path, index=False)
             if write_figures:
                 plot_placebo_robustness(
                     rob_df,
@@ -615,7 +639,7 @@ def run_estimation(
         if coef_detail:
             coef_df = pd.DataFrame(coef_detail)
             coef_path = did_outcome_table_path(
-                config, oc.family, "coefficients", oc.outcome_id
+                config, oc.family, "coefficients", oc.outcome_id, weighted=weighted
             )
             coef_path.parent.mkdir(parents=True, exist_ok=True)
             coef_df.to_csv(coef_path, index=False)
@@ -629,14 +653,12 @@ def run_estimation(
         if summary_path.is_file():
             old = pd.read_csv(summary_path)
             summary_df = pd.concat([old, summary_df], ignore_index=True)
-            summary_df = summary_df.drop_duplicates(
-                subset=[
-                    c
-                    for c in ("outcome_id", "strategy_id", "spec")
-                    if c in summary_df.columns
-                ],
-                keep="last",
-            )
+            dedupe_cols = [
+                c
+                for c in ("outcome_id", "strategy_id", "spec", "weights")
+                if c in summary_df.columns
+            ]
+            summary_df = summary_df.drop_duplicates(subset=dedupe_cols, keep="last")
         write_summary_exports(summary_df, summary_dir, launch)
 
         if write_figures:
@@ -691,6 +713,7 @@ def main() -> None:
         author_wordfish_spec=args.author_spec,
         comment_sample_frac=args.comment_sample_frac,
         comment_max_rows=args.comment_max_rows,
+        weights=args.weights,
     )
 
 

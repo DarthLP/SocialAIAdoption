@@ -73,7 +73,15 @@ def test_author_semantic_outcome_specs() -> None:
     """Function summary: registry includes author-week semantic outcomes."""
     specs = outcomes_for_families(["semantic_axis_author_week"])
     ids = {s.outcome_id for s in specs}
-    assert ids == {"sem_axis_ideology", "sem_axis_emotion", "sem_axis_aggression"}
+    assert ids == {
+        "sem_axis_ideology",
+        "sem_axis_emotion",
+        "sem_axis_aggression",
+        "sem_axis_economic",
+        "sem_axis_cultural",
+        "sem_axis_nationalism",
+        "sem_axis_anti_establishment",
+    }
     for s in specs:
         assert s.panel_kind == "author_semantic_week"
         assert s.ddd_allowed is False

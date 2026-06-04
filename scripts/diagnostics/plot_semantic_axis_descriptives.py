@@ -51,8 +51,9 @@ from src.config_utils import (  # noqa: E402
     tables_subdir,
 )
 from src.did.paths import resolve_panel_path  # noqa: E402
+from src.embeddings import ALL_AXIS_NAMES, AXIS_SCORE_COLUMNS  # noqa: E402
 
-SCORE_COLS = ("sem_axis_ideology", "sem_axis_emotion", "sem_axis_aggression")
+SCORE_COLS: tuple[str, ...] = tuple(AXIS_SCORE_COLUMNS[axis] for axis in ALL_AXIS_NAMES)
 STALE_POLE_SUFFIXES = ("tau50", "tau75", "tau25")
 
 _DATE_AXIS_LABEL = "Date (UTC, daily period start)"
@@ -70,11 +71,31 @@ LEVEL_DISPLAY: dict[str, str] = {
     "language": "language",
     "language_universe": "language × political universe",
 }
-TIMESERIES_METRICS: tuple[tuple[str, str], ...] = (
-    ("sem_axis_ideology_mean", "ideology"),
-    ("sem_axis_emotion_mean", "emotion"),
-    ("sem_axis_aggression_mean", "aggression"),
-    ("share_unscored", "share_unscored"),
+_AXIS_POLE_CONFIG: dict[str, dict[str, str]] = {
+    "ideology": {"high": "right", "low": "left", "title": "Ideology"},
+    "emotion": {"high": "pos", "low": "neg", "title": "Emotion (affect vs cognition)"},
+    "aggression": {"high": "pos", "low": "neg", "title": "Aggression (incivility vs neutral)"},
+    "economic": {"high": "pos", "low": "neg", "title": "Economic (market vs equality)"},
+    "cultural": {"high": "pos", "low": "neg", "title": "Cultural (traditional vs progressive)"},
+    "nationalism": {"high": "pos", "low": "neg", "title": "Nationalism (nationalist vs cosmopolitan)"},
+    "anti_establishment": {
+        "high": "pos",
+        "low": "neg",
+        "title": "Anti-establishment (anti-institution vs pro-institution)",
+    },
+}
+_TIMESERIES_AXIS_TITLES: dict[str, str] = {
+    "ideology": "ideology",
+    "emotion": "emotion",
+    "aggression": "aggression",
+    "economic": "economic",
+    "cultural": "cultural",
+    "nationalism": "nationalism",
+    "anti_establishment": "anti_establishment",
+}
+TIMESERIES_METRICS: tuple[tuple[str, str], ...] = tuple(
+    [(f"sem_axis_{axis}_mean", _TIMESERIES_AXIS_TITLES[axis]) for axis in ALL_AXIS_NAMES]
+    + [("share_unscored", "share_unscored")]
 )
 _PANEL_METRIC_YLABELS: dict[str, str] = {
     "sem_axis_ideology_mean": (
@@ -89,36 +110,33 @@ _PANEL_METRIC_YLABELS: dict[str, str] = {
         "Mean comment score on aggression axis\n"
         "(insult/incivility pole minus neutral; higher = more aggressive)"
     ),
+    "sem_axis_economic_mean": (
+        "Mean comment score on economic axis\n"
+        "(market pole minus equality pole; higher = more market-oriented)"
+    ),
+    "sem_axis_cultural_mean": (
+        "Mean comment score on cultural axis\n"
+        "(traditional pole minus progressive pole; higher = more traditional)"
+    ),
+    "sem_axis_nationalism_mean": (
+        "Mean comment score on nationalism axis\n"
+        "(nationalist pole minus cosmopolitan pole; higher = more nationalist)"
+    ),
+    "sem_axis_anti_establishment_mean": (
+        "Mean comment score on anti-establishment axis\n"
+        "(anti-institution pole minus pro-institution; higher = more anti-establishment)"
+    ),
     "share_unscored": (
         "Share of comments without a semantic-axis vector\n"
         "(has_sem_axis=0; use instead of saturated FastText coverage)"
     ),
 }
 _COMMENT_SCORE_YLABELS: dict[str, str] = {
-    "sem_axis_ideology": "Density of comments by ideology axis score",
-    "sem_axis_emotion": "Density of comments by emotion axis score",
-    "sem_axis_aggression": "Density of comments by aggression axis score",
+    AXIS_SCORE_COLUMNS[axis]: f"Density of comments by {axis.replace('_', ' ')} axis score"
+    for axis in ALL_AXIS_NAMES
 }
 _POLE_SHARE_YLABEL = "Share of scored comments in pole bucket (0–1)"
 _HISTOGRAM_XLABEL = "Comment-level semantic axis score"
-
-_AXIS_POLE_CONFIG: dict[str, dict[str, str]] = {
-    "ideology": {
-        "high": "right",
-        "low": "left",
-        "title": "Ideology",
-    },
-    "emotion": {
-        "high": "pos",
-        "low": "neg",
-        "title": "Emotion (affect vs cognition)",
-    },
-    "aggression": {
-        "high": "pos",
-        "low": "neg",
-        "title": "Aggression (incivility vs neutral)",
-    },
-}
 
 
 def parse_args() -> argparse.Namespace:

@@ -96,22 +96,22 @@ def merge_semantic_axis(sub: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFra
     sem = pd.read_csv(sem_path)
     if "period_start" in sem.columns:
         sem = sem.rename(columns={"period_start": "date_utc"})
-    keep = [
-        "subreddit",
-        "date_utc",
-        "sem_axis_ideology_mean",
-        "sem_axis_emotion_mean",
-        "sem_axis_aggression_mean",
-        "sem_axis_ideology_var",
-        "sem_axis_emotion_var",
-        "sem_axis_ideology_pole_share",
-        "sem_axis_ideology_esteban_ray",
-        "sem_axis_ideology_share_left_below_p10",
-        "sem_axis_ideology_share_right_above_p90",
+    merge_keys = ["subreddit", "date_utc"]
+    skip_if_in_sub = {"n_comments", "n_scored", "n_words_total"} & set(sub.columns)
+    outcome_cols = [
+        c
+        for c in sem.columns
+        if c not in merge_keys
+        and c not in skip_if_in_sub
+        and (
+            c.startswith("sem_axis_")
+            or c in ("share_unscored", "n_comments", "n_scored", "n_words_total")
+        )
     ]
+    keep = merge_keys + outcome_cols
     keep = [c for c in keep if c in sem.columns]
-    sem = sem[keep].drop_duplicates(["subreddit", "date_utc"])
-    return sub.merge(sem, on=["subreddit", "date_utc"], how="left")
+    sem = sem[keep].drop_duplicates(merge_keys)
+    return sub.merge(sem, on=merge_keys, how="left")
 
 
 def merge_wordfish_forum(
@@ -393,6 +393,8 @@ def _build_subreddit_panel(config: Dict[str, Any], wf_subdir: str) -> pd.DataFra
     sub = merge_wordfish_forum(sub, config, tables_subdir_name=wf_subdir)
     sub["entity_id"] = sub["subreddit"].astype(str)
     sub["time_id"] = sub["date_utc"].astype(str)
+    if "n_comments" not in sub.columns and "n_comments_x" in sub.columns:
+        sub["n_comments"] = sub["n_comments_x"]
     return sub
 
 

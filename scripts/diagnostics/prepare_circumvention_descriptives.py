@@ -1,6 +1,6 @@
 """
 Script summary:
-Build DiD-ready circumvention panels from Tor Metrics and Google Trends VPN data.
+Build DiD-ready circumvention panels from Tor Metrics and Google Trends VPN + ChatGPT data.
 
 Functionality:
 - Loads combined circumvention CSVs under data/raw/circumvention/.
@@ -63,6 +63,7 @@ def _write_methods_note(out_dir: Path, circ_cfg: dict, launch: str, lift: str) -
 
 ## Sources
 - Google Trends topic "Virtual private network" (not bare keyword VPN).
+- Google Trends topic "ChatGPT" (attention/salience proxy, not usage or adoption).
 - Tor Metrics daily relay and bridge user estimates (Kreitmeir & Raschky 2023 replication).
 
 ## Event anchors
@@ -71,8 +72,9 @@ def _write_methods_note(out_dir: Path, circ_cfg: dict, launch: str, lift: str) -
 - Treated geo: {treated}; controls: {controls}
 
 ## DiD usage
-- On circumvention_panel_by_geo_*: outcome = vpn_interest / tor_*; treatment = treated x post (IT vs other geos).
+- On circumvention_panel_by_geo_*: outcome = vpn_interest / chatgpt_interest / tor_*; treatment = treated x post (IT vs other geos).
 - Google Trends levels are NOT comparable across countries; use within-geo over-time variation or treated x post on IT only.
+- chatgpt_interest measures search attention to ChatGPT, not confirmed tool usage.
 - Tor series have sparse calendar days; missing days remain NaN. Multi-day bins average available days only.
 
 ## Reddit merges

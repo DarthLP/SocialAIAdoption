@@ -15,10 +15,37 @@ from src.did.specs import StrategySpec, rel_day_from_date
 
 
 def placebo_panel(panel: pd.DataFrame, placebo_date: str = "2023-03-16") -> pd.DataFrame:
-    """Function summary: redefine post/rel_day for placebo ban date."""
+    """Function summary: redefine post/rel_day for placebo ban date (descriptive; open-ended post)."""
     out = panel.copy()
     out["rel_day"] = rel_day_from_date(out["date_utc"], "", placebo=True, placebo_date=placebo_date)
     out["post"] = (out["rel_day"] >= 0).astype(int)
+    return out
+
+
+def placebo_panel_fixed_post_window(
+    panel: pd.DataFrame,
+    placebo_date: str,
+    *,
+    post_days: int = 7,
+    truncate_before: str | None = "2023-03-31",
+) -> pd.DataFrame:
+    """Function summary: placebo date with fixed-length post window for exchangeable placebo-in-time.
+
+    Parameters:
+    - panel: subreddit-day (or similar) panel with date_utc.
+    - placebo_date: fake ban onset YYYY-MM-DD.
+    - post_days: post = 1 for rel_day in [0, post_days-1].
+    - truncate_before: drop rows on/after this date (excludes real ban from placebo draws).
+
+    Returns:
+    - Panel with rel_day, post, treat unchanged except calendar redefinition.
+    """
+    out = panel.copy()
+    if truncate_before:
+        out = out[out["date_utc"].astype(str) < truncate_before].copy()
+    out = placebo_panel(out, placebo_date)
+    hi = int(post_days) - 1
+    out["post"] = ((out["rel_day"] >= 0) & (out["rel_day"] <= hi)).astype(int)
     return out
 
 
@@ -95,6 +122,7 @@ def run_robustness_grid(
                 "se": r["se"],
                 "pvalue": r["pvalue"],
                 "p_placebo_space": float("nan"),
+                "inference_role": "descriptive_unequal_window",
             }
         )
 

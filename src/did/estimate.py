@@ -184,6 +184,23 @@ def annotate_pretrend_quality(row: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _panelols_weights(panel: pd.DataFrame, weights_col: str | None) -> pd.Series | None:
+    """Function summary: aligned positive weights for PanelOLS constructor, or None.
+
+    Parameters:
+    - panel: MultiIndex panel used in from_formula.
+    - weights_col: column name on panel (e.g. n_comments).
+
+    Returns:
+    - Float Series aligned to panel index, or None when unweighted.
+    """
+    if not weights_col or weights_col not in panel.columns:
+        return None
+    w = pd.to_numeric(panel[weights_col], errors="coerce").astype(float)
+    w = w.fillna(1.0).clip(lower=1e-9)
+    return w
+
+
 def estimate_pretrend_f(
     df: pd.DataFrame,
     y_col: str,
@@ -191,6 +208,7 @@ def estimate_pretrend_f(
     time_col: str = "time_id",
     rel_col: str = "rel_day",
     leads: Tuple[int, ...] = (-3, -2, -1),
+    weights_col: str | None = None,
 ) -> Tuple[float, Optional[str]]:
     """Function summary: joint F-test that pre-ban treat×event-time leads are zero.
 
@@ -208,7 +226,10 @@ def estimate_pretrend_f(
     if rel_col not in work.columns:
         return float("nan"), "insufficient_preperiods"
     work["y"] = pd.to_numeric(work[y_col], errors="coerce")
-    work = work.dropna(subset=["y"])
+    drop_cols = ["y"]
+    if weights_col and weights_col in work.columns:
+        drop_cols.append(weights_col)
+    work = work.dropna(subset=drop_cols)
     work["treat"] = work["treat"].astype(float)
     rel_vals = set(int(v) for v in work[rel_col].dropna().unique())
     if not all(int(k) in rel_vals for k in leads):
@@ -225,8 +246,12 @@ def estimate_pretrend_f(
     if len(panel) < 30 or panel.index.get_level_values(0).nunique() < 3:
         return float("nan"), "insufficient_preperiods"
     formula_rhs = " + ".join(interact_cols) + " + EntityEffects + TimeEffects"
+    w = _panelols_weights(panel, weights_col)
     try:
-        mod = PanelOLS.from_formula(f"y ~ {formula_rhs}", data=panel, drop_absorbed=True)
+        kwargs: Dict[str, Any] = {"drop_absorbed": True}
+        if w is not None:
+            kwargs["weights"] = w
+        mod = PanelOLS.from_formula(f"y ~ {formula_rhs}", data=panel, **kwargs)
         res = mod.fit(cov_type="clustered", cluster_entity=True)
         restrictions = " + ".join(f"{p}" for p in interact_cols if p in res.params.index) + " = 0"
         if not restrictions.strip().startswith("="):
@@ -242,11 +267,16 @@ def _prep_comment_regression(
     y_col: str,
     author_col: str = "author",
     time_col: str = "time_id",
+    weights_col: str | None = None,
 ) -> pd.DataFrame:
     """Function summary: comment-level frame with y, treat_post, and FE keys."""
     work = df.copy()
     work["y"] = pd.to_numeric(work[y_col], errors="coerce")
-    work = work.dropna(subset=["y", author_col, time_col])
+    drop = ["y", author_col, time_col]
+    if weights_col and weights_col in work.columns:
+        work[weights_col] = pd.to_numeric(work[weights_col], errors="coerce")
+        drop.append(weights_col)
+    work = work.dropna(subset=drop)
     work[author_col] = work[author_col].astype(str)
     work[time_col] = work[time_col].astype(str)
     work["treat"] = work["treat"].astype(float)
@@ -283,6 +313,7 @@ def estimate_comment_feols(
     time_col: str = "time_id",
     cluster_col: str = "author",
     entity_only: bool = False,
+    weights_col: str | None = None,
 ) -> Dict[str, Any]:
     """Function summary: comment-level DiD with author (+ calendar) absorbed FEs via pyfixest.
 
@@ -301,7 +332,10 @@ def estimate_comment_feols(
         from pyfixest.estimation import feols
     except ImportError:
         return _empty_result(0, 0, "pyfixest_missing")
-    work = _prep_comment_regression(df, y_col, author_col, time_col)
+    work = _prep_comment_regression(df, y_col, author_col, time_col, weights_col=weights_col)
+    w_series = None
+    if weights_col and weights_col in work.columns:
+        w_series = work[weights_col].astype(float).fillna(1.0).clip(lower=1e-9)
     if len(work) < 30 or work[author_col].nunique() < 3:
         return _empty_result(
             len(work),
@@ -310,27 +344,43 @@ def estimate_comment_feols(
         )
     n_cl = int(work[cluster_col].nunique())
     try:
+        feols_kw: Dict[str, Any] = {"vcov": {"CRV1": cluster_col}}
+        if w_series is not None:
+            feols_kw["weights"] = w_series
         if entity_only:
-            fit = feols(f"y ~ post | {author_col}", data=work, vcov={"CRV1": cluster_col})
+            fit = feols(f"y ~ post | {author_col}", data=work, **feols_kw)
             return _feols_result_to_dict(
                 fit, "post", len(work), n_cl, estimation_note="ok_entity_fe_only"
             )
         fit = feols(
             f"y ~ treat_post | {author_col} + {time_col}",
             data=work,
-            vcov={"CRV1": cluster_col},
+            **feols_kw,
         )
         return _feols_result_to_dict(fit, "treat_post", len(work), n_cl)
     except Exception:
         return _empty_result(len(work), n_cl, "estimation_error")
 
 
-def _prep_panel(df: pd.DataFrame, y_col: str, entity_col: str, time_col: str) -> pd.DataFrame:
+def _prep_panel(
+    df: pd.DataFrame,
+    y_col: str,
+    entity_col: str,
+    time_col: str,
+    weights_col: str | None = None,
+) -> pd.DataFrame:
     """Function summary: drop missing and set MultiIndex for PanelOLS."""
-    work = df[[entity_col, time_col, y_col, "treat", "post"]].copy()
+    cols = [entity_col, time_col, y_col, "treat", "post"]
+    if weights_col and weights_col in df.columns:
+        cols.append(weights_col)
+    work = df[cols].copy()
     work = work.rename(columns={y_col: "y", entity_col: "entity", time_col: "time"})
     work["y"] = pd.to_numeric(work["y"], errors="coerce")
-    work = work.dropna(subset=["y"])
+    drop = ["y"]
+    if weights_col and weights_col in work.columns:
+        work[weights_col] = pd.to_numeric(work[weights_col], errors="coerce")
+        drop.append(weights_col)
+    work = work.dropna(subset=drop)
     work["treat_post"] = work["treat"].astype(float) * work["post"].astype(float)
     work["time"] = pd.to_datetime(work["time"].astype(str))
     work = work.set_index(["entity", "time"])
@@ -343,24 +393,29 @@ def estimate_twfe(
     entity_col: str = "entity_id",
     time_col: str = "time_id",
     cluster_col: str = "entity_id",
+    weights_col: str | None = None,
 ) -> Dict[str, Any]:
     """Function summary: two-way FE DiD on treat×post with clustered SEs.
 
     Returns:
     - Dict with beta, se, ci_low, ci_high, pvalue, n_obs, n_clusters, estimation_note.
     """
-    work = _prep_panel(df, y_col, entity_col, time_col)
+    work = _prep_panel(df, y_col, entity_col, time_col, weights_col=weights_col)
     if len(work) < 30 or work.index.get_level_values(0).nunique() < 3:
         return _empty_result(
             len(work),
             work.index.get_level_values(0).nunique() if len(work) else 0,
             "insufficient_obs_or_clusters",
         )
+    w = _panelols_weights(work, weights_col)
     try:
+        kwargs: Dict[str, Any] = {"drop_absorbed": True}
+        if w is not None:
+            kwargs["weights"] = w
         mod = PanelOLS.from_formula(
             "y ~ treat_post + EntityEffects + TimeEffects",
             data=work,
-            drop_absorbed=True,
+            **kwargs,
         )
         res = mod.fit(cov_type="clustered", cluster_entity=True)
     except ValueError:
@@ -395,6 +450,7 @@ def estimate_event_study(
     window: int = 30,
     entity_col: str = "entity_id",
     time_col: str = "time_id",
+    weights_col: str | None = None,
 ) -> Tuple[Dict[str, Any], pd.DataFrame]:
     """Function summary: dynamic TWFE event study with lead/lag dummies × treat.
 
@@ -403,7 +459,11 @@ def estimate_event_study(
     """
     work = df.copy()
     work["y"] = pd.to_numeric(work[y_col], errors="coerce")
-    work = work.dropna(subset=["y"])
+    drop = ["y"]
+    if weights_col and weights_col in work.columns:
+        work[weights_col] = pd.to_numeric(work[weights_col], errors="coerce")
+        drop.append(weights_col)
+    work = work.dropna(subset=drop)
     work = work[work[rel_col].between(-window, window)]
     work["treat"] = work["treat"].astype(float)
     interact_cols: List[str] = []
@@ -428,7 +488,11 @@ def estimate_event_study(
         f"{interact_rhs} + TimeEffects",
     ):
         try:
-            mod = PanelOLS.from_formula(f"y ~ {formula_rhs}", data=panel, drop_absorbed=True)
+            w = _panelols_weights(panel, weights_col)
+            kwargs: Dict[str, Any] = {"drop_absorbed": True}
+            if w is not None:
+                kwargs["weights"] = w
+            mod = PanelOLS.from_formula(f"y ~ {formula_rhs}", data=panel, **kwargs)
             res = mod.fit(cov_type="clustered", cluster_entity=True)
             if formula_rhs.endswith("+ TimeEffects") and "EntityEffects" not in formula_rhs:
                 note = "ok_time_fe_only"
@@ -546,15 +610,23 @@ def estimate_twfe_entity_only(
     y_col: str,
     entity_col: str = "entity_id",
     time_col: str = "time_id",
+    weights_col: str | None = None,
 ) -> Dict[str, Any]:
     """Function summary: treat×post with entity FE only (author IT cohort; no time FE).
 
     Used when treat is constant so calendar time FE absorb the ban dummy.
     """
-    work = df[[entity_col, time_col, y_col, "treat", "post"]].copy()
+    cols = [entity_col, time_col, y_col, "treat", "post"]
+    if weights_col and weights_col in df.columns:
+        cols.append(weights_col)
+    work = df[cols].copy()
     work = work.rename(columns={y_col: "y", entity_col: "entity", time_col: "time"})
     work["y"] = pd.to_numeric(work["y"], errors="coerce")
-    work = work.dropna(subset=["y"])
+    drop = ["y"]
+    if weights_col and weights_col in work.columns:
+        work[weights_col] = pd.to_numeric(work[weights_col], errors="coerce")
+        drop.append(weights_col)
+    work = work.dropna(subset=drop)
     work["treat_post"] = work["treat"].astype(float) * work["post"].astype(float)
     work["time"] = pd.to_datetime(work["time"].astype(str))
     work = work.set_index(["entity", "time"])
@@ -564,11 +636,15 @@ def estimate_twfe_entity_only(
             work.index.get_level_values(0).nunique() if len(work) else 0,
             "insufficient_obs_or_clusters",
         )
+    w = _panelols_weights(work, weights_col)
     try:
+        kwargs: Dict[str, Any] = {"drop_absorbed": True}
+        if w is not None:
+            kwargs["weights"] = w
         mod = PanelOLS.from_formula(
             "y ~ treat_post + EntityEffects",
             data=work,
-            drop_absorbed=True,
+            **kwargs,
         )
         res = mod.fit(cov_type="clustered", cluster_entity=True)
     except (ValueError, Exception):
@@ -595,6 +671,7 @@ def run_strategy_twfe(
     time_col: str = "time_id",
     cluster_col: str = "entity_id",
     panel_kind: str = "subreddit_day",
+    weights: str | None = None,
 ) -> Dict[str, Any]:
     """Function summary: TWFE for one strategy/outcome combination."""
     if strategy.strategy_id == "within_italy_ddd" or strategy.strategy_id.startswith("within_italy"):
@@ -612,12 +689,13 @@ def run_strategy_twfe(
             time_col=time_col,
             cluster_col=author_col,
             entity_only=is_entity_fe_only_strategy(strategy.strategy_id),
+            weights_col=weights,
         )
     if panel_kind == "author_day":
         entity_col = author_col
         cluster_col = author_col
     if is_entity_fe_only_strategy(strategy.strategy_id):
-        return estimate_twfe_entity_only(sample, y_col, entity_col, time_col)
+        return estimate_twfe_entity_only(sample, y_col, entity_col, time_col, weights_col=weights)
     if _insufficient_panel(sample, entity_col, time_col):
         return _empty_result(
             len(sample),
@@ -626,7 +704,7 @@ def run_strategy_twfe(
         )
     if sample["treat"].nunique() < 2:
         return _empty_result(len(sample), int(sample[entity_col].nunique()), "no_treat_variation")
-    return estimate_twfe(sample, y_col, entity_col, time_col, cluster_col)
+    return estimate_twfe(sample, y_col, entity_col, time_col, cluster_col, weights_col=weights)
 
 
 def _pack_result(

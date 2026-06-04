@@ -144,6 +144,8 @@ def main() -> None:
                 pis = placebo_in_space_p(panel, strat, y_col, entity_col=entity_col)
                 df.at[idx, "p_placebo_space"] = pis.p
                 df.at[idx, "perm_p"] = pis.p
+                df.at[idx, "perm_p_beta"] = pis.perm_p_beta
+                df.at[idx, "perm_p_t"] = pis.perm_p_t
                 df.at[idx, "placebo_p_floor"] = pis.p_floor
                 df.at[idx, "placebo_note"] = np.nan
             if is_wcb_eligible_strategy(sid) and not args.placebo_only:

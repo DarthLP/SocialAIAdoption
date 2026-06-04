@@ -17,7 +17,10 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
-SEMANTIC_AXES = ("ideology", "emotion", "aggression")
+from src.embeddings import ALL_AXIS_NAMES
+
+# All scored axes (legacy + extended issue dimensions).
+SEMANTIC_AXES: Tuple[str, ...] = ALL_AXIS_NAMES
 
 # topic_family -> primary_lexicon for panel cells without primary_lexicon column
 FAMILY_TO_LEXICON: Dict[str, str] = {

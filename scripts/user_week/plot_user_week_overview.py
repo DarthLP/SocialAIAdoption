@@ -32,6 +32,10 @@ OVERVIEW_SPECS: Tuple[Tuple[str, str, str], ...] = (
     ("semantic", "delta_pooled_sem_axis_ideology", "Sem. ideology"),
     ("semantic", "delta_pooled_sem_axis_emotion", "Sem. emotion"),
     ("semantic", "delta_pooled_sem_axis_aggression", "Sem. aggression"),
+    ("semantic", "delta_pooled_sem_axis_economic", "Sem. economic"),
+    ("semantic", "delta_pooled_sem_axis_cultural", "Sem. cultural"),
+    ("semantic", "delta_pooled_sem_axis_nationalism", "Sem. nationalism"),
+    ("semantic", "delta_pooled_sem_axis_anti_establishment", "Sem. anti-est."),
 )
 
 

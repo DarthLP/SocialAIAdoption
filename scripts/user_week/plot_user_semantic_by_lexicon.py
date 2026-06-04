@@ -29,6 +29,10 @@ SEMANTIC_DELTA_COLS: Tuple[Tuple[str, str], ...] = (
     ("delta_pooled_sem_axis_ideology", "Ideology axis"),
     ("delta_pooled_sem_axis_emotion", "Emotion axis"),
     ("delta_pooled_sem_axis_aggression", "Aggression axis"),
+    ("delta_pooled_sem_axis_economic", "Economic axis"),
+    ("delta_pooled_sem_axis_cultural", "Cultural axis"),
+    ("delta_pooled_sem_axis_nationalism", "Nationalism axis"),
+    ("delta_pooled_sem_axis_anti_establishment", "Anti-establishment axis"),
     ("delta_pooled_semantic_composite_user_week", "Semantic composite"),
 )
 

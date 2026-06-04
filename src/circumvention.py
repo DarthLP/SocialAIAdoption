@@ -1,6 +1,6 @@
 """
 Script summary:
-Load and reshape Tor Metrics + Google Trends VPN circumvention proxies for DiD panels.
+Load and reshape Tor Metrics + Google Trends VPN and ChatGPT circumvention proxies for DiD panels.
 
 Functionality:
 - Read combined circumvention CSVs from data/raw/circumvention/.
@@ -85,6 +85,9 @@ def load_circumvention_daily(
     base = circumvention_raw_dir(project_root, circ_cfg)
 
     gt_path = base / str(circ_cfg.get("google_trends_combined", "google_trends_vpn_by_country.csv"))
+    gt_chatgpt_path = base / str(
+        circ_cfg.get("google_trends_chatgpt_combined", "google_trends_chatgpt_by_country.csv")
+    )
     relay_path = base / str(circ_cfg.get("tor_relay_combined", "tor_relay_users_by_country.csv"))
     bridge_path = base / str(circ_cfg.get("tor_bridge_combined", "tor_bridge_users_by_country.csv"))
 
@@ -94,7 +97,6 @@ def load_circumvention_daily(
     gt = pd.read_csv(gt_path)
     gt["date_utc"] = pd.to_datetime(gt["date"], errors="coerce").dt.strftime("%Y-%m-%d")
     gt["geo"] = gt["geo"].astype(str).str.upper()
-    gt = gt.rename(columns={"vpn_interest": "vpn_interest"})
     gt_cols = ["date_utc", "geo", "vpn_interest"]
     for c in ("trends_query_type", "trends_mid"):
         if c in gt.columns:
@@ -102,6 +104,17 @@ def load_circumvention_daily(
     gt = gt[gt_cols].drop_duplicates(subset=["date_utc", "geo"], keep="last")
 
     daily = gt.copy()
+
+    if gt_chatgpt_path.is_file():
+        cg = pd.read_csv(gt_chatgpt_path)
+        cg["date_utc"] = pd.to_datetime(cg["date"], errors="coerce").dt.strftime("%Y-%m-%d")
+        cg["geo"] = cg["geo"].astype(str).str.upper()
+        cg_cols = ["date_utc", "geo", "chatgpt_interest"]
+        daily = daily.merge(
+            cg[cg_cols].drop_duplicates(subset=["date_utc", "geo"], keep="last"),
+            on=["date_utc", "geo"],
+            how="outer",
+        )
 
     for path, prefix in ((relay_path, "tor_relay"), (bridge_path, "tor_bridge")):
         if not path.is_file():
@@ -143,6 +156,11 @@ def _add_transforms(grp: pd.DataFrame) -> pd.DataFrame:
         mu = v.mean()
         sd = v.std()
         out["vpn_interest_z"] = (v - mu) / sd if sd and sd > 0 else float("nan")
+    if "chatgpt_interest" in out.columns:
+        c = out["chatgpt_interest"].astype(float)
+        mu_c = c.mean()
+        sd_c = c.std()
+        out["chatgpt_interest_z"] = (c - mu_c) / sd_c if sd_c and sd_c > 0 else float("nan")
     return out
 
 
@@ -176,6 +194,7 @@ def build_circumvention_geo_panel(
         if c
         in (
             "vpn_interest",
+            "chatgpt_interest",
             "tor_relay_users",
             "tor_bridge_users",
             "tor_relay_frac",
@@ -183,6 +202,7 @@ def build_circumvention_geo_panel(
             "log1p_tor_bridge_users",
             "log1p_tor_relay_users",
             "vpn_interest_z",
+            "chatgpt_interest_z",
         )
     ]
     if not value_cols:

@@ -39,28 +39,43 @@ def did_panels_dir(config: Dict[str, Any], kind: PanelKind) -> Path:
     return did_root(config) / "panels" / kind
 
 
-def did_estimates_dir(config: Dict[str, Any]) -> Path:
+def did_estimates_dir(config: Dict[str, Any], *, weighted: bool = False) -> Path:
     """Function summary: estimates/ root for DiD outputs.
 
     Parameters:
     - config: loaded YAML.
+    - weighted: when True, use parallel ``estimates_weighted/`` tree.
 
     Returns:
     - Path to estimates/ directory.
     """
-    return did_root(config) / "estimates"
+    name = "estimates_weighted" if weighted else "estimates"
+    return did_root(config) / name
 
 
-def did_summary_dir(config: Dict[str, Any]) -> Path:
+def did_summary_dir(config: Dict[str, Any], *, weighted: bool = False) -> Path:
     """Function summary: estimates/summary/ for master and sliced summaries.
+
+    Parameters:
+    - config: loaded YAML.
+    - weighted: when True, use estimates_weighted/ root.
+
+    Returns:
+    - Path to summary/ directory.
+    """
+    return did_estimates_dir(config, weighted=weighted) / "summary"
+
+
+def did_adopter_ddd_dir(config: Dict[str, Any]) -> Path:
+    """Function summary: adopter triple-diff estimates root (did/adopter_ddd/).
 
     Parameters:
     - config: loaded YAML.
 
     Returns:
-    - Path to summary/ directory.
+    - Path to adopter_ddd/ directory.
     """
-    return did_estimates_dir(config) / "summary"
+    return did_root(config) / "adopter_ddd"
 
 
 def did_gsynth_dir(config: Dict[str, Any]) -> Path:
@@ -103,30 +118,32 @@ def did_gsynth_inference_path(config: Dict[str, Any], outcome_id: str, bin_days:
     return did_gsynth_dir(config) / f"inference_{outcome_id}_{int(bin_days)}d.csv"
 
 
-def did_summary_paths(config: Dict[str, Any]) -> Tuple[Path, Path]:
+def did_summary_paths(config: Dict[str, Any], *, weighted: bool = False) -> Tuple[Path, Path]:
     """Function summary: master did_summary.csv and labeled variant paths.
 
     Parameters:
     - config: loaded YAML.
+    - weighted: when True, use estimates_weighted/ root.
 
     Returns:
     - Tuple of (did_summary.csv, did_summary_labeled.csv) paths.
     """
-    summary_dir = did_summary_dir(config)
+    summary_dir = did_summary_dir(config, weighted=weighted)
     return summary_dir / "did_summary.csv", summary_dir / "did_summary_labeled.csv"
 
 
-def did_family_estimates_dir(config: Dict[str, Any], family: str) -> Path:
+def did_family_estimates_dir(config: Dict[str, Any], family: str, *, weighted: bool = False) -> Path:
     """Function summary: estimates/{family}/ for per-outcome tables.
 
     Parameters:
     - config: loaded YAML.
     - family: outcome family id (lexical, semantic_axis, wordfish_*, ...).
+    - weighted: when True, use estimates_weighted/ root.
 
     Returns:
     - Path to family estimates directory.
     """
-    return did_estimates_dir(config) / family
+    return did_estimates_dir(config, weighted=weighted) / family
 
 
 def did_outcome_table_path(
@@ -134,6 +151,8 @@ def did_outcome_table_path(
     family: str,
     table_kind: TableKind,
     outcome_id: str,
+    *,
+    weighted: bool = False,
 ) -> Path:
     """Function summary: nested path for coefficients, robustness, or event_study CSV.
 
@@ -142,11 +161,12 @@ def did_outcome_table_path(
     - family: outcome family id.
     - table_kind: coefficients | robustness | event_study.
     - outcome_id: outcome slug.
+    - weighted: when True, use estimates_weighted/ root.
 
     Returns:
     - Full path, e.g. estimates/lexical/coefficients/aggression_rate.csv.
     """
-    return did_family_estimates_dir(config, family) / table_kind / f"{outcome_id}.csv"
+    return did_family_estimates_dir(config, family, weighted=weighted) / table_kind / f"{outcome_id}.csv"
 
 
 def did_legacy_coefficient_path(config: Dict[str, Any], outcome_id: str) -> Path:
@@ -175,18 +195,21 @@ def did_headline_event_study_table_path(config: Dict[str, Any], outcome_id: str)
     return did_root(config) / f"event_study_{outcome_id}.csv"
 
 
-def did_event_study_path(config: Dict[str, Any], family: str, outcome_id: str) -> Path:
+def did_event_study_path(
+    config: Dict[str, Any], family: str, outcome_id: str, *, weighted: bool = False
+) -> Path:
     """Function summary: event-study coefficient table for one outcome.
 
     Parameters:
     - config: loaded YAML.
     - family: outcome family id.
     - outcome_id: outcome slug.
+    - weighted: when True, use estimates_weighted/ root.
 
     Returns:
     - Path to event_study/{outcome_id}.csv.
     """
-    return did_outcome_table_path(config, family, "event_study", outcome_id)
+    return did_outcome_table_path(config, family, "event_study", outcome_id, weighted=weighted)
 
 
 def did_aggregated_event_study_path(

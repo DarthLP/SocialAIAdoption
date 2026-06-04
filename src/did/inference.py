@@ -31,13 +31,26 @@ DEFAULT_WCB_DRAWS = 9999
 
 @dataclass(frozen=True)
 class PlaceboInSpaceResult:
-    """Function summary: placebo-in-space p-value and metadata."""
+    """Function summary: placebo-in-space p-values (coefficient and t-stat) and metadata."""
 
     p: float
+    p_t: float
     p_floor: float
     n_placebo_draws: int
     beta_italy: float
+    t_italy: float
     placebo_betas: Tuple[float, ...]
+    placebo_ts: Tuple[float, ...]
+
+    @property
+    def perm_p_beta(self) -> float:
+        """Function summary: alias for coefficient-based permutation p."""
+        return self.p
+
+    @property
+    def perm_p_t(self) -> float:
+        """Function summary: alias for t-statistic permutation p."""
+        return self.p_t
 
 
 def entity_country_id(row: pd.Series) -> str:
@@ -141,38 +154,47 @@ def placebo_in_space_p(
     Returns:
     - PlaceboInSpaceResult with p-value and metadata.
     """
-    if not is_cross_country_strategy(strategy.strategy_id):
+    def _empty_pis() -> PlaceboInSpaceResult:
         return PlaceboInSpaceResult(
-            float("nan"), float("nan"), 0, float("nan"), ()
+            float("nan"),
+            float("nan"),
+            float("nan"),
+            0,
+            float("nan"),
+            float("nan"),
+            (),
+            (),
         )
+
+    if not is_cross_country_strategy(strategy.strategy_id):
+        return _empty_pis()
 
     italy_sample = filter_strategy_sample(panel, strategy, window_days=window_days)
     if italy_sample.empty or italy_sample["treat"].nunique() < 2:
-        return PlaceboInSpaceResult(
-            float("nan"), float("nan"), 0, float("nan"), ()
-        )
+        return _empty_pis()
 
     base = estimate_twfe(italy_sample, y_col, entity_col, time_col)
     b_italy = base.get("beta", np.nan)
+    se_italy = base.get("se", np.nan)
+    t_italy = float(b_italy / se_italy) if se_italy and se_italy > 0 and np.isfinite(b_italy) else float("nan")
     if not np.isfinite(b_italy):
-        return PlaceboInSpaceResult(
-            float("nan"), float("nan"), 0, float("nan"), ()
-        )
+        return _empty_pis()
 
     ent_country = assign_entity_country_series(italy_sample, entity_col)
     controls = italy_sample[~ent_country.map(_is_italy_country)].copy()
     if controls.empty:
         return PlaceboInSpaceResult(
-            float("nan"), float("nan"), 0, b_italy, ()
+            float("nan"), float("nan"), float("nan"), 0, b_italy, t_italy, (), ()
         )
 
     control_countries = _control_countries_in_sample(controls, entity_col, strategy)
     if not control_countries:
         return PlaceboInSpaceResult(
-            float("nan"), float("nan"), 0, b_italy, ()
+            float("nan"), float("nan"), float("nan"), 0, b_italy, t_italy, (), ()
         )
 
     placebo_betas: List[float] = []
+    placebo_ts: List[float] = []
     baseline_treat = controls["treat"].astype(int).tolist()
     for fake_c in control_countries:
         try:
@@ -184,21 +206,38 @@ def placebo_in_space_p(
         )
         r = estimate_twfe(pl, y_col, entity_col, time_col)
         b = r.get("beta", np.nan)
+        se = r.get("se", np.nan)
         if np.isfinite(b):
             placebo_betas.append(float(b))
+            if se and se > 0:
+                placebo_ts.append(float(b / se))
 
     n_placebo = len(control_countries)
     p_floor = 1.0 / (n_placebo + 1)
     if not placebo_betas:
         return PlaceboInSpaceResult(
-            float("nan"), p_floor, n_placebo, b_italy, tuple()
+            float("nan"), float("nan"), p_floor, n_placebo, b_italy, t_italy, tuple(), tuple()
         )
 
-    n_ge = sum(1 for b in placebo_betas if abs(b) >= abs(b_italy))
-    p = float((n_ge + 1) / (n_placebo + 1))
-    p = min(1.0, max(p_floor, p))
+    n_ge_b = sum(1 for b in placebo_betas if abs(b) >= abs(b_italy))
+    p_beta = float((n_ge_b + 1) / (n_placebo + 1))
+    p_beta = min(1.0, max(p_floor, p_beta))
+
+    p_t = float("nan")
+    if np.isfinite(t_italy) and placebo_ts:
+        n_ge_t = sum(1 for t in placebo_ts if abs(t) >= abs(t_italy))
+        p_t = float((n_ge_t + 1) / (len(placebo_ts) + 1))
+        p_t = min(1.0, max(p_floor, p_t))
+
     return PlaceboInSpaceResult(
-        p, p_floor, n_placebo, float(b_italy), tuple(placebo_betas)
+        p_beta,
+        p_t,
+        p_floor,
+        n_placebo,
+        float(b_italy),
+        t_italy,
+        tuple(placebo_betas),
+        tuple(placebo_ts),
     )
 
 

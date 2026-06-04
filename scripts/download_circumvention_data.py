@@ -1,11 +1,11 @@
 """
 Script summary:
 Download circumvention / adaptation proxies (Tor Metrics daily users + Google Trends VPN
-topic interest) for Italy's 2023 ChatGPT ban window, mirroring Kreitmeir & Raschky (2023).
+and ChatGPT topic interest) for Italy's 2023 ChatGPT ban window, mirroring Kreitmeir & Raschky (2023).
 
 Functionality:
 - Tor Metrics: per-country relay and bridge user CSVs (verbatim HTTP bodies) for IT + controls.
-- Google Trends: daily interest for the topic "Virtual private network" (not bare keyword VPN).
+- Google Trends: daily interest for topics "Virtual private network" and "ChatGPT" (not bare keywords).
 - Combined tidy CSVs, provenance manifest, and data README under data/raw/circumvention/.
 - Idempotent, per-source failure isolation, summary table on exit.
 
@@ -13,7 +13,8 @@ How to apply/run:
   .venv/bin/python scripts/download_circumvention_data.py
 
 Manual Google Trends fallback (if rate-limited): export daily CSV from trends.google.com
-into data/raw/circumvention/google_trends/gtrends_vpn_{GEO}_{START}_{END}.csv and re-run.
+into data/raw/circumvention/google_trends/gtrends_vpn_{GEO}_{START}_{END}.csv (or gtrends_chatgpt_*)
+and re-run.
 """
 
 from __future__ import annotations
@@ -42,9 +43,13 @@ TREATED = "IT"
 CONTROLS = ["DE", "FR", "ES", "GB", "US"]
 COUNTRIES = [TREATED] + CONTROLS
 
-# --- Google Trends (paper: topic "Virtual Private Networks", not keyword VPN alone) ---
+# --- Google Trends VPN (paper: topic "Virtual Private Networks", not keyword VPN alone) ---
 GOOGLE_TRENDS_TOPIC_LABEL = "Virtual private network"
 GOOGLE_TRENDS_TOPIC_MID: str | None = None  # override e.g. "/m/0..." if suggestions fail
+
+# --- Google Trends ChatGPT (attention/salience proxy, not usage) ---
+GOOGLE_TRENDS_CHATGPT_TOPIC_LABEL = "ChatGPT"
+GOOGLE_TRENDS_CHATGPT_TOPIC_MID: str | None = None
 
 # Per-geo interest_over_time is rescaled 0-100 within that country and window only;
 # cross-country levels are NOT comparable — within-country over-time movement only.
@@ -325,11 +330,17 @@ def _combine_tor(kind: str, combined_name: str) -> pd.DataFrame | None:
     return combined
 
 
-def _resolve_topic_mid(pytrends: TrendReq) -> tuple[str, str, str]:
-    """Function summary: resolve Google Trends topic mid for VPN topic label.
+def _resolve_topic_mid(
+    pytrends: TrendReq,
+    topic_label: str,
+    topic_mid_override: str | None = None,
+) -> tuple[str, str, str]:
+    """Function summary: resolve Google Trends topic mid for a topic label.
 
     Parameters:
     - pytrends: initialized TrendReq client.
+    - topic_label: Trends topic title to resolve.
+    - topic_mid_override: optional fixed mid (skips suggestions).
 
     Returns:
     - Tuple (mid, title, query_type) with mid like '/m/...'.
@@ -337,17 +348,17 @@ def _resolve_topic_mid(pytrends: TrendReq) -> tuple[str, str, str]:
     Raises:
     - RuntimeError: if override unset and no unambiguous topic match.
     """
-    if GOOGLE_TRENDS_TOPIC_MID:
-        return GOOGLE_TRENDS_TOPIC_MID, GOOGLE_TRENDS_TOPIC_LABEL, "topic"
+    if topic_mid_override:
+        return topic_mid_override, topic_label, "topic"
 
-    suggestions = pytrends.suggestions(GOOGLE_TRENDS_TOPIC_LABEL)
+    suggestions = pytrends.suggestions(topic_label)
     if not suggestions:
         raise RuntimeError(
-            f"No Google Trends suggestions for {GOOGLE_TRENDS_TOPIC_LABEL!r}. "
-            f"Set GOOGLE_TRENDS_TOPIC_MID manually."
+            f"No Google Trends suggestions for {topic_label!r}. "
+            "Set topic_mid_override manually in the script."
         )
 
-    label_norm = GOOGLE_TRENDS_TOPIC_LABEL.strip().lower()
+    label_norm = topic_label.strip().lower()
     topic_entries = [
         s for s in suggestions if str(s.get("type", "")).lower() == "topic"
     ]
@@ -362,9 +373,9 @@ def _resolve_topic_mid(pytrends: TrendReq) -> tuple[str, str, str]:
     if len(candidates) != 1:
         titles = [(c.get("title"), c.get("mid"), c.get("type")) for c in suggestions[:8]]
         raise RuntimeError(
-            f"Ambiguous topic resolution for {GOOGLE_TRENDS_TOPIC_LABEL!r}: "
+            f"Ambiguous topic resolution for {topic_label!r}: "
             f"{len(candidates)} matches. Suggestions sample: {titles}. "
-            "Set GOOGLE_TRENDS_TOPIC_MID in the script."
+            "Set topic_mid_override in the script."
         )
 
     chosen = candidates[0]
@@ -373,7 +384,7 @@ def _resolve_topic_mid(pytrends: TrendReq) -> tuple[str, str, str]:
         mid = f"/m/{mid.lstrip('/')}" if mid else ""
     if not mid:
         raise RuntimeError(f"Topic candidate has no mid: {chosen}")
-    return mid, str(chosen.get("title", GOOGLE_TRENDS_TOPIC_LABEL)), "topic"
+    return mid, str(chosen.get("title", topic_label)), "topic"
 
 
 def download_google_trends(
@@ -382,15 +393,40 @@ def download_google_trends(
     topic_title: str,
     manifest_sources: list[dict[str, Any]],
     failures: list[str],
+    *,
+    series: str = "vpn",
 ) -> pd.DataFrame | None:
-    """Function summary: download daily Google Trends topic interest per country geo."""
+    """Function summary: download daily Google Trends topic interest per country geo.
+
+    Parameters:
+    - pytrends: TrendReq client.
+    - topic_mid: resolved topic mid.
+    - topic_title: resolved topic title.
+    - manifest_sources: provenance list to append.
+    - failures: failure id list to append.
+    - series: ``vpn`` or ``chatgpt`` (file prefix and interest column name).
+
+    Returns:
+    - Combined DataFrame or None if all geos failed.
+    """
+    if series == "chatgpt":
+        file_prefix = "gtrends_chatgpt"
+        out_col = "chatgpt_interest"
+        manifest_name = "google_trends_chatgpt_topic"
+        combined_name = "google_trends_chatgpt_by_country.csv"
+    else:
+        file_prefix = "gtrends_vpn"
+        out_col = "vpn_interest"
+        manifest_name = "google_trends_vpn_topic"
+        combined_name = "google_trends_vpn_by_country.csv"
+
     timeframe = f"{START} {END}"
     frames: list[pd.DataFrame] = []
 
     for geo in COUNTRIES:
-        dest = GT_DIR / f"gtrends_vpn_{geo}_{START}_{END}.csv"
+        dest = GT_DIR / f"{file_prefix}_{geo}_{START}_{END}.csv"
         record: dict[str, Any] = {
-            "name": "google_trends_vpn_topic",
+            "name": manifest_name,
             "country": geo,
             "url": "pytrends.interest_over_time",
             "params": {
@@ -411,79 +447,95 @@ def download_google_trends(
 
         success = False
         last_err: str | None = None
-        for attempt in range(1, TRENDS_MAX_RETRIES + 1):
-            try:
-                LOG.info(
-                    "Google Trends geo=%s topic=%s (attempt %d/%d)",
-                    geo,
-                    topic_mid,
-                    attempt,
-                    TRENDS_MAX_RETRIES,
-                )
-                pytrends.build_payload(
-                    kw_list=[topic_mid],
-                    timeframe=timeframe,
-                    geo=geo,
-                    gprop="",
-                )
-                df = pytrends.interest_over_time()
-                if df is None or df.empty:
-                    last_err = "empty interest_over_time"
-                    time.sleep(2**attempt + TRENDS_DELAY_S)
-                    continue
+        query_modes: list[tuple[str, list[str], str]] = [
+            ("topic", [topic_mid], topic_mid),
+        ]
+        if series == "chatgpt":
+            query_modes.append(("keyword", [GOOGLE_TRENDS_CHATGPT_TOPIC_LABEL], ""))
 
-                df = df.reset_index()
-                if "isPartial" in df.columns:
-                    df = df.drop(columns=["isPartial"])
-
-                interest_col = None
-                for col in df.columns:
-                    if col == "date":
-                        continue
-                    interest_col = col
-                    break
-                if interest_col is None:
-                    last_err = f"no interest column in {df.columns.tolist()}"
-                    time.sleep(2**attempt + TRENDS_DELAY_S)
-                    continue
-
-                tidy = df.rename(columns={"date": "date", interest_col: "vpn_interest"})
-                tidy = tidy[["date", "vpn_interest"]].copy()
-                tidy["geo"] = geo
-                tidy["trends_query_type"] = "topic"
-                tidy["trends_mid"] = topic_mid
-
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                tidy.to_csv(dest, index=False)
-
-                record["status_code"] = 200
-                record["row_count"] = len(tidy)
-                dates = pd.to_datetime(tidy["date"], errors="coerce")
-                record["date_min"] = str(dates.min().date())
-                record["date_max"] = str(dates.max().date())
-                manifest_sources.append(record)
-                frames.append(tidy)
-                success = True
-                LOG.info("  rows=%d range=%s–%s", len(tidy), record["date_min"], record["date_max"])
+        for qtype, kw_list, q_mid in query_modes:
+            if success:
                 break
-
-            except Exception as exc:  # noqa: BLE001
-                last_err = str(exc)
-                err_lower = last_err.lower()
-                if "429" in err_lower or "rate" in err_lower:
-                    LOG.warning(
-                        "WARNING Google Trends rate-limited for %s. "
-                        "Export manually from https://trends.google.com into %s and re-run.",
+            for attempt in range(1, TRENDS_MAX_RETRIES + 1):
+                try:
+                    LOG.info(
+                        "Google Trends geo=%s %s=%s (attempt %d/%d)",
                         geo,
-                        dest,
+                        qtype,
+                        kw_list[0],
+                        attempt,
+                        TRENDS_MAX_RETRIES,
                     )
-                LOG.warning("  trends error: %s", exc)
-                time.sleep(2**attempt + TRENDS_DELAY_S)
+                    pytrends.build_payload(
+                        kw_list=kw_list,
+                        timeframe=timeframe,
+                        geo=geo,
+                        gprop="",
+                    )
+                    df = pytrends.interest_over_time()
+                    if df is None or df.empty:
+                        last_err = "empty interest_over_time"
+                        time.sleep(2**attempt + TRENDS_DELAY_S)
+                        continue
+
+                    df = df.reset_index()
+                    if "isPartial" in df.columns:
+                        df = df.drop(columns=["isPartial"])
+
+                    api_col = None
+                    for col in df.columns:
+                        if col == "date":
+                            continue
+                        api_col = col
+                        break
+                    if api_col is None:
+                        last_err = f"no interest column in {df.columns.tolist()}"
+                        time.sleep(2**attempt + TRENDS_DELAY_S)
+                        continue
+
+                    tidy = df.rename(columns={"date": "date", api_col: out_col})
+                    tidy = tidy[["date", out_col]].copy()
+                    tidy["geo"] = geo
+                    tidy["trends_query_type"] = qtype
+                    tidy["trends_mid"] = q_mid
+
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    tidy.to_csv(dest, index=False)
+
+                    record["status_code"] = 200
+                    record["row_count"] = len(tidy)
+                    dates = pd.to_datetime(tidy["date"], errors="coerce")
+                    record["date_min"] = str(dates.min().date())
+                    record["date_max"] = str(dates.max().date())
+                    manifest_sources.append(record)
+                    frames.append(tidy)
+                    success = True
+                    LOG.info(
+                        "  rows=%d range=%s–%s (%s)",
+                        len(tidy),
+                        record["date_min"],
+                        record["date_max"],
+                        qtype,
+                    )
+                    break
+
+                except Exception as exc:  # noqa: BLE001
+                    last_err = str(exc)
+                    err_lower = last_err.lower()
+                    if "429" in err_lower or "rate" in err_lower:
+                        LOG.warning(
+                            "WARNING Google Trends rate-limited for %s. "
+                            "Export manually from https://trends.google.com into %s and re-run.",
+                            geo,
+                            dest,
+                        )
+                    LOG.warning("  trends error: %s", exc)
+                    time.sleep(2**attempt + TRENDS_DELAY_S)
 
         if not success:
             record["error"] = last_err
             manifest_sources.append(record)
-            failures.append(f"google_trends:{geo}")
+            failures.append(f"google_trends_{series}:{geo}")
             LOG.warning(
                 "WARNING google_trends %s failed after retries. Manual CSV path: %s",
                 geo,
@@ -496,13 +548,19 @@ def download_google_trends(
         return None
 
     combined = pd.concat(frames, ignore_index=True)
-    out_path = OUT_DIR / "google_trends_vpn_by_country.csv"
+    out_path = OUT_DIR / combined_name
     combined.to_csv(out_path, index=False)
     LOG.info("Wrote %s (%d rows)", out_path, len(combined))
     return combined
 
 
-def _write_data_readme(topic_mid: str, topic_title: str) -> None:
+def _write_data_readme(
+    topic_mid: str,
+    topic_title: str,
+    *,
+    chatgpt_mid: str = "",
+    chatgpt_title: str = GOOGLE_TRENDS_CHATGPT_TOPIC_LABEL,
+) -> None:
     """Function summary: write data/raw/circumvention/README.md describing outputs."""
     text = f"""# Circumvention / adaptation raw data
 
@@ -524,18 +582,29 @@ Downloaded by `scripts/download_circumvention_data.py` (Kreitmeir & Raschky 2023
 
 ## Google Trends (`google_trends/`)
 
+### VPN topic
+
 - **Query**: Google Trends **topic** "{topic_title}" (`mid={topic_mid}`), not the bare search term "VPN".
-- One topic entity per country geo (no related-query baskets).
+- Per-geo files: `gtrends_vpn_{{GEO}}_{START}_{END}.csv`; combined: `google_trends_vpn_by_country.csv`.
 - **Units**: `vpn_interest` is Google's 0–100 index for that geo and date window (max day in window = 100).
-- **Normalization caveat**: each single-geo query is rescaled **within that country and period**. Levels are **not comparable across countries**; use only **within-country over-time** movement (matches the paper's country-standardized series; paper reports 0–1 shares, API returns 0–100).
+
+### ChatGPT topic (attention/salience, not usage)
+
+- **Query**: Google Trends **topic** "{chatgpt_title}" (`mid={chatgpt_mid or '(unresolved)'}`).
+- Per-geo files: `gtrends_chatgpt_{{GEO}}_{START}_{END}.csv`; combined: `google_trends_chatgpt_by_country.csv`.
+- **Units**: `chatgpt_interest` uses the same 0–100 within-geo scaling.
+
+### Normalization caveat (both series)
+
+Each single-geo query is rescaled **within that country and period**. Levels are **not comparable across countries**; use only **within-country over-time** movement.
 
 ## Manual fallback
 
 If Google blocks automated requests (HTTP 429), export daily data from [Google Trends](https://trends.google.com) for the same topic and window, save as:
 
-`google_trends/gtrends_vpn_{{GEO}}_{START}_{END}.csv`
+`google_trends/gtrends_vpn_{{GEO}}_{START}_{END}.csv` or `gtrends_chatgpt_{{GEO}}_{START}_{END}.csv`
 
-with columns `date`, `vpn_interest`, then re-run the script.
+with columns `date`, `vpn_interest` or `chatgpt_interest`, then re-run the script.
 
 ## Provenance
 
@@ -549,6 +618,9 @@ def _write_manifest(
     failures: list[str],
     topic_mid: str,
     topic_title: str,
+    *,
+    chatgpt_mid: str = "",
+    chatgpt_title: str = GOOGLE_TRENDS_CHATGPT_TOPIC_LABEL,
 ) -> None:
     """Function summary: write JSON provenance manifest under OUT_DIR."""
     payload = {
@@ -562,9 +634,12 @@ def _write_manifest(
             "TREATED": TREATED,
             "CONTROLS": CONTROLS,
             "COUNTRIES": COUNTRIES,
-            "google_trends_topic_label": GOOGLE_TRENDS_TOPIC_LABEL,
-            "google_trends_topic_mid": topic_mid,
-            "google_trends_topic_title": topic_title,
+            "google_trends_vpn_topic_label": GOOGLE_TRENDS_TOPIC_LABEL,
+            "google_trends_vpn_topic_mid": topic_mid,
+            "google_trends_vpn_topic_title": topic_title,
+            "google_trends_chatgpt_topic_label": GOOGLE_TRENDS_CHATGPT_TOPIC_LABEL,
+            "google_trends_chatgpt_topic_mid": chatgpt_mid,
+            "google_trends_chatgpt_topic_title": chatgpt_title,
             "google_trends_query_type": "topic",
             "related_queries_expansion": False,
             "tor_user_agent": TOR_USER_AGENT,
@@ -632,29 +707,72 @@ def main() -> int:
 
     topic_mid = ""
     topic_title = GOOGLE_TRENDS_TOPIC_LABEL
+    chatgpt_mid = ""
+    chatgpt_title = GOOGLE_TRENDS_CHATGPT_TOPIC_LABEL
     trends_ok = False
+    chatgpt_ok = False
+    pytrends: TrendReq | None = None
 
-    LOG.info("=== Google Trends (topic) ===")
+    LOG.info("=== Google Trends VPN (topic) ===")
     try:
         # retries=0 avoids pytrends Retry (incompatible with urllib3 2.x); we retry in download_google_trends
         pytrends = TrendReq(hl=TRENDS_HL, tz=TRENDS_TZ, retries=0, backoff_factor=0)
-        topic_mid, topic_title, _ = _resolve_topic_mid(pytrends)
-        LOG.info("Resolved topic: %s (%s)", topic_title, topic_mid)
-        df_gt = download_google_trends(pytrends, topic_mid, topic_title, manifest_sources, failures)
+        topic_mid, topic_title, _ = _resolve_topic_mid(
+            pytrends, GOOGLE_TRENDS_TOPIC_LABEL, GOOGLE_TRENDS_TOPIC_MID
+        )
+        LOG.info("Resolved VPN topic: %s (%s)", topic_title, topic_mid)
+        df_gt = download_google_trends(
+            pytrends, topic_mid, topic_title, manifest_sources, failures, series="vpn"
+        )
         trends_ok = df_gt is not None and len(df_gt) > 0
     except Exception as exc:  # noqa: BLE001
-        LOG.exception("Google Trends block failed: %s", exc)
-        failures.append("google_trends:all")
+        LOG.exception("Google Trends VPN block failed: %s", exc)
+        failures.append("google_trends_vpn:all")
         manifest_sources.append(
             {
-                "name": "google_trends_resolve",
+                "name": "google_trends_vpn_resolve",
                 "error": str(exc),
                 "country": "all",
             }
         )
 
-    _write_manifest(manifest_sources, failures, topic_mid, topic_title)
-    _write_data_readme(topic_mid or "(unresolved)", topic_title)
+    LOG.info("=== Google Trends ChatGPT (topic) ===")
+    try:
+        if pytrends is None:
+            pytrends = TrendReq(hl=TRENDS_HL, tz=TRENDS_TZ, retries=0, backoff_factor=0)
+        chatgpt_mid, chatgpt_title, _ = _resolve_topic_mid(
+            pytrends, GOOGLE_TRENDS_CHATGPT_TOPIC_LABEL, GOOGLE_TRENDS_CHATGPT_TOPIC_MID
+        )
+        LOG.info("Resolved ChatGPT topic: %s (%s)", chatgpt_title, chatgpt_mid)
+        df_cg = download_google_trends(
+            pytrends, chatgpt_mid, chatgpt_title, manifest_sources, failures, series="chatgpt"
+        )
+        chatgpt_ok = df_cg is not None and len(df_cg) > 0
+    except Exception as exc:  # noqa: BLE001
+        LOG.exception("Google Trends ChatGPT block failed: %s", exc)
+        failures.append("google_trends_chatgpt:all")
+        manifest_sources.append(
+            {
+                "name": "google_trends_chatgpt_resolve",
+                "error": str(exc),
+                "country": "all",
+            }
+        )
+
+    _write_manifest(
+        manifest_sources,
+        failures,
+        topic_mid,
+        topic_title,
+        chatgpt_mid=chatgpt_mid,
+        chatgpt_title=chatgpt_title,
+    )
+    _write_data_readme(
+        topic_mid or "(unresolved)",
+        topic_title,
+        chatgpt_mid=chatgpt_mid or "(unresolved)",
+        chatgpt_title=chatgpt_title,
+    )
     _print_summary(manifest_sources, failures)
 
     tor_any = any(
@@ -663,7 +781,7 @@ def main() -> int:
         and s.get("status_code") == 200
         for s in manifest_sources
     )
-    if not tor_any and not trends_ok:
+    if not tor_any and not trends_ok and not chatgpt_ok:
         LOG.error("All sources failed.")
         return 1
     return 0

@@ -39,10 +39,17 @@ def test_assign_period_calendar_1d() -> None:
 
 def _default_sem_cfg() -> dict:
     """Minimal semantic_axis config for aggregation tests."""
+    en_thr = {
+        "ideology": 0.25,
+        "emotion": 0.25,
+        "aggression": 0.25,
+        "economic": 0.25,
+        "cultural": 0.25,
+        "nationalism": 0.25,
+        "anti_establishment": 0.25,
+    }
     return {
-        "pole_thresholds_by_lexicon": {
-            "en": {"ideology": 0.25, "emotion": 0.25, "aggression": 0.25},
-        },
+        "pole_thresholds_by_lexicon": {"en": en_thr},
         "pole_percentiles": [10, 90],
     }
 
@@ -181,6 +188,35 @@ def test_accumulator_matches_single_pass_agg() -> None:
     merged = mod._finalize_accumulator(acc, specs, bin_days=1)
     for key in ("n_comments", "sem_axis_ideology_n_comments_right_abs", "net_ideology_mean"):
         assert direct[key] == merged[key]
+
+
+def test_semantic_axis_agg_economic_pos_neg_counts() -> None:
+    """Extended economic axis uses pos/neg abs pole labels."""
+    mod = _load_prepare_mod()
+    from src.semantic_axis_stats import build_pole_bucket_specs
+
+    df = pd.DataFrame(
+        {
+            "primary_lexicon": ["en", "en", "en"],
+            "sem_axis_economic": [0.5, -0.4, 0.0],
+            "sem_axis_ideology": [0.0, 0.0, 0.0],
+            "sem_axis_emotion": [0.0, 0.0, 0.0],
+            "sem_axis_aggression": [0.0, 0.0, 0.0],
+            "sem_axis_cultural": [0.0, 0.0, 0.0],
+            "sem_axis_nationalism": [0.0, 0.0, 0.0],
+            "sem_axis_anti_establishment": [0.0, 0.0, 0.0],
+            "sem_axis_coverage": [1.0, 1.0, 1.0],
+            "has_sem_axis": [1.0, 1.0, 1.0],
+            "net_ideology": [0.0, 0.0, 0.0],
+            "n_words": [10, 10, 10],
+        }
+    )
+    sem_cfg = _default_sem_cfg()
+    specs = build_pole_bucket_specs(sem_cfg)
+    out = mod._semantic_axis_agg(df, specs, sem_cfg, {})
+    assert out["sem_axis_economic_n_comments_pos_abs"] == 1
+    assert out["sem_axis_economic_n_comments_neg_abs"] == 1
+    assert "sem_axis_economic_mean" in out
 
 
 def test_partial_7d_bin_flags() -> None:
