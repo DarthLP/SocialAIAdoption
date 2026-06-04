@@ -458,6 +458,8 @@ def estimate_event_study(
             continue
         b = float(res.params[pname])
         se = float(res.std_errors[pname])
+        if not np.isfinite(se):
+            continue
         row = {
             rel_col: k,
             "gamma": b,

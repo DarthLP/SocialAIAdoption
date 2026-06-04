@@ -276,7 +276,7 @@ def _legacy_panel_path(root: Path, filename: str) -> Path:
 
 
 def did_lean_buckets_dir(config: Dict[str, Any]) -> Path:
-    """Function summary: tables/.../did/lean_buckets/ for author ideology labels.
+    """Function summary: tables/.../did/lean_buckets/ for lexical author ideology labels.
 
     Parameters:
     - config: loaded YAML.
@@ -287,32 +287,70 @@ def did_lean_buckets_dir(config: Dict[str, Any]) -> Path:
     return did_root(config) / "lean_buckets"
 
 
-def did_bucket_event_study_dir(config: Dict[str, Any], bin_days: int = 3) -> Path:
+def did_lean_buckets_semantic_dir(config: Dict[str, Any]) -> Path:
+    """Function summary: tables/.../did/lean_buckets_semantic/ for user-week semantic buckets.
+
+    Parameters:
+    - config: loaded YAML.
+
+    Returns:
+    - Path to lean_buckets_semantic directory.
+    """
+    return did_root(config) / "lean_buckets_semantic"
+
+
+def did_bucket_event_study_dir(
+    config: Dict[str, Any],
+    bin_days: int = 3,
+    *,
+    stratification: str = "lexical",
+    outcome: str = "net_ideology",
+) -> Path:
     """Function summary: tables/.../did/bucket_event_study/{bin_days}d/ for coef exports.
 
     Parameters:
     - config: loaded YAML.
-    - bin_days: event calendar bin width (1 or 3); separates 1d vs 3d result trees.
+    - bin_days: event calendar bin width (1 or 3).
+    - stratification: lexical or semantic bucket stratification.
+    - outcome: estimation outcome column (legacy root when lexical + net_ideology).
 
     Returns:
-    - Path to bucket_event_study directory for this bin width.
+    - Path to bucket_event_study directory for this bin width / strat / outcome.
     """
-    return did_root(config) / "bucket_event_study" / f"{int(bin_days)}d"
+    base = did_root(config) / "bucket_event_study" / f"{int(bin_days)}d"
+    if stratification == "lexical" and outcome == "net_ideology":
+        return base
+    if stratification == "lexical":
+        return base / "strat_lexical" / outcome
+    return base / "strat_semantic" / outcome
 
 
-def bucket_event_study_figures_dir(config: Dict[str, Any], bin_days: int = 3) -> Path:
+def bucket_event_study_figures_dir(
+    config: Dict[str, Any],
+    bin_days: int = 3,
+    *,
+    stratification: str = "lexical",
+    outcome: str = "net_ideology",
+) -> Path:
     """Function summary: figures/.../did/bucket_event_study/{bin_days}d/ root.
 
     Parameters:
     - config: loaded study config with paths.figures_dir.
     - bin_days: event calendar bin width (1 or 3).
+    - stratification: lexical or semantic bucket stratification.
+    - outcome: estimation outcome column (legacy root when lexical + net_ideology).
 
     Returns:
     - Path under figures_dir for bucket event-study plots at this bin width.
     """
     from src.config_utils import figures_subdir
 
-    return figures_subdir(config, "did") / "bucket_event_study" / f"{int(bin_days)}d"
+    base = figures_subdir(config, "did") / "bucket_event_study" / f"{int(bin_days)}d"
+    if stratification == "lexical" and outcome == "net_ideology":
+        return base
+    if stratification == "lexical":
+        return base / "strat_lexical" / outcome
+    return base / "strat_semantic" / outcome
 
 
 def resolve_panel_path(config: Dict[str, Any], kind: PanelKind, filename: str) -> Path:

@@ -104,6 +104,7 @@ from src.did.specs import (  # noqa: E402
     inference_role_for_strategy,
     is_cross_country_strategy,
     is_entity_fe_only_strategy,
+    is_placebo_in_space_eligible_strategy,
     is_wcb_eligible_strategy,
     strategies_for_outcome,
     strategy_label,
@@ -511,6 +512,7 @@ def run_estimation(
             wild_p = float("nan")
             p_placebo_space = float("nan")
             placebo_p_floor = float("nan")
+            placebo_note = np.nan
             role = inference_role_for_strategy(strat.strategy_id)
             if do_bootstrap:
                 try:
@@ -526,7 +528,7 @@ def run_estimation(
                             entity_col=wcb_entity,
                             time_col="time_id",
                         )
-                    if is_cross_country_strategy(strat.strategy_id):
+                    if is_placebo_in_space_eligible_strategy(strat.strategy_id):
                         pis = placebo_in_space_p(
                             work_panel,
                             strat,
@@ -536,6 +538,8 @@ def run_estimation(
                         )
                         p_placebo_space = pis.p
                         placebo_p_floor = pis.p_floor
+                    elif is_cross_country_strategy(strat.strategy_id):
+                        placebo_note = "not_applicable_single_country_contrast"
                 except Exception:
                     pass
 
@@ -554,6 +558,7 @@ def run_estimation(
                 "perm_p": p_placebo_space,
                 "p_placebo_space": p_placebo_space,
                 "placebo_p_floor": placebo_p_floor,
+                "placebo_note": placebo_note,
             }
             strategy_rows.append(row)
 

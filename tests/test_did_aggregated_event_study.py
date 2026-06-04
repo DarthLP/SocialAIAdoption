@@ -19,6 +19,7 @@ from src.did.specs import (
 from scripts.analysis.did_aggregated_event_study import (
     AggregatedEsJob,
     _estimate_event_study_bundle,
+    _event_study_series_usable,
     _resolve_column,
 )
 
@@ -53,6 +54,16 @@ def test_aggregated_event_study_paths_include_bundle(config: dict, tmp_path: Pat
     )
     assert "language_universe/in_out_slice/3d/" in str(est)
     assert est.name == "ambivalence.csv"
+
+
+def test_event_study_series_usable_requires_finite_se() -> None:
+    """Function summary: degenerate ES tables with blank SE are rejected."""
+    assert not _event_study_series_usable(
+        pd.DataFrame({"gamma": [0.1], "se": [float("nan")]})
+    )
+    assert _event_study_series_usable(
+        pd.DataFrame({"gamma": [0.1, 0.2], "se": [0.01, 0.02]})
+    )
 
 
 def test_prepare_subreddit_3d_bins_outcomes(config: dict) -> None:

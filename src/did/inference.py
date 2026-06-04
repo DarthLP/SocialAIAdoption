@@ -4,6 +4,7 @@ Placebo-in-space, restricted wild cluster bootstrap, and inference routing for D
 
 from __future__ import annotations
 
+import gc
 import logging
 import warnings
 from dataclasses import dataclass
@@ -447,61 +448,75 @@ def wild_cluster_bootstrap_static_prepped(
     )
 
 
+def _comment_placebo_country_col(df: pd.DataFrame) -> Optional[str]:
+    """Function summary: column used to assign control countries on comment panels."""
+    if "topic_family" in df.columns:
+        return "topic_family"
+    if "language_hub" in df.columns:
+        return "language_hub"
+    return None
+
+
 def placebo_in_space_comment_p(
     df: pd.DataFrame,
     y_col: str = "y",
     cluster_col: str = "subreddit",
     author_col: str = "author",
     time_col: str = "time_id",
+    beta_italy: Optional[float] = None,
 ) -> float:
     """Function summary: placebo-in-space on comment panel for post:IT (Italy vs controls).
+
+    Matches headline static spec ``y ~ post + post_IT | author`` (pyfixest), not TWFE.
 
     Parameters:
     - df: comment panel with IT, post, topic_family or language_hub, outcome.
     - y_col: outcome column name in df.
     - cluster_col, author_col, time_col: design columns.
+    - beta_italy: optional Italy beta from estimate_static_paper_eq1 (skips refit).
 
     Returns:
     - Placebo-in-space p-value for Italy vs pooled controls.
     """
     from src.did.bucket_estimate import feols_static_paper_eq1_prepped, prep_static_design
 
-    if "topic_family" in df.columns or "language_hub" in df.columns:
-        panel = df.copy()
-        y_use = y_col
-        if y_col != "y":
-            panel["y"] = pd.to_numeric(panel[y_col], errors="coerce")
-            y_use = "y"
-        return placebo_in_space_p(
-            panel,
-            StrategySpec("cross_country_all"),
-            y_use,
-            entity_col=author_col,
-            time_col=time_col,
-        ).p
+    country_col = _comment_placebo_country_col(df)
+    if country_col is None:
+        return float("nan")
 
-    work_it = prep_static_design(df, y_col, cluster_col)
-    b_italy = feols_static_paper_eq1_prepped(work_it, cluster_col).get("beta", np.nan)
+    cluster_use = cluster_col if cluster_col in df.columns else author_col
+    b_italy = beta_italy
+    if b_italy is None or not np.isfinite(b_italy):
+        work_it = prep_static_design(df, y_col, cluster_use)
+        b_italy = feols_static_paper_eq1_prepped(work_it, cluster_use).get("beta", np.nan)
+        del work_it
     if not np.isfinite(b_italy):
         return float("nan")
-    controls = df[df["IT"].astype(int) == 0].copy()
+
+    y_name = y_col if y_col in df.columns else "y"
+    keep = [y_name, "post", "IT", author_col, time_col, country_col]
+    if cluster_use in df.columns:
+        keep.append(cluster_use)
+    controls = df.loc[df["IT"].astype(int) == 0, [c for c in keep if c in df.columns]]
     if controls.empty:
         return float("nan")
+
     countries = sorted(CONTROL_FAMILIES)
     placebo_betas: List[float] = []
-    baseline = controls["IT"].astype(int).tolist()
+    pl = controls[[c for c in controls.columns]].copy()
+    baseline_it = pl["IT"].astype(int).tolist()
+    country_vals = pl[country_col].astype(str)
     for fake_c in countries:
-        pl = controls.copy()
-        if "topic_family" in pl.columns:
-            pl["IT"] = (pl["topic_family"].astype(str) == fake_c).astype(float)
-        else:
-            return float("nan")
-        new_it = pl["IT"].astype(int).tolist()
-        if new_it == baseline:
+        it_fake = (country_vals == fake_c).astype(float)
+        new_it = it_fake.astype(int).tolist()
+        if new_it == baseline_it:
             continue
-        assert new_it != baseline, f"degenerate comment placebo for {fake_c}"
-        w = prep_static_design(pl, y_col, cluster_col)
-        r = feols_static_paper_eq1_prepped(w, cluster_col)
+        assert new_it != baseline_it, f"degenerate comment placebo for {fake_c}"
+        pl["IT"] = it_fake
+        w = prep_static_design(pl, y_name, cluster_use)
+        r = feols_static_paper_eq1_prepped(w, cluster_use)
+        del w
+        gc.collect()
         if np.isfinite(r.get("beta", np.nan)):
             placebo_betas.append(float(r["beta"]))
     n_placebo = len(countries)

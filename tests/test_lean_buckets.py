@@ -9,8 +9,11 @@ from src.did.lean_buckets import (
     assert_holdout_windows_disjoint,
     assign_lean_buckets,
     bucket_event_study_config,
+    build_lean_bucket_table,
+    build_all_semantic_buckets,
     estimation_window_mask,
     labeling_window_mask,
+    load_user_week_semantic_buckets,
     split_march_halves,
     BucketEventStudyConfig,
 )
@@ -71,6 +74,20 @@ def test_split_halves_disjoint() -> None:
     )
     half_a, half_b = split_march_halves(march, "odd_even", 42, 0)
     assert not set(half_a).intersection(set(half_b))
+
+
+def test_random_splits_vary_by_split_id() -> None:
+    """Function summary: random split_method rotates halves across split_id."""
+    march = pd.DataFrame(
+        {
+            "id": [str(i) for i in range(20)],
+            "author": [f"a{i // 2}" for i in range(20)],
+            "date_utc": ["2023-03-15"] * 20,
+        }
+    )
+    halves = [split_march_halves(march, "random", 42, sid) for sid in range(5)]
+    half_a_sets = [frozenset(ha) for ha, _ in halves]
+    assert len(set(half_a_sets)) > 1, "random splits should produce distinct label halves"
 
 
 def test_holdout_nonoverlap() -> None:
@@ -170,3 +187,84 @@ def test_labeling_vs_estimation_windows() -> None:
     est = estimation_window_mask(df, "holdout_2wk", bcfg, config)
     assert lab.iloc[0] and not lab.iloc[1]
     assert not est.iloc[0] and est.iloc[1]
+
+
+def test_label_outcome_decoupled_from_estimation_outcome() -> None:
+    """Function summary: lexical bucket labels use label_outcome, not estimation outcome."""
+    df = pd.DataFrame(
+        {
+            "id": [str(i) for i in range(6)],
+            "author": ["liberal"] * 3 + ["conservative"] * 3,
+            "date_utc": ["2023-03-10"] * 6,
+            "net_ideology": [0.5, 0.4, 0.6, -0.5, -0.4, -0.6],
+            "sem_axis_emotion": [10.0, 10.0, 10.0, -10.0, -10.0, -10.0],
+            "left_hits": [2, 1, 3, 0, 0, 0],
+            "right_hits": [0, 0, 0, 2, 1, 3],
+            "primary_lexicon": ["it"] * 6,
+        }
+    )
+    bcfg = bucket_event_study_config(
+        {
+            "did": {
+                "bucket_event_study": {
+                    "bucket_method": "asymmetric_lexical",
+                    "schemes": ["naive_full_march"],
+                    "outcome": "sem_axis_emotion",
+                    "label_outcome": "net_ideology",
+                    "min_selection_comments": 2,
+                }
+            },
+            "event_window": {
+                "start_utc": "2023-03-01T00:00:00Z",
+                "end_utc_exclusive": "2023-05-01T00:00:00Z",
+                "launch_day_utc": "2023-03-31T00:00:00Z",
+            },
+            "plot_reference_dates_utc": ["2023-03-31T00:00:00Z"],
+        }
+    )
+    config = {
+        "event_window": {
+            "start_utc": "2023-03-01T00:00:00Z",
+            "end_utc_exclusive": "2023-05-01T00:00:00Z",
+            "launch_day_utc": "2023-03-31T00:00:00Z",
+        },
+        "plot_reference_dates_utc": ["2023-03-31T00:00:00Z"],
+    }
+    table = build_lean_bucket_table(df, "naive_full_march", bcfg, config)
+    by_author = table.set_index("author")["bucket"].to_dict()
+    assert by_author["liberal"] == "liberal_leaning"
+    assert by_author["conservative"] == "conservative_leaning"
+
+
+def test_semantic_bucket_merge_excludes_unclassified(tmp_path) -> None:
+    """Function summary: semantic bucket loader drops unclassified and semantically_unscored."""
+    tables = tmp_path / "user_week"
+    tables.mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "author": ["a1", "a2", "a3"],
+            "semantic_bucket": ["liberal_leaning", "unclassified", "semantically_unscored"],
+        }
+    ).to_csv(tables / "author_ideology_buckets_strict.csv", index=False)
+    config = {"paths": {"tables_dir": str(tmp_path)}}
+    bcfg = bucket_event_study_config(
+        {
+            "did": {
+                "bucket_event_study": {
+                    "bucket_stratification_semantic_cohort": "strict",
+                    "schemes": ["naive_full_march"],
+                }
+            },
+            "event_window": {
+                "start_utc": "2023-03-01T00:00:00Z",
+                "end_utc_exclusive": "2023-05-01T00:00:00Z",
+                "launch_day_utc": "2023-03-31T00:00:00Z",
+            },
+            "plot_reference_dates_utc": ["2023-03-31T00:00:00Z"],
+        }
+    )
+    loaded = load_user_week_semantic_buckets(config, "strict")
+    assert len(loaded) == 1
+    assert loaded.iloc[0]["bucket"] == "liberal_leaning"
+    all_sem = build_all_semantic_buckets(bcfg, config)
+    assert set(all_sem["author"]) == {"a1"}

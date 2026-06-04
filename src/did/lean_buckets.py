@@ -18,7 +18,7 @@ import pandas as pd
 
 from scripts.diagnostics.descriptives_util import event_dates_from_config
 from src.did.specs import CONTROL_FAMILIES, ITALY_FAMILIES
-from src.user_week.ideology_buckets import UNCLASSIFIED, assign_lexical_buckets
+from src.user_week.ideology_buckets import SEMANTICALLY_UNSCORED, UNCLASSIFIED, assign_lexical_buckets
 
 MARCH_PREFIX = "2023-03"
 
@@ -29,6 +29,10 @@ class BucketEventStudyConfig:
 
     schemes: Tuple[str, ...]
     outcome: str
+    label_outcome: str
+    additional_outcomes: Tuple[str, ...]
+    bucket_stratifications: Tuple[str, ...]
+    bucket_stratification_semantic_cohort: str
     political_universe_only: bool
     treated_families: frozenset[str]
     bin_days: int
@@ -88,9 +92,19 @@ def bucket_event_study_config(config: Dict[str, Any]) -> BucketEventStudyConfig:
     else:
         ddd_buckets = (high, low)
     traj = tuple(raw.get("trajectory_series") or [])
+    add_out = tuple(str(o) for o in (raw.get("additional_outcomes") or []))
+    stratifications = tuple(
+        str(s) for s in (raw.get("bucket_stratifications") or ["lexical"])
+    )
     return BucketEventStudyConfig(
         schemes=schemes,
         outcome=str(raw.get("outcome", "net_ideology")),
+        label_outcome=str(raw.get("label_outcome", raw.get("outcome", "net_ideology"))),
+        additional_outcomes=add_out,
+        bucket_stratifications=stratifications,
+        bucket_stratification_semantic_cohort=str(
+            raw.get("bucket_stratification_semantic_cohort", "strict")
+        ),
         political_universe_only=bool(raw.get("political_universe_only", True)),
         treated_families=frozenset(str(x) for x in (raw.get("treated_families") or ["it_political", "it_others"])),
         bin_days=int(raw.get("bin_days", 3)),
@@ -400,11 +414,11 @@ def build_lean_bucket_table(
             nb = int(hb_n.loc[grp.index].sum())
             if na >= bcfg.min_half_comments and nb >= bcfg.min_half_comments:
                 eligible_authors.add(str(author))
-        feats = author_lean_features(df, label_mask, bcfg.outcome)
+        feats = author_lean_features(df, label_mask, bcfg.label_outcome)
         if not feats.empty:
             feats = feats[feats["author"].astype(str).isin(eligible_authors)]
     else:
-        feats = author_lean_features(df, label_mask, bcfg.outcome)
+        feats = author_lean_features(df, label_mask, bcfg.label_outcome)
     if feats.empty:
         return pd.DataFrame()
     buckets = assign_lean_buckets(feats, bcfg)
@@ -488,6 +502,18 @@ def apply_outcome_scale(
     sig = lex.map(sig_map).fillna(1.0).replace(0, 1.0)
     out[out_col] = ((raw - mu) / sig).astype("float32")
     return out
+
+
+def is_placebo_space_eligible_control_variant(variant_id: str) -> bool:
+    """Function summary: True when placebo-in-space applies (pooled multi-country controls).
+
+    Parameters:
+    - variant_id: control variant key from bucket_event_study config.
+
+    Returns:
+    - True only for all_controls_pooled.
+    """
+    return variant_id == "all_controls_pooled"
 
 
 def control_variant_mask(
@@ -592,7 +618,11 @@ def merge_buckets(
     if split_id is not None and "split_id" in b.columns:
         b = b[b["split_id"].astype(int) == int(split_id)]
     b = b.drop_duplicates(subset=["author"], keep="first")
-    out = df.merge(b[["author", "bucket", "lean_mean", "n_label_comments", "primary_lexicon"]], on="author", how="inner")
+    merge_cols = ["author", "bucket"]
+    for optional in ("lean_mean", "n_label_comments", "primary_lexicon"):
+        if optional in b.columns:
+            merge_cols.append(optional)
+    out = df.merge(b[merge_cols], on="author", how="inner")
     return out[out["bucket"].astype(str) != UNCLASSIFIED].copy()
 
 
@@ -658,4 +688,79 @@ def build_all_lean_buckets(
                 parts.append(t)
     if not parts:
         return pd.DataFrame()
+    return pd.concat(parts, ignore_index=True)
+
+
+def bucket_event_study_outcomes(bcfg: BucketEventStudyConfig) -> Tuple[str, ...]:
+    """Function summary: deduplicated estimation outcome list from config.
+
+    Parameters:
+    - bcfg: parsed bucket event-study config.
+
+    Returns:
+    - Tuple of outcome column names (primary outcome first).
+    """
+    seen: List[str] = []
+    for oc in (bcfg.outcome, *bcfg.additional_outcomes):
+        if oc not in seen:
+            seen.append(oc)
+    return tuple(seen)
+
+
+def load_user_week_semantic_buckets(config: Dict[str, Any], cohort: str) -> pd.DataFrame:
+    """Function summary: load author semantic_bucket labels from user_week exports.
+
+    Parameters:
+    - config: study YAML with paths.tables_dir.
+    - cohort: strict or loose cohort label.
+
+    Returns:
+    - DataFrame with author, bucket columns (excludes unclassified / semantically_unscored).
+    """
+    tables_dir = Path(config["paths"]["tables_dir"]) / "user_week"
+    path = tables_dir / f"author_ideology_buckets_{cohort}.csv"
+    if not path.is_file():
+        warnings.warn(
+            f"semantic bucket stratification: missing {path}; run assign_author_ideology_buckets.py",
+            stacklevel=2,
+        )
+        return pd.DataFrame(columns=["author", "bucket"])
+    raw = pd.read_csv(path, usecols=["author", "semantic_bucket"])
+    raw["author"] = raw["author"].astype(str)
+    raw = raw.rename(columns={"semantic_bucket": "bucket"})
+    raw["bucket"] = raw["bucket"].astype(str)
+    skip = {UNCLASSIFIED, SEMANTICALLY_UNSCORED}
+    return raw[~raw["bucket"].isin(skip)].drop_duplicates(subset=["author"], keep="first")
+
+
+def build_all_semantic_buckets(
+    bcfg: BucketEventStudyConfig,
+    config: Dict[str, Any],
+) -> pd.DataFrame:
+    """Function summary: replicate user-week semantic_bucket across schemes/splits.
+
+    Semantic labels are pre-ban user-week definitions (not re-cross-fitted per split).
+
+    Parameters:
+    - bcfg: bucket config (schemes, n_splits, semantic cohort).
+    - config: study YAML.
+
+    Returns:
+    - Combined bucket table with scheme, optional split_id, author, bucket.
+    """
+    base = load_user_week_semantic_buckets(config, bcfg.bucket_stratification_semantic_cohort)
+    if base.empty:
+        return pd.DataFrame()
+    parts: List[pd.DataFrame] = []
+    for scheme in bcfg.schemes:
+        if scheme == "split_sample":
+            for sid in range(bcfg.n_splits):
+                t = base.copy()
+                t["scheme"] = scheme
+                t["split_id"] = int(sid)
+                parts.append(t)
+        else:
+            t = base.copy()
+            t["scheme"] = scheme
+            parts.append(t)
     return pd.concat(parts, ignore_index=True)

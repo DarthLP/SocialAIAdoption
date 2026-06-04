@@ -50,6 +50,9 @@ COMMENT_COLUMNS: Tuple[str, ...] = (
     "ai_style_rate_100w",
     "em_dash_count",
     "sentence_count_comment",
+    "aggression_rate_100w",
+    "negative_rate_100w",
+    "extremity",
 )
 
 WEIGHTED_OUTCOME_COLS: Tuple[str, ...] = (
@@ -59,6 +62,9 @@ WEIGHTED_OUTCOME_COLS: Tuple[str, ...] = (
     "sem_axis_aggression",
     "sem_axis_coverage",
     "ai_style_rate_100w",
+    "aggression_rate_100w",
+    "negative_rate_100w",
+    "extremity",
 )
 
 

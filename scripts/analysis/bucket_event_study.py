@@ -4,9 +4,11 @@ Bucket-then-comment-level event study for the Italy ChatGPT ban (Mar–Apr 2023)
 
 Functionality:
 - Label authors into liberal/neutral/conservative buckets via asymmetric lexical rules on each scheme's
-  labeling-window comments (split_sample, holdout_2wk, naive_full_march).
-- Headline static DiD (Table 1): net_ideology ~ Post + Post:IT | AuthorFE (no bin FE).
-- Event study: net_ideology ~ sum_k (bin_k:IT) | AuthorFE + binFE (3-day bins, ref k=-1).
+  labeling-window comments (split_sample, holdout_2wk, naive_full_march), or via user-week semantic
+  tail-week buckets (sem_axis_ideology p25/p75).
+- Estimation outcomes: net_ideology (headline) plus additional semantic and lexical columns from config.
+- Headline static DiD (Table 1): y ~ Post + Post:IT | AuthorFE (no bin FE).
+- Event study: y ~ sum_k (bin_k:IT) | AuthorFE + binFE (3-day bins, ref k=-1).
 - Pooled + by-bucket runs, control variants, stacked DDD (liberal vs conservative gamma_k).
 - Descriptive trajectories (Italy vs controls) per bucket; subreddit wild-cluster bootstrap.
 
@@ -15,26 +17,49 @@ The ban REMOVES AI access. Under an "AI increases polarization" prior, expect CO
 treated Italy during the ban (liberals and conservatives drift toward center), rebounding after
 the 28-Apr lift — the mirror of an AI-access result. Scheme C (overlapping March labeling) can
 mimic mean reversion; compare to schemes A/B. Standardized outcomes assume parallel trends in
-z-space after within-language March normalization.
+z-space after within-language March normalization. Semantic-axis levels are within-language;
+semantic stratification uses pre-ban user-week tail-week labels (not re-cross-fitted per split).
 
 How to apply/run:
   .venv/bin/python scripts/diagnostics/prepare_did_comment_panel.py \\
     --config config/italy_polarization_setup.yaml --bin-days 3
+  .venv/bin/python scripts/user_week/assign_author_ideology_buckets.py \\
+    --config config/italy_polarization_setup.yaml --cohort strict
   .venv/bin/python scripts/analysis/bucket_event_study.py --config config/italy_polarization_setup.yaml
+  .venv/bin/python scripts/analysis/bucket_event_study.py --bin-days 3 \\
+    --stratification semantic --outcome sem_axis_emotion
   .venv/bin/python scripts/analysis/bucket_event_study.py --bin-days 1  # -> did/bucket_event_study/1d/
   .venv/bin/python scripts/analysis/bucket_event_study.py --max-shards 2 --no-bootstrap --no-figures
+
+On 8 GB RAM: prefer --no-figures and run one scheme/stratification/outcome at a time.
 """
 
 from __future__ import annotations
 
 import argparse
+import gc
 import importlib.util
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import pandas as pd
+
+_ESTIMATION_PANEL_COLS: Tuple[str, ...] = (
+    "author",
+    "subreddit",
+    "time_id",
+    "date_utc",
+    "id",
+    "post",
+    "IT",
+    "rel_day",
+    "rel_period",
+    "net_ideology",
+    "topic_family",
+    "primary_lexicon",
+)
 
 
 def _setup_project_root() -> Path:
@@ -71,9 +96,7 @@ from src.did.bucket_estimate import (  # noqa: E402
     estimate_comment_it_event_study,
     estimate_static_full_time_fe,
     estimate_static_paper_eq1,
-    feols_static_paper_eq1_prepped,
     filter_trajectory_series,
-    prep_static_design,
 )
 from src.did.inference import placebo_in_space_comment_p  # noqa: E402
 from src.did.lean_buckets import (  # noqa: E402
@@ -82,10 +105,13 @@ from src.did.lean_buckets import (  # noqa: E402
     assert_net_ideology_sign,
     balanced_author_set,
     bucket_event_study_config,
+    bucket_event_study_outcomes,
     build_all_lean_buckets,
+    build_all_semantic_buckets,
     control_variant_mask,
     estimation_sample_mask,
     filter_control_variant,
+    is_placebo_space_eligible_control_variant,
     march_standardization_moments,
     merge_buckets,
     write_lean_buckets_csv,
@@ -97,6 +123,7 @@ from src.did.paths import (  # noqa: E402
     bucket_event_study_figures_dir,
     did_bucket_event_study_dir,
     did_lean_buckets_dir,
+    did_lean_buckets_semantic_dir,
 )
 
 
@@ -117,7 +144,39 @@ def parse_args() -> argparse.Namespace:
         help="Event calendar bin width (1 or 3). Overrides did.bucket_event_study.bin_days; "
         "requires matching did_comment_panel_{1,3}d from prepare_did_comment_panel.py.",
     )
+    p.add_argument(
+        "--ddd-only",
+        action="store_true",
+        help="Re-estimate stacked DDD tables only (skip static, event-study, trajectories).",
+    )
+    p.add_argument(
+        "--outcome",
+        type=str,
+        default=None,
+        help="Estimate one outcome column only (overrides additional_outcomes list).",
+    )
+    p.add_argument(
+        "--stratification",
+        type=str,
+        choices=("lexical", "semantic"),
+        default=None,
+        help="Bucket stratification: lexical (March net_ideology) or semantic (user-week tail weeks).",
+    )
     return p.parse_args()
+
+
+def _resolve_stratifications(bcfg: Any, arg_strat: Optional[str]) -> Tuple[str, ...]:
+    """Function summary: CLI or config bucket stratification list."""
+    if arg_strat:
+        return (arg_strat,)
+    return tuple(bcfg.bucket_stratifications)
+
+
+def _resolve_outcomes(bcfg: Any, arg_outcome: Optional[str]) -> Tuple[str, ...]:
+    """Function summary: CLI or config estimation outcome list."""
+    if arg_outcome:
+        return (arg_outcome,)
+    return bucket_event_study_outcomes(bcfg)
 
 
 def _load_comment_panel_from_shards(
@@ -197,6 +256,98 @@ def _lift_rel_period(config: Dict[str, Any], bin_days: int) -> int:
     _, _, launch, lift = event_dates_from_config(config)
     rel_day = int((pd.Timestamp(lift) - pd.Timestamp(launch)).days)
     return rel_day // int(bin_days)
+
+
+def _trim_panel_for_estimation(df: pd.DataFrame, outcome_col: str) -> pd.DataFrame:
+    """Function summary: drop columns not needed after lean-bucket labeling to save RAM."""
+    keep = [c for c in _ESTIMATION_PANEL_COLS if c in df.columns]
+    if outcome_col not in keep and outcome_col in df.columns:
+        keep.append(outcome_col)
+    if not keep:
+        return df
+    return df[keep]
+
+
+def _append_event_study_csv(
+    es_df: pd.DataFrame,
+    meta: Dict[str, Any],
+    out_path: Path,
+    header_state: Dict[str, bool],
+) -> None:
+    """Function summary: append one event-study block to CSV without holding all frames in memory."""
+    if es_df.empty:
+        return
+    chunk = es_df.assign(**meta)
+    chunk.to_csv(
+        out_path,
+        mode="a" if header_state.get("written") else "w",
+        header=not header_state.get("written"),
+        index=False,
+    )
+    header_state["written"] = True
+
+
+def _resolve_static_sample(
+    split_ctx: Dict[Optional[int], Dict[str, Any]],
+    buckets: pd.DataFrame,
+    scheme: str,
+    split_id: Optional[int],
+    cv: str,
+    bucket: str,
+    pooled: bool,
+    bcfg: Any,
+) -> pd.DataFrame:
+    """Function summary: rebuild estimation sample for deferred placebo (same logic as main loop)."""
+    ctx = split_ctx[split_id]
+    base = ctx["base"]
+    base_merged = ctx["base_merged"]
+    cv_masks = ctx["cv_masks"]
+    if cv == "it_political_vs_it_others":
+        pool = filter_control_variant(base, cv, bcfg)
+        merged = merge_buckets(pool, buckets, scheme, split_id)
+    else:
+        pool = base.loc[cv_masks[cv]]
+        merged = base_merged.loc[control_variant_mask(base_merged, cv, bcfg)]
+    if pooled:
+        return pool
+    return merged[merged["bucket"].astype(str) == bucket]
+
+
+def _apply_placebo_queue(
+    static_rows: List[Dict[str, Any]],
+    placebo_queue: List[Dict[str, Any]],
+    split_ctx: Dict[Optional[int], Dict[str, Any]],
+    buckets: pd.DataFrame,
+    scheme: str,
+    bcfg: Any,
+) -> None:
+    """Function summary: run deferred placebo-in-space and fill static row inference columns."""
+    for job in placebo_queue:
+        sample = _resolve_static_sample(
+            split_ctx,
+            buckets,
+            scheme,
+            job["split_id"],
+            job["control_variant"],
+            job["bucket"],
+            job["pooled"],
+            bcfg,
+        )
+        if sample.empty:
+            continue
+        y_col = "y" if "y" in sample.columns else "net_ideology"
+        cluster_col = "subreddit" if "subreddit" in sample.columns else "author"
+        p = placebo_in_space_comment_p(
+            sample,
+            y_col=y_col,
+            cluster_col=cluster_col,
+            beta_italy=job["beta"],
+        )
+        row = static_rows[job["row_idx"]]
+        row["p_placebo_space"] = p
+        row["perm_p"] = p
+        del sample
+        gc.collect()
 
 
 def _plot_trajectories(
@@ -287,19 +438,44 @@ def _run_static_block(
     sample: pd.DataFrame,
     bcfg: Any,
     run_bootstrap: bool,
+    placebo_queue: Optional[List[Dict[str, Any]]] = None,
+    placebo_meta: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Function summary: headline + optional robustness static DiD rows."""
     rows: List[Dict[str, Any]] = []
     res = estimate_static_paper_eq1(sample)
     res["inference_role"] = "descriptive"
     res["pvalue_cluster"] = res.get("pvalue", float("nan"))
+    cv = (placebo_meta or {}).get("control_variant", "all_controls_pooled")
+    placebo_eligible = is_placebo_space_eligible_control_variant(cv)
     if run_bootstrap:
-        res["p_placebo_space"] = placebo_in_space_comment_p(
-            sample,
-            y_col="y" if "y" in sample.columns else "net_ideology",
-            cluster_col="subreddit" if "subreddit" in sample.columns else "author",
-        )
-        res["perm_p"] = res["p_placebo_space"]
+        if not placebo_eligible:
+            res["p_placebo_space"] = float("nan")
+            res["perm_p"] = float("nan")
+            res["placebo_note"] = "not_applicable_single_country_contrast"
+        elif placebo_queue is not None and placebo_meta is not None:
+            res["p_placebo_space"] = float("nan")
+            res["perm_p"] = float("nan")
+            placebo_queue.append(
+                {
+                    "row_idx": placebo_meta["row_idx"],
+                    "split_id": placebo_meta["split_id"],
+                    "control_variant": placebo_meta["control_variant"],
+                    "bucket": placebo_meta["bucket"],
+                    "pooled": placebo_meta["pooled"],
+                    "beta": res.get("beta", float("nan")),
+                }
+            )
+        else:
+            y_col = "y" if "y" in sample.columns else "net_ideology"
+            cluster_col = "subreddit" if "subreddit" in sample.columns else "author"
+            res["p_placebo_space"] = placebo_in_space_comment_p(
+                sample,
+                y_col=y_col,
+                cluster_col=cluster_col,
+                beta_italy=res.get("beta", float("nan")),
+            )
+            res["perm_p"] = res["p_placebo_space"]
         res["p_wild"] = float("nan")
     else:
         res["p_placebo_space"] = float("nan")
@@ -364,35 +540,67 @@ def run_scheme(
     run_bootstrap: bool,
     write_figures: bool,
     balanced_only: bool,
+    ddd_only: bool = False,
 ) -> None:
     """Function summary: full estimation stack for one labeling scheme."""
     moments = march_standardization_moments(df, config, bcfg)
-    moments_path = did_lean_buckets_dir(config) / "standardization_moments.csv"
+    moments_path = tables_dir / "standardization_moments.csv"
     if not moments.empty:
         moments.to_csv(moments_path, index=False)
 
     split_ids: List[Optional[int]] = (
         list(range(bcfg.n_splits)) if scheme == "split_sample" else [None]
     )
-    static_rows: List[Dict[str, Any]] = []
-    es_frames: List[pd.DataFrame] = []
-    bucket_names = sorted(
-        b for b in buckets.loc[buckets["scheme"] == scheme, "bucket"].astype(str).unique() if b != UNCLASSIFIED
-    )
     need_balance = balanced_only or bcfg.balanced_panel
     balanced_authors: Optional[frozenset[str]] = balanced_author_set(df) if need_balance else None
     bases_by_split: Dict[Optional[int], pd.DataFrame] = {}
-
     for split_id in split_ids:
         base = _estimation_frame(
             df, scheme, bcfg, config, moments, split_id, balanced_only, balanced_authors
         )
-        if base.empty:
+        if not base.empty:
+            bases_by_split[split_id] = base
+
+    if ddd_only:
+        _run_ddd_block(
+            df,
+            buckets,
+            scheme,
+            bcfg,
+            config,
+            tables_dir,
+            fig_dir,
+            moments,
+            balanced_only,
+            balanced_authors,
+            bases_by_split,
+            write_figures,
+        )
+        return
+
+    static_rows: List[Dict[str, Any]] = []
+    placebo_queue: List[Dict[str, Any]] = []
+    es_path = tables_dir / f"event_study_{scheme}.csv"
+    if es_path.is_file():
+        es_path.unlink()
+    es_header_state: Dict[str, bool] = {"written": False}
+    bucket_names = sorted(
+        b for b in buckets.loc[buckets["scheme"] == scheme, "bucket"].astype(str).unique() if b != UNCLASSIFIED
+    )
+    split_ctx: Dict[Optional[int], Dict[str, Any]] = {}
+
+    for split_id in split_ids:
+        base = bases_by_split.get(split_id)
+        if base is None or base.empty:
             continue
-        bases_by_split[split_id] = base
         sid_val = -1 if split_id is None else int(split_id)
         cv_masks = {cv: control_variant_mask(base, cv, bcfg) for cv in bcfg.control_variants}
         base_merged = merge_buckets(base, buckets, scheme, split_id)
+        split_ctx[split_id] = {
+            "base": base,
+            "base_merged": base_merged,
+            "cv_masks": cv_masks,
+        }
 
         for cv in bcfg.control_variants:
             if cv == "it_political_vs_it_others":
@@ -412,8 +620,22 @@ def run_scheme(
                     "control_variant": cv,
                     "bucket": "all",
                     "sample": "balanced" if balanced_only else "full",
+                    "outcome": bcfg.outcome,
                 }
-                for sres in _run_static_block(pool, bcfg, run_bootstrap):
+                pmeta = {
+                    "row_idx": len(static_rows),
+                    "split_id": split_id,
+                    "control_variant": cv,
+                    "bucket": "all",
+                    "pooled": True,
+                }
+                for sres in _run_static_block(
+                    pool,
+                    bcfg,
+                    run_bootstrap,
+                    placebo_queue if run_bootstrap else None,
+                    pmeta if run_bootstrap else None,
+                ):
                     static_rows.append({**meta, **sres})
                 _, es_df = estimate_comment_it_event_study(
                     pool,
@@ -421,14 +643,17 @@ def run_scheme(
                     window=bcfg.event_window_days,
                     bin_days=bcfg.bin_days,
                 )
-                if not es_df.empty:
-                    es_frames.append(es_df.assign(**meta))
+                _append_event_study_csv(es_df, meta, es_path, es_header_state)
                 if write_figures and not es_df.empty:
                     plot_event_study(
                         es_df,
                         bcfg.outcome,
                         fig_dir / scheme / "all" / f"es_{cv}_split{sid_val}.png",
                         rel_col="rel_period",
+                    )
+                if bcfg.run_descriptive_trajectories:
+                    _write_trajectories(
+                        pool, bcfg, tables_dir, fig_dir, scheme, "all", write_figures, config
                     )
 
             for bucket in bucket_names:
@@ -441,8 +666,22 @@ def run_scheme(
                     "control_variant": cv,
                     "bucket": bucket,
                     "sample": "balanced" if balanced_only else "full",
+                    "outcome": bcfg.outcome,
                 }
-                for sres in _run_static_block(sub, bcfg, run_bootstrap):
+                pmeta_b = {
+                    "row_idx": len(static_rows),
+                    "split_id": split_id,
+                    "control_variant": cv,
+                    "bucket": bucket,
+                    "pooled": False,
+                }
+                for sres in _run_static_block(
+                    sub,
+                    bcfg,
+                    run_bootstrap,
+                    placebo_queue if run_bootstrap else None,
+                    pmeta_b if run_bootstrap else None,
+                ):
                     static_rows.append({**bmeta, **sres})
                 _, es_b = estimate_comment_it_event_study(
                     sub,
@@ -450,8 +689,7 @@ def run_scheme(
                     window=bcfg.event_window_days,
                     bin_days=bcfg.bin_days,
                 )
-                if not es_b.empty:
-                    es_frames.append(es_b.assign(**bmeta))
+                _append_event_study_csv(es_b, bmeta, es_path, es_header_state)
                 if write_figures and not es_b.empty:
                     plot_event_study(
                         es_b,
@@ -460,6 +698,11 @@ def run_scheme(
                         rel_col="rel_period",
                     )
                 _write_trajectories(sub, bcfg, tables_dir, fig_dir, scheme, bucket, write_figures, config)
+
+        gc.collect()
+
+    if run_bootstrap and placebo_queue:
+        _apply_placebo_queue(static_rows, placebo_queue, split_ctx, buckets, scheme, bcfg)
 
     if scheme == "split_sample" and static_rows:
         grouped: Dict[str, List[Dict[str, Any]]] = {}
@@ -476,15 +719,45 @@ def run_scheme(
                 cv, bucket = key.split("|", 1)
                 c.update({"scheme": scheme, "control_variant": cv, "bucket": bucket, "split_id": -1})
                 extra.append(c)
+                keep.extend(grp)
             else:
                 keep.extend(grp)
         static_rows = keep + extra
 
     if static_rows:
         pd.DataFrame(static_rows).to_csv(tables_dir / f"static_{scheme}.csv", index=False)
-    if es_frames:
-        pd.concat(es_frames, ignore_index=True).to_csv(tables_dir / f"event_study_{scheme}.csv", index=False)
 
+    _run_ddd_block(
+        df,
+        buckets,
+        scheme,
+        bcfg,
+        config,
+        tables_dir,
+        fig_dir,
+        moments,
+        balanced_only,
+        balanced_authors,
+        bases_by_split,
+        write_figures,
+    )
+
+
+def _run_ddd_block(
+    df: pd.DataFrame,
+    buckets: pd.DataFrame,
+    scheme: str,
+    bcfg: Any,
+    config: Dict[str, Any],
+    tables_dir: Path,
+    fig_dir: Path,
+    moments: pd.DataFrame,
+    balanced_only: bool,
+    balanced_authors: Optional[frozenset[str]],
+    bases_by_split: Dict[Optional[int], pd.DataFrame],
+    write_figures: bool,
+) -> None:
+    """Function summary: stacked liberal−conservative DDD event-study tables for one scheme."""
     lib, con = bcfg.ddd_buckets
     sid_ddd: Optional[int] = 0 if scheme == "split_sample" else None
     base_ddd = bases_by_split.get(sid_ddd)
@@ -496,9 +769,17 @@ def run_scheme(
         pool = filter_control_variant(base_ddd, cv, bcfg)
         pool = merge_buckets(pool, buckets, scheme, split_id=sid_ddd)
         pool = pool[pool["bucket"].astype(str).isin([lib, con])]
+        ddd_path = tables_dir / f"ddd_{scheme}_{cv}.csv"
         if pool.empty:
+            print(
+                f"[bucket_event_study] ddd skipped scheme={scheme} cv={cv}: empty pool",
+                flush=True,
+            )
+            pd.DataFrame(
+                [{"estimation_note": "ddd_empty_pool", "scheme": scheme, "control_variant": cv, "n_obs": 0}]
+            ).to_csv(ddd_path, index=False)
             continue
-        _, ddd_df = estimate_comment_it_ddd_event_study(
+        summary, ddd_df = estimate_comment_it_ddd_event_study(
             pool,
             lib,
             con,
@@ -507,10 +788,23 @@ def run_scheme(
             bin_days=bcfg.bin_days,
         )
         if ddd_df.empty:
+            note = summary.get("estimation_note", "ddd_empty")
+            print(
+                f"[bucket_event_study] ddd empty scheme={scheme} cv={cv} n={len(pool)} note={note}",
+                flush=True,
+            )
+            pd.DataFrame(
+                [
+                    {
+                        "estimation_note": note,
+                        "scheme": scheme,
+                        "control_variant": cv,
+                        "n_obs": int(summary.get("n_obs", len(pool))),
+                    }
+                ]
+            ).to_csv(ddd_path, index=False)
             continue
-        ddd_df.assign(scheme=scheme, control_variant=cv).to_csv(
-            tables_dir / f"ddd_{scheme}_{cv}.csv", index=False
-        )
+        ddd_df.assign(scheme=scheme, control_variant=cv).to_csv(ddd_path, index=False)
         if write_figures:
             _plot_ddd_es(
                 ddd_df,
@@ -542,41 +836,85 @@ def main() -> None:
         print("[bucket_event_study] no comments loaded", flush=True)
         return
     compact_comment_panel_dtypes(df)
-    assert_net_ideology_sign(df, bcfg.outcome)
+    if "net_ideology" in df.columns:
+        assert_net_ideology_sign(df, "net_ideology")
 
-    lean_dir = did_lean_buckets_dir(config)
-    tables_dir = did_bucket_event_study_dir(config, bin_days=bcfg.bin_days)
-    fig_dir = bucket_event_study_figures_dir(config, bin_days=bcfg.bin_days)
-    lean_dir.mkdir(parents=True, exist_ok=True)
-    tables_dir.mkdir(parents=True, exist_ok=True)
-
-    buckets = build_all_lean_buckets(df, bcfg, config)
-    if buckets.empty:
-        print("[bucket_event_study] no bucket assignments", flush=True)
-        return
-    write_lean_buckets_csv(lean_dir / "all_schemes.csv", buckets)
-    for scheme in bcfg.schemes:
-        sub = buckets[buckets["scheme"] == scheme]
-        if not sub.empty:
-            write_lean_buckets_csv(lean_dir / f"{scheme}.csv", sub)
-
+    stratifications = _resolve_stratifications(bcfg, args.stratification)
+    outcomes = _resolve_outcomes(bcfg, args.outcome)
     schemes = [args.scheme] if args.scheme else list(bcfg.schemes)
     run_bootstrap = not args.no_bootstrap
-    for scheme in schemes:
-        print(f"[bucket_event_study] scheme={scheme}", flush=True)
-        run_scheme(
-            df,
-            buckets,
-            scheme,
-            bcfg,
-            config,
-            tables_dir,
-            fig_dir,
-            run_bootstrap=run_bootstrap,
-            write_figures=not args.no_figures,
-            balanced_only=args.balanced_only,
-        )
-    print(f"[bucket_event_study] done -> {tables_dir}", flush=True)
+
+    for stratification in stratifications:
+        if stratification == "lexical":
+            buckets = build_all_lean_buckets(df, bcfg, config)
+            lean_dir = did_lean_buckets_dir(config)
+        elif stratification == "semantic":
+            buckets = build_all_semantic_buckets(bcfg, config)
+            lean_dir = did_lean_buckets_semantic_dir(config)
+        else:
+            raise ValueError(f"Unknown stratification: {stratification}")
+
+        if buckets.empty:
+            print(
+                f"[bucket_event_study] no bucket assignments stratification={stratification}",
+                flush=True,
+            )
+            continue
+
+        lean_dir.mkdir(parents=True, exist_ok=True)
+        write_lean_buckets_csv(lean_dir / "all_schemes.csv", buckets)
+        for scheme in bcfg.schemes:
+            sub = buckets[buckets["scheme"] == scheme]
+            if not sub.empty:
+                write_lean_buckets_csv(lean_dir / f"{scheme}.csv", sub)
+
+        for outcome in outcomes:
+            if outcome not in df.columns:
+                print(
+                    f"[bucket_event_study] skip outcome={outcome} strat={stratification}: "
+                    f"column missing (re-run prepare_did_comment_panel.py?)",
+                    flush=True,
+                )
+                continue
+
+            bcfg_oc = replace(bcfg, outcome=outcome)
+            tables_dir = did_bucket_event_study_dir(
+                config,
+                bin_days=bcfg.bin_days,
+                stratification=stratification,
+                outcome=outcome,
+            )
+            fig_dir = bucket_event_study_figures_dir(
+                config,
+                bin_days=bcfg.bin_days,
+                stratification=stratification,
+                outcome=outcome,
+            )
+            tables_dir.mkdir(parents=True, exist_ok=True)
+
+            df_oc = _trim_panel_for_estimation(df, outcome)
+            compact_comment_panel_dtypes(df_oc)
+
+            print(
+                f"[bucket_event_study] stratification={stratification} outcome={outcome}",
+                flush=True,
+            )
+            for scheme in schemes:
+                print(f"[bucket_event_study] scheme={scheme}", flush=True)
+                run_scheme(
+                    df_oc,
+                    buckets,
+                    scheme,
+                    bcfg_oc,
+                    config,
+                    tables_dir,
+                    fig_dir,
+                    run_bootstrap=run_bootstrap,
+                    write_figures=not args.no_figures,
+                    balanced_only=args.balanced_only,
+                    ddd_only=args.ddd_only,
+                )
+            print(f"[bucket_event_study] done strat={stratification} outcome={outcome} -> {tables_dir}", flush=True)
 
 
 if __name__ == "__main__":

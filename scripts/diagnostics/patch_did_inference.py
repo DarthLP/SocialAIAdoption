@@ -47,6 +47,7 @@ from src.did.paths import did_summary_paths  # noqa: E402
 from src.did.specs import (  # noqa: E402
     StrategySpec,
     is_cross_country_strategy,
+    is_placebo_in_space_eligible_strategy,
     is_wcb_eligible_strategy,
 )
 
@@ -100,6 +101,10 @@ def main() -> None:
     config = load_config(PROJECT_ROOT / args.config)
     summary_path, _ = did_summary_paths(config)
     df = pd.read_csv(summary_path)
+    if "placebo_note" not in df.columns:
+        df["placebo_note"] = pd.Series([np.nan] * len(df), dtype=object)
+    else:
+        df["placebo_note"] = df["placebo_note"].astype(object)
     panels = build_analysis_panels(config)
     oc_map = {o.outcome_id: o for o in OUTCOME_REGISTRY}
     outcome_filter = set(args.outcomes.split(",")) if args.outcomes else None
@@ -113,6 +118,12 @@ def main() -> None:
         oid = str(row["outcome_id"])
         oc = oc_map.get(oid)
         if oc is None:
+            continue
+        if is_cross_country_strategy(sid) and not is_placebo_in_space_eligible_strategy(sid):
+            df.at[idx, "p_placebo_space"] = np.nan
+            df.at[idx, "perm_p"] = np.nan
+            df.at[idx, "placebo_p_floor"] = np.nan
+            df.at[idx, "placebo_note"] = "not_applicable_single_country_contrast"
             continue
         if sid == "within_italy_ddd":
             panel = slice_panel_for_ddd(panels.slice_panel)
@@ -129,11 +140,12 @@ def main() -> None:
             continue
         strat = StrategySpec(sid)
         try:
-            if is_cross_country_strategy(sid) and not args.wcb_only:
+            if is_placebo_in_space_eligible_strategy(sid) and not args.wcb_only:
                 pis = placebo_in_space_p(panel, strat, y_col, entity_col=entity_col)
                 df.at[idx, "p_placebo_space"] = pis.p
                 df.at[idx, "perm_p"] = pis.p
                 df.at[idx, "placebo_p_floor"] = pis.p_floor
+                df.at[idx, "placebo_note"] = np.nan
             if is_wcb_eligible_strategy(sid) and not args.placebo_only:
                 wp = wild_cluster_bootstrap_p(
                     panel,

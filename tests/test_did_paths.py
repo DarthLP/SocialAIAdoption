@@ -76,6 +76,14 @@ def test_bucket_event_study_paths_by_bin_days(config: dict) -> None:
     assert did_bucket_event_study_dir(config, 3) == did_root(config) / "bucket_event_study" / "3d"
     assert did_bucket_event_study_dir(config, 1) == did_root(config) / "bucket_event_study" / "1d"
     assert (
+        did_bucket_event_study_dir(config, 3, stratification="lexical", outcome="sem_axis_emotion")
+        == did_root(config) / "bucket_event_study" / "3d" / "strat_lexical" / "sem_axis_emotion"
+    )
+    assert (
+        did_bucket_event_study_dir(config, 3, stratification="semantic", outcome="sem_axis_emotion")
+        == did_root(config) / "bucket_event_study" / "3d" / "strat_semantic" / "sem_axis_emotion"
+    )
+    assert (
         bucket_event_study_figures_dir(config, 3).name == "3d"
         and bucket_event_study_figures_dir(config, 3).parent.name == "bucket_event_study"
     )

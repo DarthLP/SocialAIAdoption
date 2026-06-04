@@ -435,7 +435,14 @@ def plot_event_study_overlay(
     max_series: int = 5,
 ) -> None:
     """Function summary: overlay up to max_series event studies with horizontal dodge."""
-    usable = [s for s in series_list if s.es_df is not None and not s.es_df.empty]
+    usable = []
+    for s in series_list:
+        if s.es_df is None or s.es_df.empty:
+            continue
+        se = pd.to_numeric(s.es_df.get("se"), errors="coerce")
+        if int((se.notna() & (se > 1e-12)).sum()) < 2:
+            continue
+        usable.append(s)
     if not usable:
         return
     usable = usable[:max_series]

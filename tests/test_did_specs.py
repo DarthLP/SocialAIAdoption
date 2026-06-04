@@ -204,6 +204,17 @@ def test_event_study_overlay_strategies_have_control_family() -> None:
     assert pooled.control_family is None
 
 
+def test_placebo_in_space_eligible_strategy() -> None:
+    """Function summary: placebo-in-space only for pooled multi-control contrasts."""
+    from src.did.specs import is_placebo_in_space_eligible_strategy
+
+    assert is_placebo_in_space_eligible_strategy("cross_country_all")
+    assert is_placebo_in_space_eligible_strategy("cross_country_it_political")
+    assert not is_placebo_in_space_eligible_strategy("cross_country_vs_de")
+    assert not is_placebo_in_space_eligible_strategy("cross_country_vs_us")
+    assert not is_placebo_in_space_eligible_strategy("within_italy_ddd")
+
+
 def test_event_study_language_universe_slice_strategies() -> None:
     """Function summary: in/out slice overlay exposes two political-universe strategies."""
     from src.did.specs import (

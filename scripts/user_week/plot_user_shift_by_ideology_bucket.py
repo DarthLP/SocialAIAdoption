@@ -4,7 +4,8 @@ Plot ban-window within-person shifts by pre-ban ideology bucket (lexical vs sema
 
 Functionality:
 - Joins author_ideology_buckets with shift_per_user semantic and polarization exports.
-- Violin plots of semantic and lexical deltas grouped by lexical_bucket and by semantic_bucket.
+- Violin plots of semantic (ideology, emotion, aggression) and lexical deltas grouped by
+  lexical_bucket and by semantic_bucket.
 
 How to apply/run:
   .venv/bin/python scripts/user_week/plot_user_shift_by_ideology_bucket.py \\
@@ -27,9 +28,13 @@ import pandas as pd
 
 SHIFT_SPECS: Tuple[Tuple[str, str, str], ...] = (
     ("semantic", "delta_pooled_sem_axis_ideology", "Ideology axis (semantic delta)"),
+    ("semantic", "delta_pooled_sem_axis_emotion", "Emotion axis (semantic delta)"),
+    ("semantic", "delta_pooled_sem_axis_aggression", "Aggression axis (semantic delta)"),
     ("semantic", "delta_pooled_semantic_composite_user_week", "Semantic composite delta"),
     ("lexical", "delta_pooled_net_ideology", "Net ideology (lexical delta)"),
     ("lexical", "delta_pooled_pole_share", "Pole share (lexical delta)"),
+    ("lexical", "delta_pooled_aggression_rate_100w", "Aggression rate (lexical delta)"),
+    ("lexical", "delta_pooled_negative_rate_100w", "Negative affect rate (lexical delta)"),
 )
 
 
@@ -174,7 +179,9 @@ def run_cohort(config: dict, cohort: str, bucket_order: List[str]) -> None:
     readme = (
         "# Shifts by ideology bucket\n\n"
         "Bucket labels use **pre-ban** asymmetric rules (lexical: no L/R hits → neutral; "
-        "semantic: tail-week p10/p90). "
+        "semantic: tail-week p25/p75 on sem_axis_ideology). "
+        "Outcomes include semantic axes (ideology, emotion, aggression) and lexical rates "
+        "(net_ideology, pole_share, aggression_rate, negative_rate). "
         "Deltas are **within-person** post minus pre; not cross-country DiD.\n"
     )
     fig_root.mkdir(parents=True, exist_ok=True)

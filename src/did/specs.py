@@ -365,6 +365,16 @@ def is_cross_country_strategy(strategy_id: str) -> bool:
     return strategy_id.startswith("cross_country")
 
 
+def is_placebo_in_space_eligible_strategy(strategy_id: str) -> bool:
+    """Function summary: True when placebo-in-space applies (pooled multi-country contrasts).
+
+    Single-country contrasts (cross_country_vs_*) have no valid placebo rotation.
+    """
+    if not is_cross_country_strategy(strategy_id):
+        return False
+    return not strategy_id.startswith("cross_country_vs_")
+
+
 def is_author_strategy(strategy_id: str) -> bool:
     """Function summary: True if strategy is for author Wordfish panels."""
     return strategy_id.startswith("author_")

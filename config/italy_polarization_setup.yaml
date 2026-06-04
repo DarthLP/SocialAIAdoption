@@ -30,6 +30,17 @@ did:
     enabled: true
     schemes: [split_sample, holdout_2wk, naive_full_march]
     outcome: net_ideology
+    label_outcome: net_ideology
+    bucket_stratifications: [lexical, semantic]
+    bucket_stratification_semantic_cohort: strict
+    additional_outcomes:
+      - sem_axis_emotion
+      - sem_axis_aggression
+      - sem_axis_ideology
+      - aggression_rate_100w
+      - negative_rate_100w
+      - extremity
+      - ai_style_rate_100w
     political_universe_only: true
     treated_families: [it_political, it_others]
     bin_days: 3
@@ -44,7 +55,7 @@ did:
       high: liberal_leaning
     min_selection_comments: 5
     split_sample:
-      split_method: odd_even
+      split_method: random
       n_splits: 5
       seed: 42
       min_half_comments: 3

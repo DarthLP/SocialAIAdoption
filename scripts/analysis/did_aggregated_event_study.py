@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
+import numpy as np
 
 
 def _setup_project_root() -> Path:
@@ -292,6 +293,13 @@ def _estimate_event_study_bundle(
         )
         if es_df.empty:
             continue
+        if not _event_study_series_usable(es_df):
+            print(
+                f"[did_aggregated_event_study] skip degenerate ES {spec.outcome_id} "
+                f"{strat.strategy_id} {job.panel_level}/{job.bundle}",
+                flush=True,
+            )
+            continue
         es_out = es_df.copy()
         es_out["strategy_id"] = strat.strategy_id
         if rel_col not in es_out.columns:
@@ -304,6 +312,14 @@ def _estimate_event_study_bundle(
             )
         )
     return series
+
+
+def _event_study_series_usable(es_df: pd.DataFrame, min_finite_se: int = 2) -> bool:
+    """Function summary: True when event-study table has enough identified coefficients."""
+    if es_df.empty or "se" not in es_df.columns:
+        return False
+    finite = es_df["se"].apply(lambda v: np.isfinite(v) and float(v) > 1e-12)
+    return int(finite.sum()) >= min_finite_se
 
 
 def _write_cell(

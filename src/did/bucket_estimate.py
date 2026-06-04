@@ -299,15 +299,37 @@ def estimate_comment_it_ddd_event_study(
         return _empty_result(0, 0, "pyfixest_missing"), pd.DataFrame()
     n_cl = int(work[cluster_col].nunique()) if cluster_col in work.columns else 0
     vcov: Any = {"CRV1": cluster_col} if cluster_col in work.columns else "iid"
-    formula = f"y ~ i({rel_col}, IT, liberal, ref={ref_period}) | author + time_id"
+    # pyfixest: three-way i(rel, IT, liberal) fails; interact liberal with IT×bin dummies.
+    formula = f"y ~ i({rel_col}, IT, ref={ref_period}):liberal | author + time_id"
     try:
         fit = feols(formula, data=work, vcov=vcov)
     except Exception:
         return _empty_result(len(work), n_cl, "ddd_failed"), pd.DataFrame()
     rows = _es_rows_from_fit(fit, rel_col, ref_period, bin_days=bin_days, gamma_col="ddd_gamma")
-    ddd_df = pd.DataFrame(rows).sort_values(rel_col) if rows else pd.DataFrame()
+    if not rows:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "ddd coef parse empty; raw coef names: %s",
+            list(fit.coef().index),
+        )
+        summary = _pack_result(
+            float("nan"), float("nan"), len(work), n_cl, estimation_note="ddd_coef_parse_failed"
+        )
+        return summary, pd.DataFrame()
+    for row in rows:
+        row["coef_name"] = f"bin_{row[rel_col]}:IT:liberal"
+    ddd_df = pd.DataFrame(rows).sort_values(rel_col)
     summary = _pack_result(float("nan"), float("nan"), len(work), n_cl, estimation_note="ok")
     return summary, ddd_df
+
+
+def _median_finite(values: List[float]) -> float:
+    """Function summary: median of finite floats, or NaN if none."""
+    arr = np.asarray([v for v in values if np.isfinite(v)], dtype=float)
+    if arr.size == 0:
+        return float("nan")
+    return float(np.median(arr))
 
 
 def combine_split_sample_static(
@@ -319,17 +341,34 @@ def combine_split_sample_static(
     - results: list of per-split estimate dicts.
 
     Returns:
-    - Combined result dict with beta_mean, se_between_splits.
+    - Combined result dict with beta_mean, se_between_splits, and merged inference metadata.
     """
     betas = [r["beta"] for r in results if np.isfinite(r.get("beta", np.nan))]
     if not betas:
         return _empty_result(0, 0, "no_splits")
     arr = np.asarray(betas)
     mean_b = float(arr.mean())
-    se_split = float(arr.std(ddof=1) / np.sqrt(len(arr))) if len(arr) > 1 else float("nan")
-    out = _pack_result(mean_b, se_split, sum(r.get("n_obs", 0) for r in results), 0)
+    beta_sd = float(arr.std(ddof=1)) if len(arr) > 1 else 0.0
+    if len(arr) > 1 and beta_sd == 0.0:
+        se_split = float("nan")
+        combine_note = "no_cross_split_variation"
+    else:
+        se_split = float(beta_sd / np.sqrt(len(arr))) if len(arr) > 1 else float("nan")
+        combine_note = "combined_splits"
+    n_cl = max((int(r.get("n_clusters", 0) or 0) for r in results), default=0)
+    out = _pack_result(mean_b, se_split, sum(r.get("n_obs", 0) for r in results), n_cl)
     out["n_splits"] = len(betas)
-    out["beta_sd_across_splits"] = float(arr.std(ddof=1)) if len(arr) > 1 else 0.0
+    out["beta_sd_across_splits"] = beta_sd
+    out["estimation_note"] = combine_note if len(betas) > 1 else str(results[0].get("estimation_note", "ok"))
+    out["static_variant"] = "paper_eq1"
+    out["coef_name"] = "post:IT"
+    out["inference_role"] = results[0].get("inference_role", "descriptive")
+    out["sample"] = results[0].get("sample")
+    out["pvalue_cluster"] = _median_finite([float(r.get("pvalue_cluster", r.get("pvalue", np.nan))) for r in results])
+    p_placebo = _median_finite([float(r.get("p_placebo_space", np.nan)) for r in results])
+    out["p_placebo_space"] = p_placebo
+    out["perm_p"] = p_placebo
+    out["p_wild"] = float("nan")
     return out
 
 
