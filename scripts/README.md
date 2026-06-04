@@ -96,7 +96,7 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
 
 ### 4f–4g) Enriched-shard features (polarization, semantic axis, AI-use, style)
 - Canonical: `compute_enriched_shard_features.py --pass all` (single parquet read/write per shard when all passes run).
-- Wrappers (same behavior): `compute_polarization_features.py`, `compute_semantic_axis_features.py`, `compute_ai_use_features.py`, `compute_comment_style_features.py`.
+- Wrappers (same behavior): `compute_polarization_features.py`, `compute_semantic_axis_features.py`, `compute_semantic_axis_extend.py` (append extended `sem_axis_*` only; preserves legacy scores), `compute_ai_use_features.py`, `compute_comment_style_features.py`.
 - Input/output: enriched `cleaned_monthly_chunks/*.parquet` (in place).
 - Parallelism: `--workers N` (default `min(8, cpu_count-1)`; `1` = sequential). Logs include per-shard `elapsed=` seconds.
 - Semantic axis / `--pass all`: **language waves** (`language_waves: true`) run IT → EN → DE with a fresh ProcessPool per wave. **Exclusive cache** (`vector_cache_exclusive: true`): each worker holds at most one fastText model; switching `lex_lang` unloads others. `--lex-lang {it,en,de}` limits to one language. On ~8GB RAM use `--workers 1` (~7GB per model per worker).
@@ -107,8 +107,11 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
   `.venv/bin/python scripts/features/compute_polarization_features.py --config config/italy_polarization_setup.yaml --workers 8`
 - Semantic axis (fastText; one-time model download):
   `.venv/bin/python scripts/devtools/download_fasttext_models.py` (or `--lang it` first)
+  `.venv/bin/python scripts/devtools/export_semantic_seed_audit.py`  # Watch gate: 3 sequential fastText loads (it, en, de)
+  `.venv/bin/python scripts/devtools/check_watch_seeds.py`  # Watch report only; does not rewrite seed CSVs
   `.venv/bin/python scripts/devtools/generate_semantic_axis_seed_poles.py`
   `.venv/bin/python scripts/features/compute_semantic_axis_features.py --config config/italy_polarization_setup.yaml --workers 1`
+  `.venv/bin/python scripts/features/compute_semantic_axis_extend.py --config config/italy_polarization_setup.yaml --workers 1`
   `.venv/bin/python scripts/features/compute_semantic_axis_features.py --config config/italy_polarization_setup.yaml --lex-lang it --workers 1`
 - Columns: `sem_axis_ideology`, `sem_axis_emotion`, `sem_axis_aggression`, `sem_axis_coverage`, `has_sem_axis`; vector cache `{interim_dir}/embeddings/<sub>/<month>.npz`
 - Polarization lexicons: `ideology_it.txt` (dominant v4), `pairs_it.json`, `stance_it.txt`, `valence_it.txt`, `polarized_it.txt`; EN/DE ideology lists hand-curated
@@ -124,7 +127,7 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
 - **Fast / low-RAM:** `--panels-only` (no fastText, no `body`, shard streaming). Example:
   `.venv/bin/python scripts/diagnostics/prepare_semantic_axis_descriptives.py --config config/italy_polarization_setup.yaml --panels-only`
 - **Subset bins:** `--bin-days 1` or `--bin-days 1,3` (default from config: 1,3,7)
-- Optional skips: `--skip-seed-validation`, `--skip-validation`, `--skip-examples` (seed check: `validate_semantic_axis_seeds.py`)
+  - Optional skips: `--skip-seed-validation`, `--skip-validation`, `--skip-examples` (seed check: `validate_semantic_axis_seeds.py`; one fastText load per language)
   - **Panels** (5 levels × 3 bin sizes): `semantic_axis_panel_by_{forum,topic_family,topic,language,language_universe}_{1,3,7}d.csv`
   - **Time bins:** 1d = calendar `period_start`; 3d/7d = launch-aligned (`2023-03-31`); `n_days_in_bin`, `is_partial_bin` on all panels
   - **Pole buckets:** per-lexicon absolute (`*_abs`) + percentile (`above_p90` / `below_p10`); `share_unscored` (not saturated `sem_axis_coverage_mean`)

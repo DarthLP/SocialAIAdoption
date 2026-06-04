@@ -37,6 +37,10 @@ did:
       - sem_axis_emotion
       - sem_axis_aggression
       - sem_axis_ideology
+      - sem_axis_economic
+      - sem_axis_cultural
+      - sem_axis_nationalism
+      - sem_axis_anti_establishment
       - aggression_rate_100w
       - negative_rate_100w
       - extremity
@@ -620,6 +624,10 @@ user_week:
     - sem_axis_ideology
     - sem_axis_emotion
     - sem_axis_aggression
+    - sem_axis_economic
+    - sem_axis_cultural
+    - sem_axis_nationalism
+    - sem_axis_anti_establishment
     - sem_axis_coverage
   style_composite:
     name: ai_style_composite_user_week

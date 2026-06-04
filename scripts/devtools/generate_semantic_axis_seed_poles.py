@@ -3,9 +3,9 @@ Script summary:
 Materialize per-language semantic-axis pole lists from parallel seed CSVs.
 
 Functionality:
-- Reads ideology_parallel.csv and emotion_cognition_parallel.csv under data/raw/seeds/.
-- Writes ideology_pos/neg, emotion_pos/neg txt files per language.
-- Writes aggression_pos from aggression_parallel.csv (25 aligned concepts per language).
+- Reads parallel seed CSVs under data/raw/seeds/ (ideology, emotion, aggression, economic, cultural,
+  nationalism, anti_establishment).
+- Writes per-language pole txt files under data/raw/seeds/poles/.
 
 How to apply/run:
   .venv/bin/python scripts/devtools/generate_semantic_axis_seed_poles.py
@@ -76,6 +76,13 @@ def main() -> None:
 
     from src.embeddings import NEUTRAL_POLE_TERMS
 
+    extended_specs = (
+        ("economic", "economic_parallel.csv", "market", "equality"),
+        ("cultural", "cultural_parallel.csv", "traditional", "progressive"),
+        ("nationalism", "nationalism_parallel.csv", "nationalist", "cosmopolitan"),
+        ("anti_establishment", "anti_establishment_parallel.csv", "anti_est", "pro_inst"),
+    )
+
     for lang in LANG_COLS:
         _write_pole(POLES_DIR / f"ideology_pos_{lang}.txt", _terms_from_csv(ideology_csv, lang, "right"))
         _write_pole(POLES_DIR / f"ideology_neg_{lang}.txt", _terms_from_csv(ideology_csv, lang, "left"))
@@ -89,6 +96,17 @@ def main() -> None:
             POLES_DIR / f"aggression_neg_{lang}.txt",
             list(NEUTRAL_POLE_TERMS.get(lang, NEUTRAL_POLE_TERMS["en"])),
         )
+        for axis, csv_name, pos_pole, neg_pole in extended_specs:
+            csv_path = SEEDS_DIR / csv_name
+            if csv_path.is_file():
+                _write_pole(
+                    POLES_DIR / f"{axis}_pos_{lang}.txt",
+                    _terms_from_csv(csv_path, lang, pos_pole),
+                )
+                _write_pole(
+                    POLES_DIR / f"{axis}_neg_{lang}.txt",
+                    _terms_from_csv(csv_path, lang, neg_pole),
+                )
         print(f"wrote poles for {lang} -> {POLES_DIR}")
 
 

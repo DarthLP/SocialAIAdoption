@@ -73,6 +73,9 @@ from src.config_utils import (  # noqa: E402
     subreddit_screening_action,
 )
 from src.embeddings import (  # noqa: E402
+    EXTENDED_AXIS_NAMES,
+    SEMAXIS_EXTENDED_KEYS,
+    SEMAXIS_LEGACY_KEYS,
     SEMAXIS_SCORE_KEYS,
     build_comment_vectors_for_texts,
     ensure_exclusive_vector_lang,
@@ -80,6 +83,7 @@ from src.embeddings import (  # noqa: E402
     load_shard_vector_cache,
     save_shard_vector_cache,
     score_vectors_against_axes,
+    score_vectors_against_axes_subset,
     shard_embedding_cache_path,
     unload_embeddings_for_language,
 )
@@ -91,10 +95,12 @@ from src.political_lexicon import (  # noqa: E402
 from src.feature_shard_worker import feature_shard_worker  # noqa: E402
 from src.v4_lexicon import all_pair_framing_column_names, get_pairs_registry  # noqa: E402
 
-PassName = Literal["polarization", "semaxis", "ai", "style"]
+PassName = Literal["polarization", "semaxis", "semaxis_extend", "ai", "style"]
 PASS_ORDER: tuple[PassName, ...] = ("polarization", "semaxis", "ai", "style")
 
 SEMAXIS_COLUMNS: tuple[str, ...] = tuple(SEMAXIS_SCORE_KEYS)
+SEMAXIS_LEGACY_COLUMNS: tuple[str, ...] = tuple(SEMAXIS_LEGACY_KEYS)
+SEMAXIS_EXTENDED_COLUMNS: tuple[str, ...] = tuple(SEMAXIS_EXTENDED_KEYS)
 
 POLARIZATION_COMMENT_COLUMNS: tuple[str, ...] = (
     "left_hits",
@@ -180,9 +186,9 @@ def parse_args(
         parser.add_argument(
             "--pass",
             dest="pass_name",
-            choices=list(PASS_ORDER) + ["all"],
+            choices=list(PASS_ORDER) + ["semaxis_extend", "all"],
             default="all",
-            help="Feature pass: polarization, semaxis, ai, style, or all (default all).",
+            help="Feature pass: polarization, semaxis, semaxis_extend, ai, style, or all (default all).",
         )
     return parser.parse_args()
 
@@ -208,7 +214,11 @@ def _task_lex_lang(task: TaskTuple) -> str:
 
 def _passes_need_fasttext(passes: Sequence[PassName]) -> bool:
     """Function summary: True when any pass loads fastText embeddings."""
-    return "semaxis" in passes or _is_combined_all_pass(passes)
+    return (
+        "semaxis" in passes
+        or "semaxis_extend" in passes
+        or _is_combined_all_pass(passes)
+    )
 
 
 def _language_wave_order(sem_cfg: Dict[str, Any]) -> tuple[str, ...]:
@@ -507,6 +517,87 @@ def _process_semaxis_shard(
     return len(out)
 
 
+def _process_semaxis_extend_shard(
+    path: Path,
+    subreddit: str,
+    lex_lang: str,
+    sem_cfg: Dict[str, Any],
+    project_root: Path,
+    interim_dir: Path,
+) -> int:
+    """Function summary: append extended semantic-axis columns; preserve legacy sem_axis scores.
+
+    Parameters:
+    - path: enriched parquet shard path.
+    - subreddit: subreddit folder name.
+    - lex_lang: primary lexicon language.
+    - sem_cfg: semantic_axis config block.
+    - project_root: repository root.
+    - interim_dir: interim data directory for vector caches.
+
+    Returns:
+    - Number of rows written.
+    """
+    ensure_exclusive_vector_lang(lex_lang, sem_cfg)
+    get_axes_for_language(
+        lex_lang, project_root, sem_cfg, axis_names=EXTENDED_AXIS_NAMES
+    )
+    df = read_parquet_shard_safe(path)
+    if df is None or df.empty:
+        return 0
+    required = {"body", "primary_lexicon", "n_words", "id", *SEMAXIS_LEGACY_COLUMNS}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"Missing columns {sorted(missing)} in {path}; run semaxis pass before semaxis_extend."
+        )
+    out = df.drop(
+        columns=[c for c in SEMAXIS_EXTENDED_COLUMNS if c in df.columns],
+        errors="ignore",
+    ).copy()
+    lang_series = (
+        out["lang_comment"].astype(str) if "lang_comment" in out.columns else pd.Series([lex_lang] * len(out))
+    )
+    bodies = out["body"].astype(str).tolist()
+    langs = lang_series.tolist()
+    ids = out["id"].astype(str).tolist()
+    comment_vecs = None
+    coverages = None
+    if sem_cfg.get("write_vector_cache", True):
+        cache_path = shard_embedding_cache_path(interim_dir, subreddit, path.stem)
+        comment_vecs, coverages = load_shard_vector_cache(cache_path, ids)
+    if comment_vecs is None:
+        active_bodies: List[str] = []
+        active_idx: List[int] = []
+        for i, (body, lang_c) in enumerate(zip(bodies, langs, strict=True)):
+            if sem_cfg.get("lang_match_filter") and lang_c != lex_lang:
+                continue
+            active_bodies.append(body)
+            active_idx.append(i)
+        vecs, covs = build_comment_vectors_for_texts(active_bodies, lex_lang, project_root, sem_cfg)
+        comment_vecs = [None] * len(bodies)
+        coverages = [0.0] * len(bodies)
+        for j, idx in enumerate(active_idx):
+            comment_vecs[idx] = vecs[j]
+            coverages[idx] = covs[j]
+        if sem_cfg.get("write_vector_cache", True):
+            cache_path = shard_embedding_cache_path(interim_dir, subreddit, path.stem)
+            save_shard_vector_cache(cache_path, ids, comment_vecs, coverages)
+    axes = get_axes_for_language(
+        lex_lang, project_root, sem_cfg, axis_names=EXTENDED_AXIS_NAMES
+    )
+    sem_rows = score_vectors_against_axes_subset(
+        comment_vecs, coverages, axes, SEMAXIS_EXTENDED_KEYS
+    )
+    for i, lang_c in enumerate(langs):
+        if sem_cfg.get("lang_match_filter") and lang_c != lex_lang:
+            sem_rows[i] = {col: 0.0 for col in SEMAXIS_EXTENDED_KEYS}
+    for col in SEMAXIS_EXTENDED_COLUMNS:
+        out[col] = [r[col] for r in sem_rows]
+    out.to_parquet(path, index=False, engine="pyarrow", compression="snappy")
+    return len(out)
+
+
 def _process_all_features_shard(
     path: Path,
     subreddit: str,
@@ -682,6 +773,10 @@ def _feature_shard_worker(
         n = _process_polarization_shard(path, lex_lang, pol_cfg, project_root)
     elif pass_name == "semaxis":
         n = _process_semaxis_shard(path, subreddit, lex_lang, sem_cfg, project_root, interim_dir)
+    elif pass_name == "semaxis_extend":
+        n = _process_semaxis_extend_shard(
+            path, subreddit, lex_lang, sem_cfg, project_root, interim_dir
+        )
     elif pass_name == "ai":
         n = _process_ai_shard(path, lex_lang, ai_cfg, project_root)
     else:

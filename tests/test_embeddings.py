@@ -7,6 +7,7 @@ from gensim.models import KeyedVectors
 
 import src.embeddings as emb
 from src.embeddings import (
+    SEMAXIS_EXTENDED_KEYS,
     SEMAXIS_SCORE_KEYS,
     _AXIS_CACHE,
     _VECTOR_CACHE,
@@ -16,6 +17,7 @@ from src.embeddings import (
     load_seed_poles,
     score_comment_semantic_axis,
     score_vectors_against_axes,
+    score_vectors_against_axes_subset,
     unload_embeddings_for_language,
 )
 
@@ -110,3 +112,20 @@ def test_load_seed_poles_it() -> None:
     assert len(poles["ideology_pos"]) >= 10
     assert len(poles["emotion_pos"]) >= 10
     assert any("sovran" in t for t in poles["ideology_pos"])
+    assert len(poles["economic_pos"]) >= 5
+    assert len(poles["anti_establishment_pos"]) >= 5
+
+
+def test_score_vectors_subset_extended_only() -> None:
+    """Subset scoring populates only requested extended columns."""
+    kv = _MockKV()
+    axis = build_axis(["right"], ["left"], kv)
+    scores = score_vectors_against_axes_subset(
+        [kv["right"]],
+        [1.0],
+        {"economic": axis},
+        SEMAXIS_EXTENDED_KEYS,
+    )
+    assert set(scores[0].keys()) == set(SEMAXIS_EXTENDED_KEYS)
+    assert scores[0]["sem_axis_economic"] != 0.0
+    assert "sem_axis_ideology" not in scores[0]

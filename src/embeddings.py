@@ -1,15 +1,15 @@
 """
 Script summary:
-fastText-based semantic axis scoring (ideology, emotion, aggression) for enriched comment shards.
+fastText-based semantic axis scoring for enriched comment shards.
 
 Functionality:
 - Load language-specific Common Crawl vectors with process-level caching.
-- Build unit axes from parallel seed CSVs (ideology, emotion, aggression) and civil neutral lists.
-- Aggression axis: positive pole = insult/incivility (higher sem_axis_aggression = more aggressive).
+- Build unit axes from parallel seed CSVs (ideology, emotion, aggression, economic, cultural,
+  nationalism, anti_establishment) and civil neutral lists for aggression.
 - Mean-token comment vectors, cosine axis scores, per-shard NPZ caches, seed OOV and held-out sanity reports.
 
 How to apply/run:
-- Imported by `_enriched_shard_runner` semaxis pass and diagnostics; not run standalone.
+- Imported by `_enriched_shard_runner` semaxis / semaxis_extend passes and diagnostics; not run standalone.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import csv
 import logging
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -32,12 +32,49 @@ _AXIS_CACHE: Dict[Tuple[str, str], Dict[str, np.ndarray]] = {}
 _LOAD_LOGGED: set[str] = set()
 _ACTIVE_VECTOR_LANG: Optional[str] = None
 
-SEMAXIS_SCORE_KEYS = (
+SEMAXIS_LEGACY_KEYS = (
     "sem_axis_ideology",
     "sem_axis_emotion",
     "sem_axis_aggression",
     "sem_axis_coverage",
     "has_sem_axis",
+)
+
+SEMAXIS_EXTENDED_KEYS = (
+    "sem_axis_economic",
+    "sem_axis_cultural",
+    "sem_axis_nationalism",
+    "sem_axis_anti_establishment",
+)
+
+SEMAXIS_SCORE_KEYS = SEMAXIS_LEGACY_KEYS + SEMAXIS_EXTENDED_KEYS
+
+# Axis name -> parquet column for cosine scores.
+AXIS_SCORE_COLUMNS: Dict[str, str] = {
+    "ideology": "sem_axis_ideology",
+    "emotion": "sem_axis_emotion",
+    "aggression": "sem_axis_aggression",
+    "economic": "sem_axis_economic",
+    "cultural": "sem_axis_cultural",
+    "nationalism": "sem_axis_nationalism",
+    "anti_establishment": "sem_axis_anti_establishment",
+}
+
+LEGACY_AXIS_NAMES: Tuple[str, ...] = ("ideology", "emotion", "aggression")
+EXTENDED_AXIS_NAMES: Tuple[str, ...] = (
+    "economic",
+    "cultural",
+    "nationalism",
+    "anti_establishment",
+)
+ALL_AXIS_NAMES: Tuple[str, ...] = LEGACY_AXIS_NAMES + EXTENDED_AXIS_NAMES
+
+# (axis_name, csv_filename, positive_pole, negative_pole)
+EXTENDED_AXIS_SPECS: Tuple[Tuple[str, str, str, str], ...] = (
+    ("economic", "economic_parallel.csv", "market", "equality"),
+    ("cultural", "cultural_parallel.csv", "traditional", "progressive"),
+    ("nationalism", "nationalism_parallel.csv", "nationalist", "cosmopolitan"),
+    ("anti_establishment", "anti_establishment_parallel.csv", "anti_est", "pro_inst"),
 )
 
 # Civil/neutral pole for aggression axis (lowercase; match tokenize).
@@ -369,13 +406,42 @@ def resolve_aggression_parallel_path(
     return seeds_dir / "aggression_parallel.csv"
 
 
+def _seeds_dir(project_root: Path, axes_cfg: Mapping[str, Any]) -> Path:
+    """Function summary: resolve absolute seeds directory from semantic_axis config."""
+    seeds_dir = Path(str(axes_cfg.get("seeds_dir", "data/raw/seeds")))
+    if not seeds_dir.is_absolute():
+        seeds_dir = project_root / seeds_dir
+    return seeds_dir
+
+
+def _load_csv_pole_pair(
+    seeds_dir: Path,
+    poles_dir: Path,
+    lang: str,
+    csv_name: str,
+    pos_pole: str,
+    neg_pole: str,
+    pos_txt: str,
+    neg_txt: str,
+) -> Tuple[List[str], List[str]]:
+    """Function summary: load pos/neg pole terms from optional txt override or parallel CSV."""
+    pos = _read_pole_txt(poles_dir / pos_txt)
+    neg = _read_pole_txt(poles_dir / neg_txt)
+    csv_path = seeds_dir / csv_name
+    if not pos and csv_path.is_file():
+        pos = _read_parallel_pole_terms(csv_path, lang, pos_pole)
+    if not neg and csv_path.is_file():
+        neg = _read_parallel_pole_terms(csv_path, lang, neg_pole)
+    return pos, neg
+
+
 def load_seed_poles(
     lang_code: str,
     project_root: Path,
     axes_cfg: Mapping[str, Any],
     config: Mapping[str, Any] | None = None,
 ) -> Dict[str, List[str]]:
-    """Function summary: resolve ideology/emotion/aggression pole term lists for a language.
+    """Function summary: resolve pole term lists for all semantic axes in one language.
 
     Parameters:
     - lang_code: it, en, or de.
@@ -383,12 +449,10 @@ def load_seed_poles(
     - axes_cfg: semantic_axis config (seeds_dir, optional pole txt overrides).
 
     Returns:
-    - Dict with keys ideology_pos, ideology_neg, emotion_pos, emotion_neg, aggression_pos, aggression_neg.
+    - Dict with keys {axis}_pos and {axis}_neg for each axis in ALL_AXIS_NAMES.
     """
     lang = lang_code.lower()
-    seeds_dir = Path(str(axes_cfg.get("seeds_dir", "data/raw/seeds")))
-    if not seeds_dir.is_absolute():
-        seeds_dir = project_root / seeds_dir
+    seeds_dir = _seeds_dir(project_root, axes_cfg)
     poles_dir = seeds_dir / "poles"
 
     ideology_csv = seeds_dir / "ideology_parallel.csv"
@@ -417,7 +481,7 @@ def load_seed_poles(
     if not aggression_neg:
         aggression_neg = list(NEUTRAL_POLE_TERMS.get(lang, NEUTRAL_POLE_TERMS["en"]))
 
-    return {
+    poles: Dict[str, List[str]] = {
         "ideology_pos": ideology_pos,
         "ideology_neg": ideology_neg,
         "emotion_pos": emotion_pos,
@@ -425,37 +489,81 @@ def load_seed_poles(
         "aggression_pos": aggression_pos,
         "aggression_neg": aggression_neg,
     }
+    for axis_name, csv_name, pos_pole, neg_pole in EXTENDED_AXIS_SPECS:
+        pos, neg = _load_csv_pole_pair(
+            seeds_dir,
+            poles_dir,
+            lang,
+            csv_name,
+            pos_pole,
+            neg_pole,
+            f"{axis_name}_pos_{lang}.txt",
+            f"{axis_name}_neg_{lang}.txt",
+        )
+        poles[f"{axis_name}_pos"] = pos
+        poles[f"{axis_name}_neg"] = neg
+    return poles
 
 
 def get_axes_for_language(
     lang_code: str,
     project_root: Path,
     axes_cfg: Mapping[str, Any],
+    axis_names: Sequence[str] | None = None,
+    config: Mapping[str, Any] | None = None,
 ) -> Dict[str, np.ndarray]:
-    """Function summary: cached unit axes for ideology, emotion, aggression.
+    """Function summary: cached unit axes for requested semantic dimensions.
 
     Parameters:
     - lang_code: it, en, or de.
     - project_root: repository root.
     - axes_cfg: semantic_axis config.
+    - axis_names: optional subset of ALL_AXIS_NAMES; default all axes.
+    - config: optional study YAML for aggression path resolution.
 
     Returns:
     - Dict mapping axis name to unit vector.
     """
     lang = lang_code.lower()
     ensure_exclusive_vector_lang(lang, axes_cfg)
-    cache_key = (lang, str(axes_cfg.get("seeds_dir", "")))
+    want = tuple(axis_names) if axis_names is not None else ALL_AXIS_NAMES
+    cache_key = (lang, str(axes_cfg.get("seeds_dir", "")), want)
     if cache_key in _AXIS_CACHE:
         return _AXIS_CACHE[cache_key]
     kv = load_vectors(lang, project_root, axes_cfg)
-    poles = load_seed_poles(lang, project_root, axes_cfg)
-    axes = {
-        "ideology": build_axis(poles["ideology_pos"], poles["ideology_neg"], kv),
-        "emotion": build_axis(poles["emotion_pos"], poles["emotion_neg"], kv),
-        "aggression": build_axis(poles["aggression_pos"], poles["aggression_neg"], kv),
-    }
+    poles = load_seed_poles(lang, project_root, axes_cfg, config=config)
+    axes: Dict[str, np.ndarray] = {}
+    for axis_name in want:
+        axes[axis_name] = build_axis(
+            poles[f"{axis_name}_pos"],
+            poles[f"{axis_name}_neg"],
+            kv,
+        )
     _AXIS_CACHE[cache_key] = axes
     return axes
+
+
+def _score_row_from_axes(
+    vec: Optional[np.ndarray],
+    cov: float,
+    axes: Mapping[str, np.ndarray],
+    score_keys: Sequence[str],
+) -> Dict[str, float]:
+    """Function summary: build one score dict for a comment vector and axis subset."""
+    row = {k: 0.0 for k in score_keys}
+    if "sem_axis_coverage" in score_keys:
+        row["sem_axis_coverage"] = float(cov)
+    if vec is None:
+        return row
+    for axis_name, col in AXIS_SCORE_COLUMNS.items():
+        if col not in score_keys:
+            continue
+        axis_vec = axes.get(axis_name)
+        if axis_vec is not None:
+            row[col] = _cosine(vec, axis_vec)
+    if "has_sem_axis" in score_keys:
+        row["has_sem_axis"] = 1.0
+    return row
 
 
 def score_vectors_against_axes(
@@ -463,29 +571,43 @@ def score_vectors_against_axes(
     coverages: Sequence[float],
     axes: Mapping[str, np.ndarray],
 ) -> List[Dict[str, float]]:
-    """Function summary: cosine scores for precomputed comment vectors.
+    """Function summary: cosine scores for precomputed comment vectors (all sem_axis columns).
 
     Parameters:
     - comment_vecs: per-row mean vectors (None if unscored).
     - coverages: per-row in-vocab token shares.
-    - axes: ideology/emotion/aggression unit vectors.
+    - axes: unit vectors keyed by axis name.
 
     Returns:
     - List of score dicts aligned with comment_vecs.
     """
-    out: List[Dict[str, float]] = []
-    for vec, cov in zip(comment_vecs, coverages, strict=True):
-        row = _zero_scores()
-        row["sem_axis_coverage"] = float(cov)
-        if vec is None:
-            out.append(row)
-            continue
-        row["sem_axis_ideology"] = _cosine(vec, axes["ideology"])
-        row["sem_axis_emotion"] = _cosine(vec, axes["emotion"])
-        row["sem_axis_aggression"] = _cosine(vec, axes["aggression"])
-        row["has_sem_axis"] = 1.0
-        out.append(row)
-    return out
+    return score_vectors_against_axes_subset(
+        comment_vecs, coverages, axes, SEMAXIS_SCORE_KEYS
+    )
+
+
+def score_vectors_against_axes_subset(
+    comment_vecs: Sequence[Optional[np.ndarray]],
+    coverages: Sequence[float],
+    axes: Mapping[str, np.ndarray],
+    score_keys: Sequence[str],
+) -> List[Dict[str, float]]:
+    """Function summary: cosine scores for a subset of sem_axis columns only.
+
+    Parameters:
+    - comment_vecs: per-row mean vectors (None if unscored).
+    - coverages: per-row in-vocab token shares.
+    - axes: unit vectors for axes referenced in score_keys.
+    - score_keys: column names to populate (e.g. SEMAXIS_EXTENDED_KEYS only).
+
+    Returns:
+    - List of score dicts aligned with comment_vecs.
+    """
+    keys = tuple(score_keys)
+    return [
+        _score_row_from_axes(vec, float(cov), axes, keys)
+        for vec, cov in zip(comment_vecs, coverages, strict=True)
+    ]
 
 
 def score_comment_semantic_axis(
@@ -615,16 +737,28 @@ HELDOUT_AXIS_CHECKS: Dict[str, Dict[str, List[Tuple[str, int]]]] = {
         "ideology": [("liberismo", 1), ("redistribuzione", -1)],
         "emotion": [("amore", 1), ("logica", -1)],
         "aggression": [("idiota", 1), ("grazie", -1)],
+        "economic": [("privatizzazioni", 1), ("disuguaglianze", -1)],
+        "cultural": [("valori tradizionali", 1), ("antifascista", -1)],
+        "nationalism": [("porti chiusi", 1), ("ius soli", -1)],
+        "anti_establishment": [("poteri forti", 1), ("magistratura indipendente", -1)],
     },
     "en": {
         "ideology": [("tax-cuts", 1), ("redistribution", -1)],
         "emotion": [("love", 1), ("logic", -1)],
         "aggression": [("idiot", 1), ("thanks", -1)],
+        "economic": [("privatization", 1), ("inequality", -1)],
+        "cultural": [("traditional-values", 1), ("anti-fascist", -1)],
+        "nationalism": [("close the borders", 1), ("birthright citizenship", -1)],
+        "anti_establishment": [("lying press", 1), ("fact-checking", -1)],
     },
     "de": {
         "ideology": [("steuersenkungen", 1), ("umverteilung", -1)],
         "emotion": [("liebe", 1), ("logik", -1)],
         "aggression": [("idiot", 1), ("danke", -1)],
+        "economic": [("privatisierung", 1), ("ungleichheit", -1)],
+        "cultural": [("traditionelle werte", 1), ("antifaschistisch", -1)],
+        "nationalism": [("grenzen dicht", 1), ("bleiberecht", -1)],
+        "anti_establishment": [("eurokraten", 1), ("fact-checking", -1)],
     },
 }
 
@@ -637,11 +771,48 @@ def _seed_term_in_vocab(term: str, kv: Any) -> bool:
     return all(_token_to_vector(p, kv) is not None for p in parts)
 
 
+DEFAULT_LANGUAGE_WAVE_ORDER: Tuple[str, ...] = ("it", "en", "de")
+
+
+def run_language_vector_wave(
+    project_root: Path,
+    axes_cfg: Mapping[str, Any],
+    callback: Callable[[str, Any], None],
+    languages: Sequence[str] = DEFAULT_LANGUAGE_WAVE_ORDER,
+) -> None:
+    """Function summary: load one fastText model per language, run callback, then unload.
+
+    Parameters:
+    - project_root: repository root.
+    - axes_cfg: semantic_axis config (honors vector_cache_exclusive).
+    - callback: ``callback(lang, kv)``; ``kv`` is None if the model file is missing.
+    - languages: ordered language codes (default it, en, de).
+
+    Returns:
+    - None. Peak RAM stays at one loaded model when vector_cache_exclusive is true.
+    """
+    for raw_lang in languages:
+        lang = str(raw_lang).lower()
+        ensure_exclusive_vector_lang(lang, axes_cfg)
+        kv: Any = None
+        try:
+            kv = load_vectors(lang, project_root, axes_cfg)
+        except FileNotFoundError:
+            callback(lang, None)
+            unload_embeddings_for_language(lang)
+            continue
+        try:
+            callback(lang, kv)
+        finally:
+            unload_embeddings_for_language(lang)
+
+
 def seed_coverage_report(
     lang_code: str,
     project_root: Path,
     axes_cfg: Mapping[str, Any],
     config: Mapping[str, Any] | None = None,
+    kv: Any | None = None,
 ) -> List[Dict[str, Any]]:
     """Function summary: per-axis pole seed in-vocab coverage for one language.
 
@@ -650,21 +821,19 @@ def seed_coverage_report(
     - project_root: repository root.
     - axes_cfg: semantic_axis config block.
     - config: optional full study YAML for aggression_parallel path.
+    - kv: optional preloaded fastText vectors (skips load_vectors when set).
 
     Returns:
     - List of dicts suitable for semantic_axis_seed_coverage.csv rows.
     """
-    kv = load_vectors(lang_code, project_root, axes_cfg)
+    if kv is None:
+        kv = load_vectors(lang_code, project_root, axes_cfg)
     poles = load_seed_poles(lang_code, project_root, axes_cfg, config=config)
     rows: List[Dict[str, Any]] = []
-    pole_groups = (
-        ("ideology", "pos", poles["ideology_pos"]),
-        ("ideology", "neg", poles["ideology_neg"]),
-        ("emotion", "pos", poles["emotion_pos"]),
-        ("emotion", "neg", poles["emotion_neg"]),
-        ("aggression", "pos", poles["aggression_pos"]),
-        ("aggression", "neg", poles["aggression_neg"]),
-    )
+    pole_groups: List[Tuple[str, str, List[str]]] = []
+    for axis_name in ALL_AXIS_NAMES:
+        pole_groups.append((axis_name, "pos", poles[f"{axis_name}_pos"]))
+        pole_groups.append((axis_name, "neg", poles[f"{axis_name}_neg"]))
     for axis, pole, terms in pole_groups:
         oov: List[str] = []
         in_vocab = 0
@@ -694,10 +863,10 @@ def seed_oov_summary_by_lang(
     axes_cfg: Mapping[str, Any],
     config: Mapping[str, Any] | None = None,
 ) -> Dict[str, float]:
-    """Function summary: mean OOV share across poles for ideology, emotion, aggression."""
+    """Function summary: mean OOV share across poles for each semantic axis."""
     rows = seed_coverage_report(lang_code, project_root, axes_cfg, config=config)
     out: Dict[str, float] = {}
-    for axis in ("ideology", "emotion", "aggression"):
+    for axis in ALL_AXIS_NAMES:
         sub = [r for r in rows if r["axis"] == axis]
         if sub:
             out[f"seed_oov_share_{axis}"] = float(
@@ -713,6 +882,8 @@ def held_out_axis_sanity_report(
     project_root: Path,
     axes_cfg: Mapping[str, Any],
     config: Mapping[str, Any] | None = None,
+    kv: Any | None = None,
+    axis_vecs: Mapping[str, np.ndarray] | None = None,
 ) -> List[Dict[str, Any]]:
     """Function summary: cosine signs for held-out words against each semantic axis.
 
@@ -721,6 +892,8 @@ def held_out_axis_sanity_report(
     - project_root: repository root.
     - axes_cfg: semantic_axis config.
     - config: optional full study YAML.
+    - kv: optional preloaded fastText vectors.
+    - axis_vecs: optional prebuilt unit axes (skips get_axes_for_language when set).
 
     Returns:
     - Rows with lang, axis, token, cosine, expected_sign, pass.
@@ -729,8 +902,10 @@ def held_out_axis_sanity_report(
     checks = HELDOUT_AXIS_CHECKS.get(lang, {})
     if not checks:
         return []
-    kv = load_vectors(lang, project_root, axes_cfg)
-    axis_vecs = get_axes_for_language(lang, project_root, axes_cfg)
+    if kv is None:
+        kv = load_vectors(lang, project_root, axes_cfg)
+    if axis_vecs is None:
+        axis_vecs = get_axes_for_language(lang, project_root, axes_cfg, config=config)
     rows: List[Dict[str, Any]] = []
     for axis_name, tokens in checks.items():
         axis_vec = axis_vecs.get(axis_name)

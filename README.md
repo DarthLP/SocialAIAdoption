@@ -118,10 +118,16 @@ Run in order (`.venv` active):
 
 # Semantic axis (requires fastText .bin models; download once)
 .venv/bin/python scripts/devtools/download_fasttext_models.py
-.venv/bin/python scripts/devtools/generate_semantic_axis_seed_poles.py   # uses data/raw/seeds/*.csv including aggression_parallel (25×3)
+.venv/bin/python scripts/devtools/export_semantic_seed_audit.py   # issue seeds from audit xlsx (~3 fastText loads for Watch gate)
+.venv/bin/python scripts/devtools/check_watch_seeds.py   # Watch-only fastText report (no CSV rewrite; same 3 loads)
+.venv/bin/python scripts/devtools/generate_semantic_axis_seed_poles.py   # optional pole txt under data/raw/seeds/poles/
 .venv/bin/python scripts/diagnostics/validate_semantic_axis_seeds.py --config config/italy_polarization_setup.yaml
 .venv/bin/python scripts/features/compute_semantic_axis_features.py \
   --config config/italy_polarization_setup.yaml --workers 1
+# Extended issue axes (economic, cultural, nationalism, anti_establishment) on shards that already have sem_axis_ideology/emotion/aggression:
+.venv/bin/python scripts/features/compute_semantic_axis_extend.py \
+  --config config/italy_polarization_setup.yaml --workers 1
+# Watch / seed validation: one ~7GB fastText model at a time (it → en → de); in-vocab is embedding coverage, not the polarization lexicon CSV.
 # Language waves (default): all IT shards, then EN, then DE; ProcessPool restarts between waves.
 # Exclusive cache (vector_cache_exclusive): one ~7GB model per worker, not IT+EN+DE stacked.
 # Low RAM (~8GB): --workers 1; or one language: --lex-lang it
@@ -180,7 +186,7 @@ Run in order (`.venv` active):
 .venv/bin/python scripts/diagnostics/plot_lexicon_descriptives.py --config config/italy_polarization_setup.yaml
 ```
 
-Stage 4 adds columns **in-place** on enriched Parquet: polarization (`net_ideology` from `polarization_lexicon_parallel.csv`, pair framing `pair_framing_*` from v4 pairs CSV, emotion/cognition rates, …), **semantic axes** (`sem_axis_*` from fastText + `data/raw/seeds/`), AI lexicon, and style counts from `style_phrase_parallel.csv`. All shards share the same column schema (Italian pair framing only on `it` shards). Config requires `polarization.ideology_scoring: dominant_v1`.
+Stage 4 adds columns **in-place** on enriched Parquet: polarization (`net_ideology` from `polarization_lexicon_parallel.csv`, pair framing `pair_framing_*` from v4 pairs CSV, emotion/cognition rates, …), **semantic axes** (`sem_axis_ideology`, `sem_axis_emotion`, `sem_axis_aggression`, plus extended `sem_axis_economic`, `sem_axis_cultural`, `sem_axis_nationalism`, `sem_axis_anti_establishment` from fastText + `data/raw/seeds/`), AI lexicon, and style counts from `style_phrase_parallel.csv`. All shards share the same column schema (Italian pair framing only on `it` shards). Config requires `polarization.ideology_scoring: dominant_v1`.
 
 Lexicon descriptives (pair framing, stance, valence) live under `results/figures/italy_polarization/descriptives/{primary,ideology_dominant,pairs,stance,valence,polarized,trajectory_scatter}/`. Legacy polarization descriptives remain under `descriptives/daily/` and `descriptives/rolling_daily/` (all comments). **Universe-sliced** tables (`daily_*_by_universe_slice.csv`) and dual-line figures (`*_dual_universe/`) overlay **in political tree** (thick) vs **non-tree** (translucent) per country panel, pooled Italy, and `it_political` / `it_others` separately. Re-running **enrich** after stage 4 removes feature columns — run stage 4 again if that happens.
 
