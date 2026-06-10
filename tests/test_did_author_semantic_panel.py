@@ -50,6 +50,7 @@ def test_panel_kind_routes_to_auth_semantic() -> None:
     panels = AnalysisPanels(
         sub_v1=pd.DataFrame(),
         sub_v2=pd.DataFrame(),
+        sub_quantity=pd.DataFrame(),
         slice_panel=pd.DataFrame(),
         auth_v1=pd.DataFrame(),
         auth_v2=pd.DataFrame(),

@@ -322,6 +322,27 @@ def _drop_singleton_entities(work: pd.DataFrame, entity_col: str) -> pd.DataFram
     return out
 
 
+def _rademacher_weight_matrix(n_clust: int, n_draws: int, seed: int) -> Tuple[np.ndarray, bool, float]:
+    """Function summary: bootstrap sign weights; enumerate when G is small.
+
+    Parameters:
+    - n_clust: number of clusters G.
+    - n_draws: requested random draws (ignored when enumerating).
+    - seed: RNG seed for sampled draws.
+
+    Returns:
+    - Tuple (weights matrix shape (n_reps, G), enumerated flag, p_floor).
+    """
+    enum_threshold = 12
+    if n_clust <= enum_threshold:
+        n_enum = 2**n_clust
+        bits = np.arange(n_enum, dtype=np.uint64)[:, None] >> np.arange(n_clust, dtype=np.uint64)
+        signs = np.where(bits & 1, 1.0, -1.0).astype(np.float64)
+        return signs, True, 1.0 / n_enum
+    rng = np.random.default_rng(seed)
+    return rng.choice([-1.0, 1.0], size=(n_draws, n_clust)), False, float("nan")
+
+
 def _restricted_wcb_pyfixest(
     formula_full: str,
     formula_restricted: str,
@@ -336,46 +357,103 @@ def _restricted_wcb_pyfixest(
 
     Rebuilds y* = fitted_restricted + v_g * resid_restricted per Cameron–Gelbach–Miller / Roodman.
     Uses pyfixest feols (wildboottest fails on absorbed FE designs).
+    When G <= 12, enumerates all 2^G sign vectors (deterministic/exact).
     """
+    result = _restricted_wcb_pyfixest_detail(
+        formula_full,
+        formula_restricted,
+        data,
+        param,
+        cluster_col,
+        n_draws,
+        seed,
+        min_draws=min_draws,
+    )
+    return float(result.get("pvalue", float("nan")))
+
+
+def _restricted_wcb_pyfixest_detail(
+    formula_full: str,
+    formula_restricted: str,
+    data: pd.DataFrame,
+    param: str,
+    cluster_col: str,
+    n_draws: int,
+    seed: int,
+    min_draws: int = 20,
+) -> Dict[str, Any]:
+    """Function summary: restricted WCB with p-value floor and enumeration metadata.
+
+    Parameters:
+    - formula_full: unrestricted pyfixest formula.
+    - formula_restricted: null-imposed formula.
+    - data: estimation sample with y and cluster_col.
+    - param: coefficient name under test.
+    - cluster_col: cluster column.
+    - n_draws: bootstrap replications when G > 12.
+    - seed: RNG seed.
+    - min_draws: minimum successful draws required.
+
+    Returns:
+    - Dict with pvalue, p_floor, enumerated, n_clusters, n_draws_used, beta.
+    """
+    empty: Dict[str, Any] = {
+        "pvalue": float("nan"),
+        "p_floor": float("nan"),
+        "enumerated": False,
+        "n_clusters": 0,
+        "n_draws_used": 0,
+        "beta": float("nan"),
+    }
     try:
         from pyfixest.estimation import feols
     except ImportError:
-        return float("nan")
+        return empty
     if len(data) < 30 or data[cluster_col].nunique() < 2:
-        return float("nan")
+        return empty
     try:
         data = _drop_singleton_entities(data, cluster_col)
         if len(data) < 30 or data[cluster_col].nunique() < 2:
-            return float("nan")
+            return empty
         fit_u = feols(formula_full, data=data, vcov={"CRV1": cluster_col})
         fit_r = feols(formula_restricted, data=data, vcov={"CRV1": cluster_col})
         b0 = _coef_from_fit(fit_u, param)
         if not np.isfinite(b0):
-            return float("nan")
+            return empty
         y_hat = np.asarray(fit_r.predict(), dtype=np.float64)
         resid = np.asarray(fit_r.resid(), dtype=np.float64)
         codes, _ = pd.factorize(data[cluster_col].astype(str))
         n_clust = int(codes.max()) + 1 if len(codes) else 0
         if n_clust < 2:
-            return float("nan")
-        rng = np.random.default_rng(seed)
+            return empty
+        weight_matrix, enumerated, p_floor = _rademacher_weight_matrix(n_clust, n_draws, seed)
         betas: List[float] = []
         base = data.copy()
-        for _ in range(n_draws):
-            weights = rng.choice([-1.0, 1.0], size=n_clust)
+        for row in weight_matrix:
             boot = base.copy()
-            boot["y"] = y_hat + resid * weights[codes]
+            boot["y"] = y_hat + resid * row[codes]
             fit_b = feols(formula_full, data=boot, vcov={"CRV1": cluster_col})
             b = _coef_from_fit(fit_b, param)
             if np.isfinite(b):
                 betas.append(b)
-        if len(betas) < min_draws:
-            return float("nan")
+        min_required = 1 if enumerated else min_draws
+        if len(betas) < min_required:
+            return empty
         arr = np.asarray(betas)
-        return float(min(1.0, max(0.0, np.mean(np.abs(arr) >= abs(b0)))))
+        p = float(min(1.0, max(0.0, np.mean(np.abs(arr) >= abs(b0)))))
+        if enumerated and np.isfinite(p_floor):
+            p = max(p_floor, p)
+        return {
+            "pvalue": p,
+            "p_floor": p_floor if enumerated else float("nan"),
+            "enumerated": enumerated,
+            "n_clusters": n_clust,
+            "n_draws_used": int(len(betas)),
+            "beta": float(b0),
+        }
     except Exception as exc:
         logger.debug("restricted WCB failed: %s", exc)
-    return float("nan")
+    return empty
 
 
 def wild_cluster_bootstrap_p(
@@ -443,6 +521,57 @@ def wild_cluster_bootstrap_p(
     full = f"y ~ treat_post | {entity_col} + {time_col}"
     rest = f"y ~ 1 | {entity_col} + {time_col}"
     return _restricted_wcb_pyfixest(full, rest, work, "treat_post", cluster_col, n_draws, seed)
+
+
+def wild_cluster_bootstrap_cross_language_static(
+    df: pd.DataFrame,
+    treat_col: str = "is_english",
+    y_col: str = "y",
+    cluster_col: str = "subreddit",
+    n_draws: int = DEFAULT_WCB_DRAWS,
+    seed: int = 42,
+) -> Dict[str, Any]:
+    """Function summary: subreddit WCB for cross_language static post:EN during ban.
+
+    Full: y ~ post + IT + post_IT | author + time_id
+    Restricted: y ~ post + IT | author + time_id
+    Uses adaptive Rademacher enumeration when G <= 12.
+
+    Parameters:
+    - df: comment panel with post, treat_col, author, time_id, subreddit, outcome.
+    - treat_col: language treatment column (is_english).
+    - y_col: outcome column.
+    - cluster_col: subreddit cluster column.
+    - n_draws: bootstrap draws when G > 12.
+    - seed: RNG seed.
+
+    Returns:
+    - Dict with pvalue, p_floor, enumerated, n_clusters, beta, estimation_note.
+    """
+    work = df.copy()
+    work["y"] = pd.to_numeric(work[y_col], errors="coerce")
+    work = work.dropna(subset=["y", "author", "time_id"])
+    work["author"] = work["author"].astype(str)
+    work["time_id"] = work["time_id"].astype(str)
+    work["post"] = work["post"].astype(float)
+    work["IT"] = pd.to_numeric(work[treat_col], errors="coerce").fillna(0).astype(float)
+    work["post_IT"] = work["post"] * work["IT"]
+    if cluster_col not in work.columns or len(work) < 30:
+        return {
+            "pvalue": float("nan"),
+            "p_floor": float("nan"),
+            "enumerated": False,
+            "n_clusters": 0,
+            "beta": float("nan"),
+            "estimation_note": "insufficient_obs",
+        }
+    full = "y ~ post + IT + post_IT | author + time_id"
+    rest = "y ~ post + IT | author + time_id"
+    detail = _restricted_wcb_pyfixest_detail(
+        full, rest, work, "post_IT", cluster_col, n_draws, seed
+    )
+    detail["estimation_note"] = "ok" if np.isfinite(detail.get("pvalue", np.nan)) else "wcb_failed"
+    return detail
 
 
 def wild_cluster_bootstrap_static_prepped(

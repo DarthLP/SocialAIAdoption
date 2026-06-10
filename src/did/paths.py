@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
-from typing import Any, Dict, Literal, Tuple
+from typing import Any, Dict, Literal, Optional, Tuple
 
 from src.config_utils import tables_subdir
 
@@ -39,31 +39,51 @@ def did_panels_dir(config: Dict[str, Any], kind: PanelKind) -> Path:
     return did_root(config) / "panels" / kind
 
 
-def did_estimates_dir(config: Dict[str, Any], *, weighted: bool = False) -> Path:
+def _estimates_root_name(*, weighted: bool = False, variant: Optional[str] = None) -> str:
+    """Function summary: resolve estimates/ subdirectory name for baseline, weighted, or variant runs."""
+    if weighted:
+        return "estimates_weighted"
+    if variant:
+        return f"estimates_{variant}"
+    return "estimates"
+
+
+def did_estimates_dir(
+    config: Dict[str, Any],
+    *,
+    weighted: bool = False,
+    variant: Optional[str] = None,
+) -> Path:
     """Function summary: estimates/ root for DiD outputs.
 
     Parameters:
     - config: loaded YAML.
     - weighted: when True, use parallel ``estimates_weighted/`` tree.
+    - variant: when set (e.g. ``exbantopic``), use ``estimates_{variant}/``.
 
     Returns:
     - Path to estimates/ directory.
     """
-    name = "estimates_weighted" if weighted else "estimates"
-    return did_root(config) / name
+    return did_root(config) / _estimates_root_name(weighted=weighted, variant=variant)
 
 
-def did_summary_dir(config: Dict[str, Any], *, weighted: bool = False) -> Path:
+def did_summary_dir(
+    config: Dict[str, Any],
+    *,
+    weighted: bool = False,
+    variant: Optional[str] = None,
+) -> Path:
     """Function summary: estimates/summary/ for master and sliced summaries.
 
     Parameters:
     - config: loaded YAML.
     - weighted: when True, use estimates_weighted/ root.
+    - variant: optional parallel estimates tree (e.g. exbantopic).
 
     Returns:
     - Path to summary/ directory.
     """
-    return did_estimates_dir(config, weighted=weighted) / "summary"
+    return did_estimates_dir(config, weighted=weighted, variant=variant) / "summary"
 
 
 def did_adopter_ddd_dir(config: Dict[str, Any]) -> Path:
@@ -118,32 +138,99 @@ def did_gsynth_inference_path(config: Dict[str, Any], outcome_id: str, bin_days:
     return did_gsynth_dir(config) / f"inference_{outcome_id}_{int(bin_days)}d.csv"
 
 
-def did_summary_paths(config: Dict[str, Any], *, weighted: bool = False) -> Tuple[Path, Path]:
+def did_gsynth_v2_dir(config: Dict[str, Any]) -> Path:
+    """Function summary: estimates/gsynth_v2/ for demeaned SC with pre-fit gate.
+
+    Parameters:
+    - config: loaded YAML.
+
+    Returns:
+    - Path to gsynth_v2 estimates directory.
+    """
+    return did_estimates_dir(config) / "gsynth_v2"
+
+
+def did_gsynth_v2_att_path(config: Dict[str, Any], outcome_id: str, bin_days: int = 3) -> Path:
+    """Function summary: ATT path CSV for gsynth v2 run.
+
+    Parameters:
+    - config: loaded YAML.
+    - outcome_id: outcome slug.
+    - bin_days: calendar bin width (1 or 3).
+
+    Returns:
+    - Path to att_{outcome}_{bin}d.csv under gsynth_v2/.
+    """
+    return did_gsynth_v2_dir(config) / f"att_{outcome_id}_{int(bin_days)}d.csv"
+
+
+def did_gsynth_v2_inference_path(config: Dict[str, Any], outcome_id: str, bin_days: int = 3) -> Path:
+    """Function summary: inference summary CSV for gsynth v2 run.
+
+    Parameters:
+    - config: loaded YAML.
+    - outcome_id: outcome slug.
+    - bin_days: calendar bin width.
+
+    Returns:
+    - Path to inference_{outcome}_{bin}d.csv under gsynth_v2/.
+    """
+    return did_gsynth_v2_dir(config) / f"inference_{outcome_id}_{int(bin_days)}d.csv"
+
+
+def gsynth_v2_figure_dir(config: Dict[str, Any]) -> Path:
+    """Function summary: figures directory for gsynth v2 pre-fit diagnostic overlays.
+
+    Parameters:
+    - config: loaded YAML.
+
+    Returns:
+    - Path to results/figures/.../did/gsynth_v2/.
+    """
+    from src.config_utils import figures_subdir
+
+    return figures_subdir(config, "did") / "gsynth_v2"
+
+
+def did_summary_paths(
+    config: Dict[str, Any],
+    *,
+    weighted: bool = False,
+    variant: Optional[str] = None,
+) -> Tuple[Path, Path]:
     """Function summary: master did_summary.csv and labeled variant paths.
 
     Parameters:
     - config: loaded YAML.
     - weighted: when True, use estimates_weighted/ root.
+    - variant: optional parallel estimates tree (e.g. exbantopic).
 
     Returns:
     - Tuple of (did_summary.csv, did_summary_labeled.csv) paths.
     """
-    summary_dir = did_summary_dir(config, weighted=weighted)
+    summary_dir = did_summary_dir(config, weighted=weighted, variant=variant)
     return summary_dir / "did_summary.csv", summary_dir / "did_summary_labeled.csv"
 
 
-def did_family_estimates_dir(config: Dict[str, Any], family: str, *, weighted: bool = False) -> Path:
+def did_family_estimates_dir(
+    config: Dict[str, Any],
+    family: str,
+    *,
+    weighted: bool = False,
+    variant: Optional[str] = None,
+) -> Path:
     """Function summary: estimates/{family}/ for per-outcome tables.
 
     Parameters:
     - config: loaded YAML.
     - family: outcome family id (lexical, semantic_axis, wordfish_*, ...).
     - weighted: when True, use estimates_weighted/ root.
+    - variant: optional parallel estimates tree (e.g. exbantopic).
 
     Returns:
     - Path to family estimates directory.
     """
-    return did_estimates_dir(config, weighted=weighted) / family
+    return did_estimates_dir(config, weighted=weighted, variant=variant) / family
 
 
 def did_outcome_table_path(
@@ -153,6 +240,7 @@ def did_outcome_table_path(
     outcome_id: str,
     *,
     weighted: bool = False,
+    variant: Optional[str] = None,
 ) -> Path:
     """Function summary: nested path for coefficients, robustness, or event_study CSV.
 
@@ -162,11 +250,14 @@ def did_outcome_table_path(
     - table_kind: coefficients | robustness | event_study.
     - outcome_id: outcome slug.
     - weighted: when True, use estimates_weighted/ root.
+    - variant: optional parallel estimates tree (e.g. exbantopic).
 
     Returns:
     - Full path, e.g. estimates/lexical/coefficients/aggression_rate.csv.
     """
-    return did_family_estimates_dir(config, family, weighted=weighted) / table_kind / f"{outcome_id}.csv"
+    return did_family_estimates_dir(
+        config, family, weighted=weighted, variant=variant
+    ) / table_kind / f"{outcome_id}.csv"
 
 
 def did_legacy_coefficient_path(config: Dict[str, Any], outcome_id: str) -> Path:
@@ -196,7 +287,12 @@ def did_headline_event_study_table_path(config: Dict[str, Any], outcome_id: str)
 
 
 def did_event_study_path(
-    config: Dict[str, Any], family: str, outcome_id: str, *, weighted: bool = False
+    config: Dict[str, Any],
+    family: str,
+    outcome_id: str,
+    *,
+    weighted: bool = False,
+    variant: Optional[str] = None,
 ) -> Path:
     """Function summary: event-study coefficient table for one outcome.
 
@@ -205,11 +301,14 @@ def did_event_study_path(
     - family: outcome family id.
     - outcome_id: outcome slug.
     - weighted: when True, use estimates_weighted/ root.
+    - variant: optional parallel estimates tree (e.g. exbantopic).
 
     Returns:
     - Path to event_study/{outcome_id}.csv.
     """
-    return did_outcome_table_path(config, family, "event_study", outcome_id, weighted=weighted)
+    return did_outcome_table_path(
+        config, family, "event_study", outcome_id, weighted=weighted, variant=variant
+    )
 
 
 def did_aggregated_event_study_path(

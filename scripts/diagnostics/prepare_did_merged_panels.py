@@ -86,6 +86,11 @@ def parse_args() -> argparse.Namespace:
     """Function summary: parse CLI arguments."""
     parser = argparse.ArgumentParser(description="Merge circumvention onto DiD-ready Reddit panels.")
     parser.add_argument("--config", type=str, default="config/italy_polarization_setup.yaml")
+    parser.add_argument(
+        "--exclude-ban-topic",
+        action="store_true",
+        help="Use *_exbantopic descriptives/semantic panels and write *_exbantopic DiD CSVs.",
+    )
     return parser.parse_args()
 
 
@@ -108,6 +113,8 @@ def _merge_country_daily(
     geo_map: dict,
     bin_days: int,
     launch: str,
+    *,
+    file_suffix: str = "",
 ) -> None:
     """Function summary: bin lexical country panels and merge geo-matched circumvention."""
     circ_path = circum_dir / f"circumvention_panel_by_geo_{bin_days}d.csv"
@@ -119,14 +126,14 @@ def _merge_country_daily(
 
     specs: List[tuple[str, Sequence[str], str]] = [
         (
-            "daily_country_panel.csv",
+            f"daily_country_panel{file_suffix}.csv",
             ("country_panel",),
-            f"did_country_panel_{bin_days}d.csv",
+            f"did_country_panel_{bin_days}d{file_suffix}.csv",
         ),
         (
-            "daily_country_panel_by_universe_slice.csv",
+            f"daily_country_panel_by_universe_slice{file_suffix}.csv",
             ("country_panel", "universe_slice"),
-            f"did_country_panel_by_universe_slice_{bin_days}d.csv",
+            f"did_country_panel_by_universe_slice_{bin_days}d{file_suffix}.csv",
         ),
     ]
     for src_name, entity_cols, out_name in specs:
@@ -152,11 +159,11 @@ def _merge_country_daily(
         )
 
 
-def _merge_semantic_panels(semantic_dir: Path, did_dir: Path) -> None:
+def _merge_semantic_panels(semantic_dir: Path, did_dir: Path, *, file_suffix: str = "") -> None:
     """Function summary: write semantic DiD tables from panels (Italy *_it columns only)."""
     for slug in SEMANTIC_PANEL_SLUGS:
         for bin_days in PANEL_BIN_DAYS:
-            src = semantic_dir / f"semantic_axis_panel_{slug}_{bin_days}d.csv"
+            src = semantic_dir / f"semantic_axis_panel_{slug}_{bin_days}d{file_suffix}.csv"
             if not src.is_file():
                 continue
             panel = pd.read_csv(src)
@@ -173,7 +180,7 @@ def _merge_semantic_panels(semantic_dir: Path, did_dir: Path) -> None:
                     )
             out = _prepare_semantic_did_frame(panel)
             slug_out = slug.replace("by_", "")
-            out_path = did_dir / f"did_semantic_{slug_out}_{bin_days}d.csv"
+            out_path = did_dir / f"did_semantic_{slug_out}_{bin_days}d{file_suffix}.csv"
             out.to_csv(out_path, index=False)
             print(
                 f"[prepare_did_merged_panels] semantic {slug} bin={bin_days}d "
@@ -189,6 +196,7 @@ def main() -> None:
     circ_cfg = load_circumvention_config(config)
     geo_map = dict(circ_cfg.get("country_panel_geo_map") or {})
     _, _, launch, _ = event_dates_from_config(config)
+    file_suffix = "_exbantopic" if args.exclude_ban_topic else ""
 
     descriptives_dir = tables_subdir(config, "descriptives")
     circum_dir = tables_subdir(config, "circumvention")
@@ -199,8 +207,16 @@ def main() -> None:
     semantic_out_dir.mkdir(parents=True, exist_ok=True)
 
     for bin_days in PANEL_BIN_DAYS:
-        _merge_country_daily(descriptives_dir, circum_dir, country_dir, geo_map, bin_days, launch)
-    _merge_semantic_panels(semantic_dir, semantic_out_dir)
+        _merge_country_daily(
+            descriptives_dir,
+            circum_dir,
+            country_dir,
+            geo_map,
+            bin_days,
+            launch,
+            file_suffix=file_suffix,
+        )
+    _merge_semantic_panels(semantic_dir, semantic_out_dir, file_suffix=file_suffix)
     print(
         f"[prepare_did_merged_panels] wrote country -> {country_dir}, semantic -> {semantic_out_dir}",
         flush=True,

@@ -633,6 +633,7 @@ user_week:
     - extremity
     - net_ideology
     - complexity_index
+    - ttr_50w
     - sem_axis_ideology
     - sem_axis_emotion
     - sem_axis_aggression
@@ -646,7 +647,7 @@ user_week:
     components:
       - feature: ai_style_rate_100w
         sign: 1
-      - feature: semicolon_rate_100w
+      - feature: ttr_50w
         sign: 1
       - feature: em_dash_rate_100w
         sign: 1

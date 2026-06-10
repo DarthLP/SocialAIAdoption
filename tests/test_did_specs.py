@@ -5,11 +5,13 @@ from __future__ import annotations
 import pandas as pd
 
 from src.did.specs import (
+    CONTROL_FAMILIES,
     CONTROL_LEXICONS,
     ITALY_FAMILIES,
     StrategySpec,
     activate_post_phases_from_config,
     apply_post_window,
+    default_strategies,
     event_study_overlay_strategies,
     filter_strategy_sample,
     headline_base_strategies,
@@ -38,6 +40,18 @@ def test_early_ban_post_window() -> None:
     df = pd.DataFrame({"rel_day": [-1, 0, 6, 7, 14], "post": 1})
     out = apply_post_window(df, "early_ban_7d", "")
     assert list(out["post"]) == [0, 1, 1, 0, 0]
+
+
+def test_default_strategies_early_ban_vs_control() -> None:
+    """Function summary: single-control-family strategies include early_ban_7d clones."""
+    specs = default_strategies()
+    early_vs = [
+        s
+        for s in specs
+        if s.post_mode == "early_ban_7d" and s.strategy_id.startswith("cross_country_vs_")
+    ]
+    assert len(early_vs) == len(CONTROL_FAMILIES)
+    assert {s.control_family for s in early_vs} == set(CONTROL_FAMILIES)
 
 
 def test_post_first_2bd_calendar_window() -> None:

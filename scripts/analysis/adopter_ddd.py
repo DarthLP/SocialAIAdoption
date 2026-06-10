@@ -31,7 +31,7 @@ SCHEMES = {
     "scheme3_tech": "scheme3_tech",
 }
 POST_SPECS = ("full_ban", "post_first_2bd", "post_short_3d")
-DEFAULT_OUTCOMES = ("style_index_full", "ai_style_rate", "net_ideology")
+DEFAULT_OUTCOMES = ("style_index_llm", "ai_style_rate", "net_ideology")
 
 
 def _setup_project_root() -> Path:
@@ -50,7 +50,7 @@ PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import load_config, tables_subdir  # noqa: E402
 from src.did.bucket_estimate import estimate_adopter_ddd_static  # noqa: E402
-from src.did.outcomes import outcome_spec  # noqa: E402
+from src.did.outcomes import OUTCOME_REGISTRY, outcome_spec  # noqa: E402
 from src.did.panels import comment_panel_available, load_comment_panel  # noqa: E402
 from src.did.paths import did_adopter_ddd_dir  # noqa: E402
 from src.did.specs import apply_post_window, rel_day_from_date  # noqa: E402
@@ -87,7 +87,10 @@ def _apply_spec(df: pd.DataFrame, spec: str, launch: str) -> pd.DataFrame:
 
 
 def _outcome_col(outcome_id: str) -> str:
-    """Function summary: panel column for outcome_id."""
+    """Function summary: comment-panel column for outcome_id (not subreddit-day means)."""
+    for spec in OUTCOME_REGISTRY:
+        if spec.outcome_id == outcome_id and spec.panel_kind == "comment":
+            return spec.column
     spec = outcome_spec(outcome_id)
     return spec.column if spec is not None else outcome_id
 
@@ -172,14 +175,14 @@ def main() -> None:
     print(f"[adopter_ddd] wrote {summary} ({len(df)} rows)", flush=True)
     placebo = df[
         (df["scheme"] == "scheme2_reversion_placebo")
-        & (df["outcome_id"] == "style_index_full")
+        & (df["outcome_id"] == "style_index_llm")
         & (df.get("estimation_note", pd.Series(dtype=str)) == "ok")
     ]
     if not placebo.empty:
         r = placebo.iloc[0]
         p = r.get("pvalue", float("nan"))
         print(
-            f"[adopter_ddd] STOP 7c — scheme2 reversion placebo style_index_full "
+            f"[adopter_ddd] STOP 7c — scheme2 reversion placebo style_index_llm "
             f"beta={r.get('beta', float('nan')):.4g} p={p:.4g} "
             f"(fails if p<0.05 under reversion null)",
             flush=True,

@@ -16,6 +16,7 @@ How to apply/run:
   .venv/bin/python scripts/analysis/did_event_study.py --config config/italy_polarization_setup.yaml --families lexical
   .venv/bin/python scripts/analysis/did_event_study.py --config config/italy_polarization_setup.yaml --outcome net_ideology --no-figures
   .venv/bin/python scripts/analysis/did_event_study.py --config config/italy_polarization_setup.yaml --figures-only
+  .venv/bin/python scripts/analysis/did_event_study.py --config config/italy_polarization_setup.yaml --figures-only --exclude-ban-topic --families lexical,semantic_axis
 """
 
 from __future__ import annotations
@@ -76,6 +77,8 @@ from src.did.outcomes import (  # noqa: E402
 from src.did.figure_readmes import write_all_family_readmes  # noqa: E402
 from src.did.outputs import (  # noqa: E402
     EventStudySeries,
+    ITALY_THESIS_POLITICAL_EVENT_MARKERS,
+    dedupe_summary_rows,
     figure_path,
     plot_event_study,
     plot_placebo_robustness,
@@ -166,6 +169,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Precision weights column (e.g. n_comments). Writes to estimates_weighted/ and did_weighted figures.",
     )
+    parser.add_argument(
+        "--exclude-ban-topic",
+        action="store_true",
+        help="Use ban-topic-excluded panels; write to estimates_exbantopic/ (additive).",
+    )
     return parser.parse_args()
 
 
@@ -210,6 +218,8 @@ def _filter_families(families: List[str], config: Dict[str, Any]) -> List[str]:
 
 def _panel_for_outcome(panels: AnalysisPanels, spec: OutcomeSpec) -> pd.DataFrame:
     """Function summary: pick subreddit, slice, or author panel for outcome family."""
+    if spec.family == "quantity":
+        return panels.sub_quantity
     if spec.panel_kind == "comment":
         return panels.comment_1d
     if spec.panel_kind == "author_day":
@@ -268,13 +278,132 @@ def _entity_col_for_strategy(strat: StrategySpec, oc: OutcomeSpec, default_entit
     return default_entity
 
 
+def _figures_subdir_name(*, weighted: bool = False, variant: Optional[str] = None) -> str:
+    """Function summary: figures subtree name matching estimate variant (did / did_weighted / did_exbantopic).
+
+    Parameters:
+    - weighted: when True, use did_weighted figures root.
+    - variant: optional parallel estimate tree (e.g. exbantopic).
+
+    Returns:
+    - Subdirectory name under results/figures/<study>/.
+    """
+    if weighted:
+        return "did_weighted"
+    if variant == "exbantopic":
+        return "did_exbantopic"
+    return "did"
+
+
+def _plot_thesis_event_study_variant(
+    es_df: pd.DataFrame,
+    outcome_id: str,
+    family: str,
+    fig_dir: Path,
+    *,
+    variant: Optional[str] = None,
+) -> None:
+    """Function summary: write thesis event-study PNG with Italian political-event markers.
+
+    Parameters:
+    - es_df: saved event-study coefficients (same input as default plot).
+    - outcome_id: outcome slug.
+    - family: outcome family id (e.g. semantic_axis).
+    - fig_dir: did figures root.
+    - variant: estimate variant; skipped for exbantopic/weighted parallel trees.
+
+    Returns:
+    - None; writes {outcome_id}_events.png when outcome is sem_axis_emotion on baseline did.
+    """
+    if variant is not None or outcome_id != "sem_axis_emotion":
+        return
+    plot_event_study(
+        es_df,
+        outcome_id,
+        figure_path(fig_dir, family, "event_study", f"{outcome_id}_events"),
+        event_markers=ITALY_THESIS_POLITICAL_EVENT_MARKERS,
+    )
+
+
+def _regenerate_saved_outcome_figures(
+    config: Dict[str, Any],
+    summary_df: pd.DataFrame,
+    fig_dir: Path,
+    *,
+    families: Optional[List[str]] = None,
+    weighted: bool = False,
+    variant: Optional[str] = None,
+) -> None:
+    """Function summary: rebuild event-study and robustness PNGs from saved per-outcome CSVs.
+
+    Parameters:
+    - config: loaded study YAML.
+    - summary_df: master summary used to enumerate outcomes.
+    - fig_dir: target figures root (did, did_exbantopic, or did_weighted).
+    - families: optional outcome-family filter.
+    - weighted: read from estimates_weighted/ when True.
+    - variant: optional parallel estimates tree (e.g. exbantopic).
+
+    Returns:
+    - None; writes PNGs under fig_dir.
+    """
+    fam_filter = set(families) if families else None
+    for oid in summary_df["outcome_id"].unique():
+        rows = summary_df[summary_df["outcome_id"] == oid]
+        fam = str(rows["outcome_family"].iloc[0])
+        if fam_filter is not None and fam not in fam_filter:
+            continue
+        oid_str = str(oid)
+        es_path = did_event_study_path(
+            config, fam, oid_str, weighted=weighted, variant=variant
+        )
+        if es_path.is_file():
+            es_df = pd.read_csv(es_path)
+            if not es_df.empty:
+                plot_event_study(
+                    es_df,
+                    oid_str,
+                    figure_path(fig_dir, fam, "event_study", oid_str),
+                )
+                _plot_thesis_event_study_variant(
+                    es_df, oid_str, fam, fig_dir, variant=variant
+                )
+        if fam == "lexical":
+            rob_path = did_outcome_table_path(
+                config, fam, "robustness", oid_str, weighted=weighted, variant=variant
+            )
+            if rob_path.is_file():
+                rob_df = pd.read_csv(rob_path)
+                if not rob_df.empty:
+                    plot_placebo_robustness(
+                        rob_df,
+                        oid_str,
+                        figure_path(fig_dir, fam, "robustness", f"placebo_{oid_str}"),
+                    )
+
+
 def run_figures_only(
     config: Dict[str, Any],
     families: List[str],
     full_coefplots: bool = False,
+    *,
+    weighted: bool = False,
+    exclude_ban_topic: bool = False,
 ) -> None:
-    """Function summary: rebuild DiD figures from saved did_summary.csv."""
-    summary_path, _ = did_summary_paths(config)
+    """Function summary: rebuild DiD figures from saved did_summary.csv (baseline, weighted, or exbantopic).
+
+    Parameters:
+    - config: loaded study YAML.
+    - families: optional outcome-family filter.
+    - full_coefplots: also write coefplots_full/ per outcome.
+    - weighted: read estimates_weighted/ and write did_weighted figures.
+    - exclude_ban_topic: read estimates_exbantopic/ and write did_exbantopic figures.
+
+    Returns:
+    - None; writes PNGs and family READMEs under the matching figures subtree.
+    """
+    variant = "exbantopic" if exclude_ban_topic else None
+    summary_path, _ = did_summary_paths(config, weighted=weighted, variant=variant)
     if not summary_path.is_file():
         raise FileNotFoundError(
             f"Missing {summary_path}; run estimation first or pass a valid --config."
@@ -283,13 +412,22 @@ def run_figures_only(
     if summary_df.empty:
         print("[did_event_study] empty did_summary.csv", flush=True)
         return
-    fig_dir = figures_subdir(config, "did")
+    fig_subdir = _figures_subdir_name(weighted=weighted, variant=variant)
+    fig_dir = figures_subdir(config, fig_subdir)
     fig_dir.mkdir(parents=True, exist_ok=True)
     outcome_ids_by_family = regenerate_did_figures(
         summary_df,
         fig_dir,
         families=families or None,
         full_coefplots=full_coefplots,
+    )
+    _regenerate_saved_outcome_figures(
+        config,
+        summary_df,
+        fig_dir,
+        families=families or None,
+        weighted=weighted,
+        variant=variant,
     )
     write_all_family_readmes(
         fig_dir,
@@ -378,6 +516,25 @@ def _write_legacy_coefficient_alias(config: Dict[str, Any], oc: OutcomeSpec, coe
     export.to_csv(path, index=False)
 
 
+def _log_sem_axis_emotion_early_ban(summary_df: pd.DataFrame) -> None:
+    """Function summary: print early_ban_7d cross_country* rows for sem_axis_emotion to stdout."""
+    if summary_df.empty or "outcome_id" not in summary_df.columns:
+        return
+    eb = summary_df[
+        (summary_df["outcome_id"] == "sem_axis_emotion")
+        & summary_df["spec"].astype(str).eq("early_ban_7d")
+        & summary_df["strategy_id"].astype(str).str.match(r"cross_country")
+    ].drop_duplicates(subset=["strategy_id", "spec"], keep="last")
+    if eb.empty:
+        return
+    cols = [c for c in ("strategy_id", "beta", "se", "pvalue", "n_clusters") if c in eb.columns]
+    print(
+        "[did_event_study] sem_axis_emotion early_ban_7d by strategy:\n"
+        + eb[cols].to_string(index=False),
+        flush=True,
+    )
+
+
 def run_estimation(
     config: Dict[str, Any],
     families: List[str],
@@ -392,11 +549,13 @@ def run_estimation(
     comment_sample_frac: Optional[float] = None,
     comment_max_rows: Optional[int] = None,
     weights: Optional[str] = None,
+    exclude_ban_topic: bool = False,
 ) -> None:
     """Function summary: main estimation loop."""
     activate_post_phases_from_config(config)
     weighted = bool(weights)
     weights_col = weights if weighted else None
+    variant = "exbantopic" if exclude_ban_topic else None
     families = _filter_families(families, config)
     panels = build_analysis_panels(
         config,
@@ -404,9 +563,11 @@ def run_estimation(
         author_wordfish_spec=author_wordfish_spec,
         comment_sample_frac=comment_sample_frac,
         comment_max_rows=comment_max_rows,
+        variant=variant,
     )
     if (
         panels.sub_v1.empty
+        and panels.sub_quantity.empty
         and panels.auth_v1.empty
         and panels.auth_v2.empty
         and panels.auth_semantic.empty
@@ -416,9 +577,10 @@ def run_estimation(
         print("[did_event_study] no estimation panels loaded", flush=True)
         return
     _, _, launch, _ = event_dates_from_config(config)
-    estimates_dir = did_estimates_dir(config, weighted=weighted)
-    summary_dir = did_summary_dir(config, weighted=weighted)
-    fig_dir = figures_subdir(config, "did_weighted" if weighted else "did")
+    estimates_dir = did_estimates_dir(config, weighted=weighted, variant=variant)
+    summary_dir = did_summary_dir(config, weighted=weighted, variant=variant)
+    fig_subdir = _figures_subdir_name(weighted=weighted, variant=variant)
+    fig_dir = figures_subdir(config, fig_subdir)
     estimates_dir.mkdir(parents=True, exist_ok=True)
     summary_dir.mkdir(parents=True, exist_ok=True)
     fig_dir.mkdir(parents=True, exist_ok=True)
@@ -432,7 +594,7 @@ def run_estimation(
 
     summary_rows: List[Dict[str, Any]] = []
     outcome_ids_by_family: Dict[str, List[str]] = {}
-    summary_path, _labeled_path = did_summary_paths(config, weighted=weighted)
+    summary_path, _labeled_path = did_summary_paths(config, weighted=weighted, variant=variant)
 
     auth_has_en_v1, auth_has_de_v1 = author_panel_has_multi_lang(panels.auth_v1)
     auth_has_en_v2, auth_has_de_v2 = author_panel_has_multi_lang(panels.auth_v2)
@@ -607,7 +769,9 @@ def run_estimation(
             )
             if not es_df.empty:
                 es_df["outcome_id"] = oc.outcome_id
-                es_path = did_event_study_path(config, oc.family, oc.outcome_id, weighted=weighted)
+                es_path = did_event_study_path(
+                    config, oc.family, oc.outcome_id, weighted=weighted, variant=variant
+                )
                 es_path.parent.mkdir(parents=True, exist_ok=True)
                 es_df.to_csv(
                     es_path,
@@ -619,13 +783,20 @@ def run_estimation(
                         oc.outcome_id,
                         figure_path(fig_dir, oc.family, "event_study", oc.outcome_id),
                     )
+                    _plot_thesis_event_study_variant(
+                        es_df,
+                        oc.outcome_id,
+                        oc.family,
+                        fig_dir,
+                        variant=variant,
+                    )
 
         if oc.family == "lexical":
             rob = run_robustness_grid(panel, StrategySpec("cross_country_all"), y_col, launch)
             rob_df = pd.DataFrame(rob)
             rob_df["outcome_id"] = oc.outcome_id
             rob_path = did_outcome_table_path(
-                config, oc.family, "robustness", oc.outcome_id, weighted=weighted
+                config, oc.family, "robustness", oc.outcome_id, weighted=weighted, variant=variant
             )
             rob_path.parent.mkdir(parents=True, exist_ok=True)
             rob_df.to_csv(rob_path, index=False)
@@ -639,7 +810,7 @@ def run_estimation(
         if coef_detail:
             coef_df = pd.DataFrame(coef_detail)
             coef_path = did_outcome_table_path(
-                config, oc.family, "coefficients", oc.outcome_id, weighted=weighted
+                config, oc.family, "coefficients", oc.outcome_id, weighted=weighted, variant=variant
             )
             coef_path.parent.mkdir(parents=True, exist_ok=True)
             coef_df.to_csv(coef_path, index=False)
@@ -652,14 +823,9 @@ def run_estimation(
         summary_df = pd.DataFrame(summary_rows)
         if summary_path.is_file():
             old = pd.read_csv(summary_path)
-            summary_df = pd.concat([old, summary_df], ignore_index=True)
-            dedupe_cols = [
-                c
-                for c in ("outcome_id", "strategy_id", "spec", "weights")
-                if c in summary_df.columns
-            ]
-            summary_df = summary_df.drop_duplicates(subset=dedupe_cols, keep="last")
+            summary_df = dedupe_summary_rows(pd.concat([old, summary_df], ignore_index=True))
         write_summary_exports(summary_df, summary_dir, launch)
+        _log_sem_axis_emotion_early_ban(summary_df)
 
         if write_figures:
             regenerate_did_figures(
@@ -695,7 +861,13 @@ def main() -> None:
     config = load_config(PROJECT_ROOT / args.config)
     families = [f.strip() for f in args.families.split(",") if f.strip()]
     if args.figures_only:
-        run_figures_only(config, families, full_coefplots=args.full_coefplots)
+        run_figures_only(
+            config,
+            families,
+            full_coefplots=args.full_coefplots,
+            weighted=bool(args.weights),
+            exclude_ban_topic=args.exclude_ban_topic,
+        )
         return
     outcome_ids = None
     if args.outcomes:
@@ -714,6 +886,7 @@ def main() -> None:
         comment_sample_frac=args.comment_sample_frac,
         comment_max_rows=args.comment_max_rows,
         weights=args.weights,
+        exclude_ban_topic=args.exclude_ban_topic,
     )
 
 

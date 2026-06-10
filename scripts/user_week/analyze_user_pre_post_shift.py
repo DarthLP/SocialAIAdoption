@@ -106,6 +106,7 @@ ENRICHED_FEATURE_SPECS: Dict[str, Dict[str, str]] = {
     "issue_migration_rate_100w": {"kind": "mean"},
     "issue_economy_rate_100w": {"kind": "mean"},
     "issue_culture_rate_100w": {"kind": "mean"},
+    "ttr_50w": {"kind": "mean"},
     "comment_length_words": {"kind": "mean"},
     "avg_words_per_sentence_comment": {"kind": "mean"},
     "complexity_index": {"kind": "complexity"},
@@ -345,9 +346,10 @@ def freeze_composite_zscale(
         return scales
     weights = panel_pre["n_words"].astype(float).values
     for component, _sign in composite_components:
-        if component not in panel_pre.columns:
+        col = panel_value_column_for_feature(component, panel_pre.columns)
+        if col not in panel_pre.columns:
             continue
-        values = pd.to_numeric(panel_pre[component], errors="coerce").fillna(0.0).values
+        values = pd.to_numeric(panel_pre[col], errors="coerce").fillna(0.0).values
         mean = weighted_mean(values, weights)
         sd = weighted_std(values, weights)
         if not np.isfinite(sd) or sd == 0:
@@ -371,13 +373,14 @@ def add_composite_to_panel(
     composite = pd.Series(0.0, index=out.index)
     any_component = False
     for component, sign in composite_components:
-        if component not in out.columns or component not in scales:
+        col = panel_value_column_for_feature(component, out.columns)
+        if col not in out.columns or component not in scales:
             continue
         mean = float(scales[component]["mean"])
         sd = float(scales[component]["sd"])
         if not np.isfinite(sd) or sd == 0:
             continue
-        z = (pd.to_numeric(out[component], errors="coerce").fillna(0.0) - mean) / sd
+        z = (pd.to_numeric(out[col], errors="coerce").fillna(0.0) - mean) / sd
         composite = composite + sign * z
         any_component = True
     out[composite_name] = composite if any_component else float("nan")
@@ -797,7 +800,7 @@ def per_user_summary(
     if panel.empty:
         return pd.DataFrame(), pd.DataFrame()
 
-    audit_df = _build_audit_df(panel, thresholds=thresholds)
+    audit_df = build_audit_df(panel, thresholds=thresholds)
     panel_authors = audit_df.loc[audit_df["audit_category"] == "panel", "author"].astype(str).tolist()
     if not panel_authors:
         return pd.DataFrame(), audit_df
@@ -1152,7 +1155,7 @@ def write_methods_note(path: Path, ban_iso_str: str) -> None:
         "",
         "Composites (from config user_week composites):",
         "  polarization_composite_user_week: extremity, net_ideology, other_side_salience, aggression.",
-        "  ai_style_composite_user_week: ai_style, semicolon, em_dash, hedging rates.",
+        "  ai_style_composite_user_week: ai_style, ttr_50w, em_dash, hedging rates.",
         "  semantic_composite_user_week: sem_axis_ideology, emotion, aggression (within-language shift interpretation).",
         "Legacy comment_features stack: scripts/archive/user_week/ with ai_adoption config.",
         "Z-scales are frozen on the pre-ban user-week pool and persisted to",

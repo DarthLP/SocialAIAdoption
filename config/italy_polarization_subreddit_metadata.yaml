@@ -64,6 +64,22 @@ nsfw_subreddits:
   - SeduzioneItalia
   - ItalianDicks
 
+# Italian Q&A / advice forums (ChatGPT substitutes for asking strangers).
+qa_advice_subreddits:
+  - DomandeDaReddit
+  - Avvocati
+  - ItaliaPersonalFinance
+  - ItaliaCareerAdvice
+  - commercialisti
+  - Relazioni
+  - Universitaly
+
+# Optional robustness add-ons (not in headline qa_advice list).
+qa_advice_subreddits_robustness:
+  - ItalyInformatica
+  - adhd_italia
+  - askTransgender_Italy
+
 # Meme / humor forums (routed to it_others only when word-weighted political rate < threshold).
 meme_humor_subreddits:
   - BancaDelMeme

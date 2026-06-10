@@ -1131,6 +1131,124 @@ def subreddit_forum_type(config: Dict[str, Any], subreddit: str, project_root: O
     return infer_subreddit_forum_type(config, subreddit, metadata=meta)
 
 
+ITALY_QA_TOPIC_FAMILIES = frozenset({"it_political", "it_others"})
+HUB_TOPIC_FAMILIES = frozenset({"de", "eu", "uk"})
+
+
+def qa_advice_subreddit_list(
+    config: Dict[str, Any],
+    *,
+    include_robustness: bool = False,
+    project_root: Optional[Path] = None,
+) -> List[str]:
+    """Function summary: return configured Italian Q&A/advice subreddit names.
+
+    Parameters:
+    - config: loaded study YAML.
+    - include_robustness: when True, append qa_advice_subreddits_robustness entries.
+    - project_root: optional repo root for metadata path resolution.
+
+    Returns:
+    - Sorted unique subreddit names from metadata YAML.
+    """
+    meta = load_subreddit_metadata(config, project_root=project_root)
+    raw = meta.get("qa_advice_subreddits", [])
+    names: List[str] = []
+    if isinstance(raw, list):
+        names.extend(str(item).strip() for item in raw if str(item).strip())
+    if include_robustness:
+        extra = meta.get("qa_advice_subreddits_robustness", [])
+        if isinstance(extra, list):
+            names.extend(str(item).strip() for item in extra if str(item).strip())
+    return sorted(set(names))
+
+
+def qa_advice_subreddit_set(
+    config: Dict[str, Any],
+    *,
+    include_robustness: bool = False,
+    project_root: Optional[Path] = None,
+) -> frozenset[str]:
+    """Function summary: set view of qa_advice_subreddit_list for membership tests."""
+    return frozenset(qa_advice_subreddit_list(config, include_robustness=include_robustness, project_root=project_root))
+
+
+def is_qa_advice_subreddit(
+    subreddit: str,
+    config: Dict[str, Any],
+    *,
+    include_robustness: bool = False,
+    project_root: Optional[Path] = None,
+) -> bool:
+    """Function summary: test whether a subreddit is in the Q&A/advice treated list.
+
+    Parameters:
+    - subreddit: subreddit name.
+    - config: loaded study YAML.
+    - include_robustness: include robustness add-ons when True.
+    - project_root: optional repo root for metadata path.
+
+    Returns:
+    - True when subreddit is a configured Q&A/advice forum.
+    """
+    return str(subreddit) in qa_advice_subreddit_set(
+        config, include_robustness=include_robustness, project_root=project_root
+    )
+
+
+def non_qa_italian_control_subreddits(
+    config: Dict[str, Any],
+    *,
+    include_robustness: bool = False,
+    project_root: Optional[Path] = None,
+) -> List[str]:
+    """Function summary: Italian forums in scope that are not Q&A/advice (within-Italy controls).
+
+    Parameters:
+    - config: loaded study YAML.
+    - include_robustness: exclude robustness Q&A add-ons from the treated set.
+    - project_root: optional repo root for metadata path.
+
+    Returns:
+    - Sorted subreddit names with topic_family in it_political/it_others, not in qa list,
+      excluding profile_user subreddits (u_*).
+    """
+    family_map = subreddit_family_map(config)
+    qa_set = qa_advice_subreddit_set(
+        config, include_robustness=include_robustness, project_root=project_root
+    )
+    out: List[str] = []
+    for subreddit, family in family_map.items():
+        if family not in ITALY_QA_TOPIC_FAMILIES:
+            continue
+        if subreddit in qa_set:
+            continue
+        if PROFILE_USER_PATTERN.match(str(subreddit)):
+            continue
+        out.append(str(subreddit))
+    return sorted(set(out))
+
+
+def qa_substitution_panel_subreddits(config: Dict[str, Any]) -> List[str]:
+    """Function summary: subreddits for the Q&A substitution panel (Italian + DE/EU/UK hubs).
+
+    Parameters:
+    - config: loaded study YAML.
+
+    Returns:
+    - Sorted unique subreddit names (Italian families + hub families, excluding u_* profiles).
+    """
+    family_map = subreddit_family_map(config)
+    out: List[str] = []
+    for subreddit, family in family_map.items():
+        if family not in ITALY_QA_TOPIC_FAMILIES and family not in HUB_TOPIC_FAMILIES:
+            continue
+        if PROFILE_USER_PATTERN.match(str(subreddit)):
+            continue
+        out.append(str(subreddit))
+    return sorted(set(out))
+
+
 def subreddit_primary_lexicon(config: Dict[str, Any], subreddit: str, project_root: Optional[Path] = None) -> str:
     """Function summary: return primary lexicon language code for a subreddit.
 

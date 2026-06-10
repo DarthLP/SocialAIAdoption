@@ -151,6 +151,26 @@ def count_em_dash_extended(text: str) -> int:
     return int(unicode_total + ascii_total)
 
 
+def resolve_em_dash_count(
+    em_dash_count: Optional[float] = None,
+    em_dash_extended_count: Optional[float] = None,
+) -> float:
+    """Function summary: pick the best em-dash count from shard columns.
+
+    Parameters:
+    - em_dash_count: legacy narrow or updated extended count on shard.
+    - em_dash_extended_count: explicit extended counter when present.
+
+    Returns:
+    - Non-negative count (max of available columns).
+    """
+    base = float(em_dash_count or 0.0)
+    if em_dash_extended_count is None:
+        return max(base, 0.0)
+    ext = float(em_dash_extended_count or 0.0)
+    return max(base, ext, 0.0)
+
+
 def colon_cleaned_text(text: str) -> str:
     """Function summary: strip URL spans and clock times before colon counting.
 
@@ -330,7 +350,7 @@ def score_comment_style(
     sentence_count = sum(1 for _ in SENTENCE_SPLIT_RE.finditer(text))
     sentence_count = max(sentence_count, 1 if n_words > 0 else 0)
     total_word_chars = int(sum(len(w) for w in words))
-    em_dash_count = int(text.count("\u2014"))
+    em_dash_count = int(count_em_dash_extended(text))
     curly_quote_count = count_curly_quotes(text)
     straight_quote_count = count_straight_quotes(text)
     quote_all_count = int(curly_quote_count + straight_quote_count)
@@ -349,7 +369,7 @@ def score_comment_style(
         "exclamation_count": int(text.count("!")),
         "semicolon_count": int(text.count(";")),
         "em_dash_count": em_dash_count,
-        "em_dash_extended_count": int(count_em_dash_extended(text)),
+        "em_dash_extended_count": em_dash_count,
         "en_dash_count": int(text.count("\u2013")),
         "ascii_double_hyphen_count": int(count_ascii_double_hyphen(text)),
         "colon_count": int(count_colon_strict(text)),

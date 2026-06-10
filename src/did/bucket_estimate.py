@@ -70,12 +70,18 @@ def _feols_fit(
     n_cl = int(data[cluster_col].nunique()) if cluster_col in data.columns else data["author"].nunique()
     vcov: Any = {"CRV1": cluster_col} if cluster_col in data.columns else "iid"
     try:
+        fit_data = data
         feols_kw: Dict[str, Any] = {"vcov": vcov}
         if weights_col and weights_col in data.columns:
-            feols_kw["weights"] = (
-                pd.to_numeric(data[weights_col], errors="coerce").astype(float).fillna(1.0).clip(lower=1e-9)
+            fit_data = data.copy()
+            fit_data[weights_col] = (
+                pd.to_numeric(fit_data[weights_col], errors="coerce")
+                .astype(float)
+                .fillna(1.0)
+                .clip(lower=1e-9)
             )
-        fit = feols(formula, data=data, **feols_kw)
+            feols_kw["weights"] = weights_col
+        fit = feols(formula, data=fit_data, **feols_kw)
         coefs = fit.coef()
         beta = float(coefs.loc[coef_name]) if coef_name in coefs.index else float("nan")
         se_frame = fit.se()
@@ -272,6 +278,250 @@ def _es_rows_from_fit(
             }
         )
     return rows
+
+
+def _prep_panel_y(
+    df: pd.DataFrame,
+    y_col: str,
+    entity_col: str,
+    time_col: str = "time_id",
+) -> pd.DataFrame:
+    """Function summary: drop missing y/entity/time; ensure IT and rel columns for panel ES.
+
+    Parameters:
+    - df: subreddit-day (or entity-day) panel.
+    - y_col: outcome column.
+    - entity_col: entity FE key (e.g. subreddit).
+    - time_col: calendar time FE key.
+
+    Returns:
+    - Cleaned copy with y, entity_col, time_id, IT as float.
+    """
+    work = df.copy()
+    work["y"] = pd.to_numeric(work[y_col], errors="coerce")
+    work = work.dropna(subset=["y", entity_col, time_col, "IT"])
+    work[entity_col] = work[entity_col].astype(str)
+    work[time_col] = work[time_col].astype(str)
+    work["IT"] = work["IT"].astype(float)
+    return work
+
+
+def _weighted_mean(values: np.ndarray, weights: np.ndarray) -> float:
+    """Function summary: weighted mean ignoring NaNs with positive weights."""
+    ok = np.isfinite(values) & np.isfinite(weights) & (weights > 0)
+    if not ok.any():
+        return 0.0
+    return float(np.average(values[ok], weights=weights[ok]))
+
+
+def _twfe_within_transform(
+    values: pd.Series,
+    entity: pd.Series,
+    time: pd.Series,
+    *,
+    weights: pd.Series | None = None,
+    max_iter: int = 500,
+    tol: float = 1e-12,
+) -> np.ndarray:
+    """Function summary: alternating-projection TWFE within transform for one column.
+
+    Parameters:
+    - values: outcome or regressor series.
+    - entity: entity id series aligned to values.
+    - time: time id series aligned to values.
+    - weights: optional positive weights for weighted TWFE absorption.
+    - max_iter: maximum demeaning iterations.
+    - tol: convergence tolerance on max abs change.
+
+    Returns:
+    - Within-transformed numpy array.
+    """
+    v = pd.to_numeric(values, errors="coerce").astype(float).values.copy()
+    ent = entity.astype(str).values
+    tim = time.astype(str).values
+    w = None
+    if weights is not None:
+        w = (
+            pd.to_numeric(weights, errors="coerce")
+            .astype(float)
+            .fillna(1.0)
+            .clip(lower=1e-9)
+            .values
+        )
+    for _ in range(max_iter):
+        v_old = v.copy()
+        for e in np.unique(ent):
+            mask = ent == e
+            if w is None:
+                v[mask] -= np.nanmean(v[mask])
+            else:
+                v[mask] -= _weighted_mean(v[mask], w[mask])
+        for t in np.unique(tim):
+            mask = tim == t
+            if w is None:
+                v[mask] -= np.nanmean(v[mask])
+            else:
+                v[mask] -= _weighted_mean(v[mask], w[mask])
+        if np.nanmax(np.abs(v - v_old)) < tol:
+            break
+    return v
+
+
+def manual_panel_it_event_study(
+    df: pd.DataFrame,
+    y_col: str,
+    entity_col: str = "subreddit",
+    time_col: str = "time_id",
+    rel_col: str = "rel_period",
+    ref_period: int = -1,
+    window: int = 30,
+    cluster_col: str = "subreddit",
+    bin_days: int = 3,
+    weights_col: str | None = None,
+) -> pd.DataFrame:
+    """Function summary: TWFE event study via within-demean y then OLS on IT×rel_bin dummies.
+
+    Parameters:
+    - df: panel with IT, rel_col, entity_col, time_col, outcome.
+    - y_col: outcome column.
+    - entity_col: entity FE key.
+    - time_col: time FE key.
+    - rel_col: event-time bin column.
+    - ref_period: omitted reference bin.
+    - window: trim rel_col to [-window, window].
+    - cluster_col: cluster for CRV1 SEs.
+    - bin_days: rel_day display multiplier.
+    - weights_col: optional WLS weights aligned with pyfixest run.
+
+    Returns:
+    - Coefficient DataFrame (rel_col, gamma, se, ci_*, pvalue, rel_day).
+    """
+    work = _prep_panel_y(df, y_col, entity_col, time_col)
+    if rel_col not in work.columns:
+        work[rel_col] = (work["rel_day"] // bin_days).astype(int)
+    work = work[work[rel_col].between(-window, window)]
+    if work.empty or work["IT"].nunique() < 2:
+        return pd.DataFrame()
+    w_series = None
+    if weights_col and weights_col in work.columns:
+        w_series = (
+            pd.to_numeric(work[weights_col], errors="coerce")
+            .astype(float)
+            .fillna(1.0)
+            .clip(lower=1e-9)
+        )
+    y_tilde = _twfe_within_transform(
+        work["y"], work[entity_col], work[time_col], weights=w_series
+    )
+    interact_cols: List[str] = []
+    col_to_k: Dict[str, int] = {}
+    for k in sorted(work[rel_col].unique()):
+        ki = int(k)
+        if ki == ref_period:
+            continue
+        col = f"{_es_dummy_name(ki)}_IT"
+        work[col] = ((work[rel_col] == ki) * work["IT"]).astype(float)
+        if work[col].sum() == 0:
+            continue
+        interact_cols.append(col)
+        col_to_k[col] = ki
+    if not interact_cols:
+        return pd.DataFrame()
+    x_tilde = np.column_stack(
+        [
+            _twfe_within_transform(work[c], work[entity_col], work[time_col], weights=w_series)
+            for c in interact_cols
+        ]
+    )
+    try:
+        import statsmodels.api as sm
+    except ImportError:
+        return pd.DataFrame()
+    model = sm.OLS(y_tilde, x_tilde)
+    if cluster_col in work.columns:
+        fit = model.fit(cov_type="cluster", cov_kwds={"groups": work[cluster_col].astype(str)})
+    else:
+        fit = model.fit()
+    rows: List[Dict[str, Any]] = []
+    for i, col in enumerate(interact_cols):
+        k = col_to_k[col]
+        b = float(fit.params[i])
+        se = float(fit.bse[i])
+        rows.append(
+            {
+                rel_col: k,
+                "rel_day": int(k) * bin_days if rel_col == "rel_period" else k,
+                "gamma": b,
+                "se": se,
+                "ci_low": b - 1.96 * se if np.isfinite(se) else float("nan"),
+                "ci_high": b + 1.96 * se if np.isfinite(se) else float("nan"),
+                "pvalue": float(2 * (1 - stats.norm.cdf(abs(b / se)))) if se and se > 0 else float("nan"),
+            }
+        )
+    return pd.DataFrame(rows).sort_values(rel_col) if rows else pd.DataFrame()
+
+
+def estimate_panel_it_event_study(
+    df: pd.DataFrame,
+    y_col: str,
+    entity_col: str = "subreddit",
+    time_col: str = "time_id",
+    rel_col: str = "rel_period",
+    ref_period: int = -1,
+    window: int = 30,
+    cluster_col: str = "subreddit",
+    bin_days: int = 3,
+    weights_col: str | None = None,
+) -> Tuple[Dict[str, Any], pd.DataFrame]:
+    """Function summary: y ~ i(rel_period, IT, ref) | entity + time_id with CRV1 clustering.
+
+    Parameters:
+    - df: subreddit-day panel with rel_period, IT, entity_col, time_col.
+    - y_col: outcome column.
+    - entity_col: entity FE key (e.g. subreddit).
+    - time_col: calendar time FE key.
+    - rel_col: event-time bin column.
+    - ref_period: omitted reference bin.
+    - window: trim rel_col to [-window, window].
+    - cluster_col: cluster for SEs.
+    - bin_days: rel_day display multiplier.
+    - weights_col: optional regression weights (e.g. n_comments).
+
+    Returns:
+    - Tuple (summary dict, coefficient DataFrame with rel_period, gamma, se, ci).
+    """
+    work = _prep_panel_y(df, y_col, entity_col, time_col)
+    if rel_col not in work.columns:
+        if "rel_day" in work.columns:
+            work[rel_col] = (work["rel_day"] // bin_days).astype(int)
+        else:
+            return _empty_result(len(work), 0, "no_rel_col"), pd.DataFrame()
+    work = work[work[rel_col].between(-window, window)]
+    if work.empty or work["IT"].nunique() < 2:
+        return _empty_result(len(work), 0, "no_event_study_variation"), pd.DataFrame()
+    try:
+        from pyfixest.estimation import feols
+    except ImportError:
+        return _empty_result(len(work), 0, "pyfixest_missing"), pd.DataFrame()
+    n_cl = int(work[cluster_col].nunique()) if cluster_col in work.columns else int(work[entity_col].nunique())
+    vcov: Any = {"CRV1": cluster_col} if cluster_col in work.columns else "iid"
+    formula = f"y ~ i({rel_col}, IT, ref={ref_period}) | {entity_col} + {time_col}"
+    try:
+        feols_kw: Dict[str, Any] = {"vcov": vcov}
+        fit_work = work
+        if weights_col and weights_col in work.columns:
+            fit_work = work.copy()
+            fit_work[weights_col] = (
+                pd.to_numeric(fit_work[weights_col], errors="coerce").astype(float).fillna(1.0).clip(lower=1e-9)
+            )
+            feols_kw["weights"] = weights_col
+        fit = feols(formula, data=fit_work, **feols_kw)
+    except Exception:
+        return _empty_result(len(work), n_cl, "event_study_failed"), pd.DataFrame()
+    rows = _es_rows_from_fit(fit, rel_col, ref_period, bin_days=bin_days, gamma_col="gamma")
+    es_df = pd.DataFrame(rows).sort_values(rel_col) if rows else pd.DataFrame()
+    summary = _pack_result(float("nan"), float("nan"), len(work), n_cl, estimation_note="ok")
+    return summary, es_df
 
 
 def estimate_comment_it_event_study(

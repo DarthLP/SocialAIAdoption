@@ -66,7 +66,7 @@ def main() -> None:
         if not sub_dir.is_dir():
             continue
         for shard in sub_dir.glob("*.parquet"):
-            cols = ["author", "body", "date_utc", "topic_family", "style_index_full", "subreddit"]
+            cols = ["author", "body", "date_utc", "topic_family", "style_index_llm", "subreddit"]
             try:
                 df = pd.read_parquet(shard, columns=[c for c in cols if True])
             except Exception:
@@ -80,7 +80,7 @@ def main() -> None:
                 fam = str(grp["topic_family"].iloc[0]) if "topic_family" in grp.columns else "unknown"
                 country = _country_from_family(fam)
                 n = len(grp)
-                si = grp["style_index_full"] if "style_index_full" in grp.columns else pd.Series(dtype=float)
+                si = grp["style_index_llm"] if "style_index_llm" in grp.columns else pd.Series(dtype=float)
                 si_mean = float(si.mean()) if si.notna().any() else float("nan")
                 mention = bool(grp["body"].astype(str).str.contains(MENTION_RE).any()) if "body" in grp.columns else False
                 tech = bool((grp.get("subreddit", pd.Series(dtype=str)).astype(str) == SCHEME3_TECH_SUB).any())
@@ -90,7 +90,7 @@ def main() -> None:
                         "country": country,
                         "topic_family": fam,
                         "n_comments_march": n,
-                        "style_index_full_mean_march": si_mean,
+                        "style_index_llm_mean_march": si_mean,
                         "scheme3_mention": int(mention),
                         "scheme3_tech": int(tech),
                     }
@@ -102,9 +102,9 @@ def main() -> None:
     out_rows = []
     for country, grp in meta.groupby("country", observed=True):
         p90 = grp["n_comments_march"].quantile(0.9)
-        si_valid = grp.dropna(subset=["style_index_full_mean_march"])
+        si_valid = grp.dropna(subset=["style_index_llm_mean_march"])
         si_valid = si_valid[si_valid["n_comments_march"] >= 5]
-        q75 = si_valid["style_index_full_mean_march"].quantile(0.75) if len(si_valid) >= 4 else float("nan")
+        q75 = si_valid["style_index_llm_mean_march"].quantile(0.75) if len(si_valid) >= 4 else float("nan")
         for _, r in grp.iterrows():
             out_rows.append(
                 {
@@ -114,9 +114,9 @@ def main() -> None:
                     "scheme1_inactive": int(r["n_comments_march"] < p90),
                     "scheme2_styletop": int(
                         r["n_comments_march"] >= 5
-                        and np.isfinite(r["style_index_full_mean_march"])
+                        and np.isfinite(r["style_index_llm_mean_march"])
                         and np.isfinite(q75)
-                        and r["style_index_full_mean_march"] >= q75
+                        and r["style_index_llm_mean_march"] >= q75
                     ),
                     "scheme2_firsthalf": 0,
                     "scheme3_tech": int(r["scheme3_tech"] and country == "IT"),
@@ -127,22 +127,22 @@ def main() -> None:
     half = ("2023-03-01", "2023-03-16")
     for shard in shard_root.rglob("*.parquet"):
         try:
-            df = pd.read_parquet(shard, columns=["author", "date_utc", "style_index_full", "topic_family"])
+            df = pd.read_parquet(shard, columns=["author", "date_utc", "style_index_llm", "topic_family"])
         except Exception:
             continue
         df["date_utc"] = df["date_utc"].astype(str).str[:10]
         m = (df["date_utc"] >= half[0]) & (df["date_utc"] < half[1])
         df = df[m]
-        if df.empty or "style_index_full" not in df.columns:
+        if df.empty or "style_index_llm" not in df.columns:
             continue
         for author, grp in df.groupby("author"):
             if len(grp) < 5:
                 continue
             country = _country_from_family(str(grp["topic_family"].iloc[0]))
-            q75h = grp["style_index_full"].quantile(0.75)
+            q75h = grp["style_index_llm"].quantile(0.75)
             mask = out["author"] == str(author)
             if mask.any():
-                out.loc[mask, "scheme2_firsthalf"] = int(grp["style_index_full"].mean() >= q75h)
+                out.loc[mask, "scheme2_firsthalf"] = int(grp["style_index_llm"].mean() >= q75h)
     did_dir = tables_subdir(config, "did")
     did_dir.mkdir(parents=True, exist_ok=True)
     path = did_dir / "adopter_flags.csv"

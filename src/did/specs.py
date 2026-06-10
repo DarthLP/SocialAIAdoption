@@ -613,7 +613,16 @@ def default_strategies() -> Sequence[StrategySpec]:
         StrategySpec(f"cross_country_vs_{c}", control_family=c, description=f"IT vs {c} only")
         for c in sorted(CONTROL_FAMILIES)
     ]
-    return tuple(base + topic_strats + list(early) + list(early14) + by_control)
+    early_vs_control = [
+        StrategySpec(
+            f"cross_country_vs_{c}",
+            control_family=c,
+            description=f"IT vs {c} only (first 7 ban days)",
+            post_mode="early_ban_7d",
+        )
+        for c in sorted(CONTROL_FAMILIES)
+    ]
+    return tuple(base + topic_strats + list(early) + list(early14) + by_control + list(early_vs_control))
 
 
 def italy_only_strategies() -> tuple[StrategySpec, ...]:

@@ -124,7 +124,9 @@ PLOT_TYPE_README: dict[str, tuple[str, str]] = {
     ),
     "event_study": (
         "Event study",
-        "Dynamic γ_k coefficients (treated×relative day); ref day −1; ban at k=0.",
+        "Dynamic γ_k coefficients (treated×relative day); ref day −1; ban at k=0. "
+        "Thesis overlay `{outcome}_events.png` (e.g. `sem_axis_emotion_events.png`) adds "
+        "Italian political-event vertical markers on the same estimates.",
     ),
     "robustness": (
         "Robustness checks",

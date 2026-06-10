@@ -29,7 +29,7 @@ def _synthetic_comment_panel() -> pd.DataFrame:
                     "post": float(post),
                     "IT": float(it),
                     "flag": float(flag),
-                    "style_index_full": 0.1 + 0.2 * post + 0.3 * it + 0.5 * post * it * flag,
+                    "style_index_llm": 0.1 + 0.2 * post + 0.3 * it + 0.5 * post * it * flag,
                     "subreddit": "x",
                     "time_id": "2023-04-01" if post else "2023-03-15",
                 }
@@ -40,6 +40,6 @@ def _synthetic_comment_panel() -> pd.DataFrame:
 def test_adopter_ddd_returns_cell_counts() -> None:
     """Function summary: DDD estimator reports IT×post×flag cell sizes."""
     panel = _synthetic_comment_panel()
-    res = estimate_adopter_ddd_static(panel, y_col="style_index_full", flag_col="flag")
+    res = estimate_adopter_ddd_static(panel, y_col="style_index_llm", flag_col="flag")
     assert res.get("cell_IT1_post1_flag1", 0) > 0
     assert "n_obs" in res

@@ -47,18 +47,23 @@ SEMAXIS_EXTENDED_KEYS = (
     "sem_axis_anti_establishment",
 )
 
-SEMAXIS_SCORE_KEYS = SEMAXIS_LEGACY_KEYS + SEMAXIS_EXTENDED_KEYS
+SEMAXIS_EMOTION_PRUNED_KEYS = ("sem_axis_emotion_pruned",)
+
+SEMAXIS_SCORE_KEYS = SEMAXIS_LEGACY_KEYS + SEMAXIS_EXTENDED_KEYS + SEMAXIS_EMOTION_PRUNED_KEYS
 
 # Axis name -> parquet column for cosine scores.
 AXIS_SCORE_COLUMNS: Dict[str, str] = {
     "ideology": "sem_axis_ideology",
     "emotion": "sem_axis_emotion",
+    "emotion_pruned": "sem_axis_emotion_pruned",
     "aggression": "sem_axis_aggression",
     "economic": "sem_axis_economic",
     "cultural": "sem_axis_cultural",
     "nationalism": "sem_axis_nationalism",
     "anti_establishment": "sem_axis_anti_establishment",
 }
+
+EMOTION_PRUNED_AXIS_NAMES: Tuple[str, ...] = ("emotion_pruned",)
 
 LEGACY_AXIS_NAMES: Tuple[str, ...] = ("ideology", "emotion", "aggression")
 EXTENDED_AXIS_NAMES: Tuple[str, ...] = (
@@ -481,11 +486,23 @@ def load_seed_poles(
     if not aggression_neg:
         aggression_neg = list(NEUTRAL_POLE_TERMS.get(lang, NEUTRAL_POLE_TERMS["en"]))
 
+    emotion_pruned_neg = _read_pole_txt(poles_dir / f"emotion_neg_{lang}_pruned.txt")
+    if not emotion_pruned_neg:
+        leakage = {
+            "it": {"dati", "statistica", "analisi", "evidenza", "prova", "metodo", "stima", "risultato"},
+            "en": {"data", "statistics", "analysis", "evidence", "proof", "method", "estimate", "result"},
+            "de": {"daten", "statistik", "analyse", "beleg", "beweis", "methode", "schätzung", "ergebnis"},
+        }
+        drop = leakage.get(lang, set())
+        emotion_pruned_neg = [t for t in emotion_neg if t not in drop]
+
     poles: Dict[str, List[str]] = {
         "ideology_pos": ideology_pos,
         "ideology_neg": ideology_neg,
         "emotion_pos": emotion_pos,
         "emotion_neg": emotion_neg,
+        "emotion_pruned_pos": emotion_pos,
+        "emotion_pruned_neg": emotion_pruned_neg,
         "aggression_pos": aggression_pos,
         "aggression_neg": aggression_neg,
     }

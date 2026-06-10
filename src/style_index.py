@@ -1,14 +1,15 @@
 """
 Script summary:
-Formula-based LLM-style index (v1) from comment-level stylometric features.
+Shared stylometric features and calibration for the LLM style index (style_index_llm).
 
 Functionality:
 - Readability indices (Gulpease IT, Amstad DE, Flesch RE EN).
 - Pre-period winsorized z-scores with persisted clip bounds (Mar 1–30, 2023).
-- style_index_full and style_index_reduced (frozen SIGNS v1, 2026-06-04).
+- Delegates composite scoring to src.style_index_llm.
 
 How to apply/run:
-- Imported by feature and panel scripts; see scripts/diagnostics/fit_style_index_stats.py.
+- validate_style_index_weights.py → style_index_stats.json
+- compute_style_index_on_shards.py writes style_index_llm columns on shards.
 """
 
 from __future__ import annotations
@@ -27,31 +28,53 @@ from src.political_lexicon import political_rate_100w, score_comment_ai_style
 
 PRE_PERIOD_START = "2023-03-01"
 PRE_PERIOD_END = "2023-03-30"
-STATS_VERSION = "v1_frozen_2026-06-04"
+STATS_VERSION = "llm_2026-06-04"
+STYLE_INDEX_STATS_FILENAME = "style_index_stats.json"
 
-# Frozen signs (v1). formal_register_rate maps to ai_style_rate_100w column.
-SIGNS: Dict[str, int] = {
-    "log_len": +1,
-    "avg_words_per_sentence": +1,
+MIN_WORDS_FULL_INDEX = 20
+
+# Default signed-z map for LLM composite (hedging +1, exclamation -1).
+SIGNS_LLM: Dict[str, int] = {
+    "ai_style_rate_100w": 1,
+    "hedging_phrase_rate_100w": 1,
+    "avg_words_per_sentence": 1,
     "sentence_length_variance": -1,
-    "em_dash_rate_100w": +1,
-    "semicolon_colon_rate_100w": +1,
-    "hedging_phrase_rate_100w": +1,
-    "ai_style_rate_100w": +1,
     "exclamation_rate_100w": -1,
     "caps_word_share": -1,
+    "em_dash_rate_100w": 1,
+    "semicolon_colon_rate_100w": 1,
+    "em_dash_any": 1,
+    "semicolon_colon_any": 1,
+    "em_dash_x_ai_rate": 1,
+    "semicolon_x_ai_rate": 1,
 }
 
-FULL_INDEX_FEATURES: Tuple[str, ...] = tuple(SIGNS.keys())
-REDUCED_INDEX_FEATURES: Tuple[str, ...] = (
-    "log_len",
-    "em_dash_rate_100w",
-    "semicolon_colon_rate_100w",
+CALIBRATION_FEATURES: Tuple[str, ...] = (
+    "ai_style_rate_100w",
+    "hedging_phrase_rate_100w",
+    "avg_words_per_sentence",
+    "sentence_length_variance",
     "exclamation_rate_100w",
     "caps_word_share",
+    "em_dash_rate_100w",
+    "semicolon_colon_rate_100w",
+    "em_dash_any",
+    "semicolon_colon_any",
+    "em_dash_x_ai_rate",
+    "semicolon_x_ai_rate",
+    "log_len",
+    "ttr_50w",
 )
-MIN_FEATURES_FOR_INDEX = 3
-MIN_WORDS_FULL_INDEX = 20
+
+MIN_FEATURES_LLM_FULL = 4
+MIN_FEATURES_LLM_REDUCED = 1
+
+# Back-compat aliases for style_index_llm imports during migration.
+SIGNS_V3 = SIGNS_LLM
+V3_CALIBRATION_FEATURES = CALIBRATION_FEATURES
+MIN_FEATURES_LLM_V3_FULL = MIN_FEATURES_LLM_FULL
+MIN_FEATURES_LLM_V3_REDUCED = MIN_FEATURES_LLM_REDUCED
+STATS_VERSION_V3 = STATS_VERSION
 
 
 def count_sentences(text: str) -> int:
@@ -136,7 +159,7 @@ def comment_feature_dict(
     Returns:
     - Dict of feature name -> value.
     """
-    from src.comment_style import score_comment_style
+    from src.comment_style import count_em_dash_extended, score_comment_style
 
     ai = score_comment_ai_style(text, lang_code, project_root)
     style = score_comment_style(text, lang_code, project_root, enable_phrase_lexicons=True)
@@ -144,6 +167,8 @@ def comment_feature_dict(
     n_words_f = float(max(n_words, 0))
     semicolon = float(style.get("semicolon_count", 0) or 0)
     colon = float(style.get("colon_count", 0) or 0)
+    sc_count = int(semicolon + colon)
+    em_dash_n = int(count_em_dash_extended(text or ""))
     sc_rate = (
         100.0 * (semicolon + colon) / n_words_f if n_words_f > 0 else float("nan")
     )
@@ -152,7 +177,11 @@ def comment_feature_dict(
         "log_len": float(math.log1p(n_words_f)) if n_words_f > 0 else float("nan"),
         "avg_words_per_sentence": float(ai.get("avg_words_per_sentence", float("nan"))),
         "sentence_length_variance": float(ai.get("sentence_length_variance", float("nan"))),
-        "em_dash_rate_100w": political_rate_100w(int(ai.get("em_dash_count", 0) or 0), n_words),
+        "em_dash_count": float(em_dash_n),
+        "em_dash_extended_count": float(em_dash_n),
+        "em_dash_rate_100w": political_rate_100w(em_dash_n, n_words),
+        "em_dash_any": 1.0 if em_dash_n > 0 else 0.0,
+        "semicolon_colon_any": 1.0 if sc_count > 0 else 0.0,
         "semicolon_colon_rate_100w": sc_rate,
         "hedging_phrase_rate_100w": political_rate_100w(
             int(style.get("hedging_phrase_hits", 0) or 0), n_words
@@ -196,9 +225,12 @@ def fit_preperiod_stats(comments: pd.DataFrame) -> Dict[str, Any]:
     if "lang" not in work.columns:
         work["lang"] = work.get("primary_lexicon", pd.Series("", index=work.index)).astype(str)
 
-    out: Dict[str, Any] = {"version": STATS_VERSION, "pre_period": [PRE_PERIOD_START, PRE_PERIOD_END], "languages": {}}
-    feature_cols = [c for c in FULL_INDEX_FEATURES if c in work.columns]
-    feature_cols += [c for c in ("ttr_50w", "readability") if c in work.columns]
+    out: Dict[str, Any] = {
+        "version": STATS_VERSION,
+        "pre_period": [PRE_PERIOD_START, PRE_PERIOD_END],
+        "languages": {},
+    }
+    feature_cols = [c for c in CALIBRATION_FEATURES if c in work.columns]
 
     for lang, grp in work.groupby("lang", observed=True):
         lang_stats: Dict[str, Any] = {}
@@ -243,7 +275,12 @@ def _clip_feature(val: float, feat: str, lang_stats: Mapping[str, Any]) -> float
     return float(val)
 
 
-def _signed_z(val: float, feat: str, lang_stats: Mapping[str, Any]) -> float:
+def _signed_z(
+    val: float,
+    feat: str,
+    lang_stats: Mapping[str, Any],
+    signs: Optional[Mapping[str, int]] = None,
+) -> float:
     """Function summary: signed z-score for one feature using pre-period mu/sigma."""
     if not np.isfinite(val):
         return float("nan")
@@ -253,42 +290,57 @@ def _signed_z(val: float, feat: str, lang_stats: Mapping[str, Any]) -> float:
     if not np.isfinite(mu) or not np.isfinite(sd) or sd <= 0:
         return float("nan")
     z = (val - float(mu)) / float(sd)
-    sign = int(SIGNS.get(feat, 1))
+    sign_map = signs if signs is not None else SIGNS_LLM
+    sign = int(sign_map.get(feat, 1))
     return float(sign * z)
 
 
-def compute_index(
+def _weighted_mean_index(
+    features: Mapping[str, float],
+    feat_weights: Mapping[str, float],
+    lang_stats: Mapping[str, Any],
+    *,
+    signs: Mapping[str, int],
+    min_features: int,
+) -> float:
+    """Function summary: weighted mean of signed z-scores with renormalized weights."""
+    zs: list[float] = []
+    ws: list[float] = []
+    for feat, w in feat_weights.items():
+        raw = float(features.get(feat, float("nan")))
+        clipped = _clip_feature(raw, feat, lang_stats)
+        z = _signed_z(clipped, feat, lang_stats, signs=signs)
+        if np.isfinite(z) and w > 0:
+            zs.append(z)
+            ws.append(float(w))
+    if len(zs) < min_features:
+        return float("nan")
+    wsum = float(sum(ws))
+    if wsum <= 0:
+        return float("nan")
+    return float(sum(z * w / wsum for z, w in zip(zs, ws)))
+
+
+def compute_style_index_llm(
     features: Mapping[str, float],
     stats: Mapping[str, Any],
     lang_code: str,
-) -> Tuple[float, float]:
-    """Function summary: style_index_full and style_index_reduced from features + stats.
+) -> Dict[str, float]:
+    """Function summary: style_index_llm plus leave-one-out ablation columns.
 
     Parameters:
     - features: per-comment feature dict.
-    - stats: output of fit_preperiod_stats / load_style_index_stats.
+    - stats: calibration JSON (primary_candidate + bundle weights).
     - lang_code: language code.
 
     Returns:
-    - Tuple (style_index_full, style_index_reduced); NaN when insufficient features.
+    - Dict of column name -> index value.
     """
-    lang_stats = stats.get("languages", {}).get(str(lang_code).lower(), {})
-    n_words = float(features.get("n_words", 0) or 0)
+    from src.style_index_llm import compute_style_index_llm_columns  # noqa: WPS433
 
-    def _mean_index(feat_list: Sequence[str]) -> float:
-        zs: list[float] = []
-        for feat in feat_list:
-            raw = float(features.get(feat, float("nan")))
-            clipped = _clip_feature(raw, feat, lang_stats)
-            z = _signed_z(clipped, feat, lang_stats)
-            if np.isfinite(z):
-                zs.append(z)
-        if len(zs) < MIN_FEATURES_FOR_INDEX:
-            return float("nan")
-        return float(np.mean(zs))
+    return compute_style_index_llm_columns(features, stats, lang_code)
 
-    reduced = _mean_index(REDUCED_INDEX_FEATURES)
-    if n_words < MIN_WORDS_FULL_INDEX:
-        return float("nan"), reduced
-    full = _mean_index(FULL_INDEX_FEATURES)
-    return full, reduced
+
+def style_index_stats_filename() -> str:
+    """Function summary: sole calibration JSON filename."""
+    return STYLE_INDEX_STATS_FILENAME

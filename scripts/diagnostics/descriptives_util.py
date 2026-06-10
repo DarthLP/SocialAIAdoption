@@ -256,7 +256,7 @@ def grouped_trailing_daily_rolling(
     - date_col: date column name.
 
     Returns:
-    - Copy with numeric columns smoothed.
+    - Copy with numeric columns smoothed; raw NaN days stay NaN after rolling.
     """
     if df_daily.empty:
         return pd.DataFrame()
@@ -285,9 +285,12 @@ def grouped_trailing_daily_rolling(
         g = grp.sort_values(date_col).copy()
         g_indexed = g.set_index(date_col)
         original_cols = g_indexed.columns
-        rolled_numeric = g_indexed.loc[:, numeric_cols].rolling(
+        raw_numeric = g_indexed.loc[:, numeric_cols]
+        rolled_numeric = raw_numeric.rolling(
             window=f"{int(rolling_window_days)}D", min_periods=1
         ).mean()
+        # Re-mask: do not bridge NaN tails (e.g. churn right-censoring) with stale rolling means.
+        rolled_numeric = rolled_numeric.where(raw_numeric.notna())
         non_numeric = g_indexed.drop(columns=numeric_cols, errors="ignore")
         g_indexed = pd.concat([non_numeric, rolled_numeric], axis=1).reindex(columns=original_cols)
         g = g_indexed.reset_index()

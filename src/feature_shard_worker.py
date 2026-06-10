@@ -48,6 +48,7 @@ def feature_shard_worker(
     pass_name: str,
     config_path_str: str,
     project_root_str: str,
+    force_flag: str = "0",
 ) -> Tuple[str, str, str, int, float]:
     """Function summary: process-pool worker for one shard and feature pass.
 
@@ -55,9 +56,10 @@ def feature_shard_worker(
     - shard_str: absolute parquet path.
     - subreddit: subreddit name for logging.
     - lex_lang: primary lexicon language.
-    - pass_name: polarization, ai, style, or all.
+    - pass_name: polarization, semaxis, ai, style, bantopic, or all.
     - config_path_str: study YAML path.
     - project_root_str: repository root path.
+    - force_flag: "1" to recompute is_ban_topic when present.
 
     Returns:
     - Tuple (subreddit, shard_name, pass_name, rows, elapsed_sec).
@@ -73,4 +75,5 @@ def feature_shard_worker(
         pass_name,
         config_path_str,
         project_root_str,
+        force_flag,
     )

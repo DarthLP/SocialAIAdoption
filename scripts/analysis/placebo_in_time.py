@@ -73,7 +73,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--outcomes",
         type=str,
-        default="ai_style_rate,pole_share,sem_axis_emotion,net_ideology",
+        default="ai_style_rate,pole_share,sem_axis_emotion,net_ideology,aggression_rate,sem_axis_ideology_var",
         help="Comma-separated outcome_ids.",
     )
     parser.add_argument("--post-days", type=int, default=7, help="Fixed post-window length (primary).")

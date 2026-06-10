@@ -4,7 +4,7 @@ Fit pre-period style-index calibration (clip bounds, mu, sigma) from March 2023 
 
 Functionality:
 - Samples enriched comment shards, computes per-comment features, filters pre-period.
-- Writes results/tables/italy_polarization/did/style_index_stats.json.
+- Writes clip stats only; bundle weights come from validate_style_index_weights.py.
 
 How to apply/run:
   .venv/bin/python scripts/diagnostics/fit_style_index_stats.py --config config/italy_polarization_setup.yaml
@@ -37,19 +37,17 @@ def _setup_project_root() -> Path:
 PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import load_config, resolve_primary_subreddits, tables_subdir  # noqa: E402
-from src.style_index import comment_feature_dict, fit_preperiod_stats, save_style_index_stats  # noqa: E402
+from src.style_index import (  # noqa: E402
+    comment_feature_dict,
+    fit_preperiod_stats,
+    load_style_index_stats,
+    save_style_index_stats,
+    style_index_stats_filename,
+)
 
 
 def _read_shard(path: Path, columns: Sequence[str]) -> Optional[pd.DataFrame]:
-    """Function summary: read projected columns from one Parquet shard.
-
-    Parameters:
-    - path: shard path.
-    - columns: desired column names.
-
-    Returns:
-    - DataFrame subset or None if unreadable / no requested columns.
-    """
+    """Function summary: read projected columns from one Parquet shard."""
     try:
         import pyarrow.parquet as pq  # noqa: WPS433
 
@@ -68,14 +66,19 @@ def _read_shard(path: Path, columns: Sequence[str]) -> Optional[pd.DataFrame]:
 
 def parse_args() -> argparse.Namespace:
     """Function summary: CLI args."""
-    p = argparse.ArgumentParser(description="Fit style index pre-period stats.")
+    p = argparse.ArgumentParser(description="Fit style index pre-period clip stats.")
     p.add_argument("--config", default="config/italy_polarization_setup.yaml")
     p.add_argument("--max-shards", type=int, default=50)
+    p.add_argument(
+        "--merge-existing",
+        action="store_true",
+        help="Preserve bundles/primary_candidate from existing style_index_stats.json if present.",
+    )
     return p.parse_args()
 
 
 def main() -> None:
-    """Function summary: fit and save style_index_stats.json."""
+    """Function summary: fit and save style_index_stats.json clip calibration."""
     args = parse_args()
     config = load_config(PROJECT_ROOT / args.config)
     shard_root = Path(config["paths"]["interim_dir"]) / "cleaned_monthly_chunks"
@@ -90,7 +93,9 @@ def main() -> None:
             if df is None or df.empty:
                 continue
             for _, r in df.iterrows():
-                feats = comment_feature_dict(str(r.get("body", "")), str(r.get("primary_lexicon", "it")), PROJECT_ROOT)
+                feats = comment_feature_dict(
+                    str(r.get("body", "")), str(r.get("primary_lexicon", "it")), PROJECT_ROOT
+                )
                 feats["date_utc"] = str(r.get("date_utc", ""))[:10]
                 feats["lang"] = str(r.get("primary_lexicon", "it"))
                 rows.append(feats)
@@ -102,8 +107,19 @@ def main() -> None:
             f"No shards under {shard_root}; run feature enrichment on cleaned_monthly_chunks first."
         )
     stats = fit_preperiod_stats(pd.DataFrame(rows))
-    out = tables_subdir(config, "did") / "style_index_stats.json"
-    save_style_index_stats(stats, PROJECT_ROOT / out)
+    out = PROJECT_ROOT / tables_subdir(config, "did") / style_index_stats_filename()
+    if args.merge_existing and out.is_file():
+        prev = load_style_index_stats(out)
+        for key in ("primary_candidate", "tune_meta", "languages"):
+            if key in prev:
+                if key == "languages":
+                    for lang, block in prev.get("languages", {}).items():
+                        bundles = block.get("bundles")
+                        if bundles and lang in stats.get("languages", {}):
+                            stats["languages"][lang]["bundles"] = bundles
+                else:
+                    stats[key] = prev[key]
+    save_style_index_stats(stats, out)
     print(f"[fit_style_index_stats] wrote {out} langs={list(stats.get('languages', {}).keys())}", flush=True)
 
 

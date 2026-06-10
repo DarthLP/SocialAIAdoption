@@ -17,6 +17,27 @@ See `scripts/README.md` § "First-stage inference upgrades" for run commands.
 - `plot_polarization_descriptives.py` plots style-index daily metrics
 - Author×day panel: `log_len` in `WEIGHTED_OUTCOME_COLS`
 
+## Style index v2 (implemented)
+
+See `docs/plan_style_index_v2.md`. Commands:
+
+```bash
+.venv/bin/python scripts/diagnostics/fit_style_index_stats.py --config config/italy_polarization_setup.yaml --version v2
+.venv/bin/python scripts/features/compute_style_index_on_shards.py --config config/italy_polarization_setup.yaml --index-version all
+.venv/bin/python scripts/diagnostics/validate_style_index_gates.py --config config/italy_polarization_setup.yaml
+```
+
+## Validation tests (read-only; SIGNS v1 unchanged)
+
+Run after shard index pass:
+
+```bash
+.venv/bin/python scripts/diagnostics/validate_style_index_gates.py --config config/italy_polarization_setup.yaml
+.venv/bin/python -m pytest tests/test_style_index_validation.py -q
+```
+
+Outputs under `did/style_index_validation/`: see `README_validation_tests.txt` in that folder.
+
 ## Still optional
 
 - Integrate style index into `_enriched_shard_runner --pass all`

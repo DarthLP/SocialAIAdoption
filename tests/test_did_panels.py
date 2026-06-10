@@ -11,6 +11,7 @@ from src.config_utils import load_config
 from src.did.paths import resolve_panel_path
 from src.did.panels import (
     _author_extremity_panel_candidates,
+    _panel_file_suffix,
     resolve_author_wordfish_spec,
     slice_panel_for_ddd,
     wordfish_forum_v2_available,
@@ -78,6 +79,23 @@ def test_author_extremity_panel_candidates_week3() -> None:
     cands = _author_extremity_panel_candidates(tab, "week3", lang="it")
     assert "balanced_week3" in cands[0]
     assert cands[0].endswith("balanced_week3_it.csv")
+
+
+def test_quantity_panel_exbantopic_suffix() -> None:
+    """Function summary: quantity panel variant uses _exbantopic filename suffix."""
+    root = Path(__file__).resolve().parents[1]
+    cfg_path = root / "config/italy_polarization_setup.yaml"
+    if not cfg_path.is_file():
+        return
+    config = load_config(cfg_path)
+    base = resolve_panel_path(config, "subreddit", "did_subreddit_quantity_panel_1d.csv")
+    ex = resolve_panel_path(
+        config, "subreddit", "did_subreddit_quantity_panel_1d_exbantopic.csv"
+    )
+    assert base != ex
+    assert ex.name == "did_subreddit_quantity_panel_1d_exbantopic.csv"
+    assert _panel_file_suffix("exbantopic") == "_exbantopic"
+    assert _panel_file_suffix(None) == ""
 
 
 def test_wordfish_v2_path_resolution() -> None:

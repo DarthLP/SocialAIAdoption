@@ -45,6 +45,8 @@ READ_COLUMNS = [
     "aggression_rate_100w",
     "negative_rate_100w",
     "anger_rate_100w",
+    "emotion_rate_100w",
+    "cognition_rate_100w",
     "left_hits",
     "center_hits",
     "right_hits",
@@ -61,11 +63,16 @@ READ_COLUMNS = [
     "avg_words_per_sentence_comment",
     "ambivalence",
     "pair_framing_net_strict",
-    "style_index_full",
-    "style_index_reduced",
+    "style_index_llm",
+    "style_index_llm_no_ai_style",
+    "style_index_llm_no_em_dash",
+    "style_index_llm_no_semicolon_colon",
+    "style_index_llm_no_hedging_phrase",
+    "style_index_llm_no_exclamation",
     "ttr_50w",
     "readability",
     "log_len",
+    "is_ban_topic",
 ]
 
 REQUIRED_FEATURE_COLUMNS = (
@@ -118,6 +125,7 @@ from src.config_utils import (  # noqa: E402
     utc_ts,
 )
 from src.comment_style import compute_complexity_index  # noqa: E402
+from src.ban_topic import BAN_TOPIC_COLUMN, ensure_ban_topic_column, flag_share_by_group  # noqa: E402
 from src.political_lexicon import bimodality_coefficient, esteban_ray_index  # noqa: E402
 
 
@@ -125,6 +133,11 @@ def parse_args() -> argparse.Namespace:
     """Function summary: parse CLI arguments."""
     parser = argparse.ArgumentParser(description="Prepare polarization descriptives tables.")
     parser.add_argument("--config", type=str, default="config/italy_polarization_setup.yaml")
+    parser.add_argument(
+        "--exclude-ban-topic",
+        action="store_true",
+        help="Drop is_ban_topic comments and write parallel *_exbantopic.csv tables.",
+    )
     return parser.parse_args()
 
 
@@ -245,9 +258,19 @@ def enrich_style_helper_columns(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
     - Copy with _em_dash_count helper column.
     """
+    from src.comment_style import resolve_em_dash_count
+
     out = df.copy()
-    if "em_dash_count" in out.columns:
-        out["_em_dash_count"] = out["em_dash_count"].astype(float)
+    if "em_dash_count" in out.columns or "em_dash_extended_count" in out.columns:
+        out["_em_dash_count"] = out.apply(
+            lambda r: resolve_em_dash_count(
+                r.get("em_dash_count"),
+                r.get("em_dash_extended_count")
+                if "em_dash_extended_count" in out.columns
+                else None,
+            ),
+            axis=1,
+        )
     elif "ai_em_dash_count" in out.columns:
         out["_em_dash_count"] = out["ai_em_dash_count"].astype(float)
     elif "pol_em_dash_count" in out.columns:
@@ -302,8 +325,12 @@ def style_aggregate_fields(grp: pd.DataFrame) -> Dict[str, float]:
             int(len(grp)),
         )
     for col, out_col in (
-        ("style_index_full", "style_index_full_mean"),
-        ("style_index_reduced", "style_index_reduced_mean"),
+        ("style_index_llm", "style_index_llm_mean"),
+        ("style_index_llm_no_ai_style", "style_index_llm_no_ai_style_mean"),
+        ("style_index_llm_no_em_dash", "style_index_llm_no_em_dash_mean"),
+        ("style_index_llm_no_semicolon_colon", "style_index_llm_no_semicolon_colon_mean"),
+        ("style_index_llm_no_hedging_phrase", "style_index_llm_no_hedging_phrase_mean"),
+        ("style_index_llm_no_exclamation", "style_index_llm_no_exclamation_mean"),
         ("ttr_50w", "ttr_50w_mean"),
         ("readability", "readability_mean"),
         ("log_len", "log_len_mean"),
@@ -403,6 +430,12 @@ def daily_subreddit_table(df: pd.DataFrame, pol_cfg: Dict[str, Any]) -> pd.DataF
                 else float("nan"),
                 "anger_rate_100w_mean": weighted_mean(grp["anger_rate_100w"], nw)
                 if "anger_rate_100w" in grp.columns
+                else float("nan"),
+                "emotion_rate_100w_mean": weighted_mean(grp["emotion_rate_100w"], nw)
+                if "emotion_rate_100w" in grp.columns
+                else float("nan"),
+                "cognition_rate_100w_mean": weighted_mean(grp["cognition_rate_100w"], nw)
+                if "cognition_rate_100w" in grp.columns
                 else float("nan"),
                 "pair_framing_net_strict_mean": weighted_mean(grp["pair_framing_net_strict"], nw)
                 if "pair_framing_net_strict" in grp.columns
@@ -678,6 +711,12 @@ def _slice_metrics_row(grp: pd.DataFrame, pol_cfg: Dict[str, Any]) -> Dict[str, 
         "anger_rate_100w_mean": weighted_mean(grp["anger_rate_100w"], nw)
         if "anger_rate_100w" in grp.columns
         else float("nan"),
+        "emotion_rate_100w_mean": weighted_mean(grp["emotion_rate_100w"], nw)
+        if "emotion_rate_100w" in grp.columns
+        else float("nan"),
+        "cognition_rate_100w_mean": weighted_mean(grp["cognition_rate_100w"], nw)
+        if "cognition_rate_100w" in grp.columns
+        else float("nan"),
         "pair_framing_net_strict_mean": weighted_mean(grp["pair_framing_net_strict"], nw)
         if "pair_framing_net_strict" in grp.columns
         else float("nan"),
@@ -772,8 +811,14 @@ def country_panel_daily(df: pd.DataFrame) -> pd.DataFrame:
                 "country_panel": panel,
                 "date_utc": day,
                 "n_comments": len(grp),
+                "mean_n_words": float(grp["n_words"].mean()),
                 "ai_style_rate_100w_mean": weighted_mean(grp.get("ai_style_rate_100w", pd.Series(0.0)), nw),
                 "net_ideology_mean": weighted_mean(grp["net_ideology"], nw),
+                "extremity_mean": weighted_mean(grp["extremity"], nw),
+                "other_side_salience_rate_100w_mean": weighted_mean(
+                    grp["other_side_salience_rate_100w"], nw
+                ),
+                "aggression_rate_100w_mean": weighted_mean(grp["aggression_rate_100w"], nw),
                 "esteban_ray_index": esteban_ray_index(
                     float(grp["left_hits"].sum()),
                     float(grp["center_hits"].sum()),
@@ -832,6 +877,123 @@ def write_ai_diagnostic(country_daily: pd.DataFrame, out_path: Path, launch: str
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _csv_out_name(filename: str, suffix: str) -> str:
+    """Function summary: insert suffix before .csv extension (e.g. _exbantopic)."""
+    if not suffix:
+        return filename
+    if filename.endswith(".csv"):
+        return f"{filename[:-4]}{suffix}.csv"
+    return f"{filename}{suffix}"
+
+
+def _ensure_ban_topic_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Function summary: ensure is_ban_topic exists (from shard column or body regex)."""
+    return ensure_ban_topic_column(df, log_prefix="prepare_polarization_descriptives")
+
+
+def _apply_ban_topic_exclusion(df: pd.DataFrame) -> pd.DataFrame:
+    """Function summary: keep only comments not flagged as ban-topic."""
+    work = _ensure_ban_topic_column(df)
+    return work[~work[BAN_TOPIC_COLUMN].astype(bool)].copy()
+
+
+def write_descriptives_tables(
+    df: pd.DataFrame,
+    *,
+    out_dir: Path,
+    tables_dir: Path,
+    subs: List[str],
+    family_map: Dict[str, str],
+    topic_map: Dict[str, str],
+    pol_cfg: Dict[str, Any],
+    launch: str,
+    lift: str,
+    suffix: str,
+) -> None:
+    """Function summary: write polarization descriptives CSV set with optional filename suffix."""
+    daily_subreddit_table(df, pol_cfg).to_csv(
+        out_dir / _csv_out_name("daily_by_subreddit.csv", suffix), index=False
+    )
+    daily_family_table(df, family_map).to_csv(
+        out_dir / _csv_out_name("daily_by_topic_family.csv", suffix), index=False
+    )
+    daily_topic_table(df, family_map, topic_map, pol_cfg).to_csv(
+        out_dir / _csv_out_name("daily_by_topic.csv", suffix), index=False
+    )
+    country = country_panel_daily(df)
+    country.to_csv(out_dir / _csv_out_name("daily_country_panel.csv", suffix), index=False)
+    author_retention(df, launch, lift).to_csv(
+        out_dir / _csv_out_name("author_retention_by_subreddit.csv", suffix), index=False
+    )
+    balanced_panel_daily(df, launch, lift).to_csv(
+        out_dir / _csv_out_name("balanced_panel_daily.csv", suffix), index=False
+    )
+    window_summary(df, launch, lift).to_csv(
+        out_dir / _csv_out_name("window_summary_by_topic.csv", suffix), index=False
+    )
+
+    if "thread_is_political" in df.columns:
+        pol_threads = df[df["thread_is_political"].astype(bool)]
+        daily_family_table(pol_threads, family_map).to_csv(
+            out_dir / _csv_out_name("stratified_political_threads_daily_legacy.csv", suffix),
+            index=False,
+        )
+
+    if "comment_in_political_universe" in df.columns:
+        pol_comments = df[df["comment_in_political_universe"].astype(bool)]
+        daily_family_table(pol_comments, family_map).to_csv(
+            out_dir / _csv_out_name("stratified_political_comments_daily.csv", suffix),
+            index=False,
+        )
+
+    if pol_cfg.get("restrict_to_political_comments") and "comment_in_political_universe" in df.columns:
+        pol_only = df[df["comment_in_political_universe"].astype(bool)]
+        daily_subreddit_table(pol_only, pol_cfg).to_csv(
+            out_dir / _csv_out_name("daily_by_subreddit_political_universe.csv", suffix),
+            index=False,
+        )
+        daily_family_table(pol_only, family_map).to_csv(
+            out_dir / _csv_out_name("daily_by_topic_family_political_universe.csv", suffix),
+            index=False,
+        )
+        daily_topic_table(pol_only, family_map, topic_map, pol_cfg).to_csv(
+            out_dir / _csv_out_name("daily_by_topic_political_universe.csv", suffix),
+            index=False,
+        )
+
+    if "comment_in_political_universe" in df.columns:
+        cp_work = df.copy()
+        cp_work["country_panel"] = cp_work["topic_family"].map(COUNTRY_PANEL_FAMILIES)
+        cp_work = cp_work[cp_work["country_panel"].notna()]
+        daily_metrics_by_slice(cp_work, ["country_panel"], pol_cfg).to_csv(
+            out_dir / _csv_out_name("daily_country_panel_by_universe_slice.csv", suffix),
+            index=False,
+        )
+        italy_all = cp_work[cp_work["topic_family"].isin(ITALY_TOPIC_FAMILIES)]
+        daily_metrics_by_slice(italy_all, [], pol_cfg).to_csv(
+            out_dir / _csv_out_name("daily_italy_all_by_universe_slice.csv", suffix),
+            index=False,
+        )
+        it_pol = cp_work[cp_work["topic_family"] == "it_political"]
+        daily_metrics_by_slice(it_pol, [], pol_cfg).to_csv(
+            out_dir / _csv_out_name("daily_it_political_by_universe_slice.csv", suffix),
+            index=False,
+        )
+        it_oth = cp_work[cp_work["topic_family"] == "it_others"]
+        daily_metrics_by_slice(it_oth, [], pol_cfg).to_csv(
+            out_dir / _csv_out_name("daily_it_others_by_universe_slice.csv", suffix),
+            index=False,
+        )
+        daily_metrics_by_slice(df, ["subreddit"], pol_cfg).to_csv(
+            out_dir / _csv_out_name("daily_by_subreddit_universe_slice.csv", suffix),
+            index=False,
+        )
+
+    if not suffix:
+        attrition_table(tables_dir, subs).to_csv(out_dir / "attrition_by_subreddit.csv", index=False)
+        write_ai_diagnostic(country, out_dir / "ai_first_stage_diagnostic.txt", launch)
+
+
 def main() -> None:
     """Function summary: write all descriptives tables."""
     args = parse_args()
@@ -859,64 +1021,49 @@ def main() -> None:
     if "topic_family" not in df.columns:
         df["topic_family"] = df["subreddit"].map(family_map)
 
-    daily_subreddit_table(df, pol_cfg).to_csv(out_dir / "daily_by_subreddit.csv", index=False)
-    daily_family_table(df, family_map).to_csv(out_dir / "daily_by_topic_family.csv", index=False)
-    daily_topic_table(df, family_map, topic_map, pol_cfg).to_csv(out_dir / "daily_by_topic.csv", index=False)
-    country = country_panel_daily(df)
-    country.to_csv(out_dir / "daily_country_panel.csv", index=False)
-    author_retention(df, launch, lift).to_csv(out_dir / "author_retention_by_subreddit.csv", index=False)
-    balanced_panel_daily(df, launch, lift).to_csv(out_dir / "balanced_panel_daily.csv", index=False)
-    window_summary(df, launch, lift).to_csv(out_dir / "window_summary_by_topic.csv", index=False)
-
-    if "thread_is_political" in df.columns:
-        pol_threads = df[df["thread_is_political"].astype(bool)]
-        daily_family_table(pol_threads, family_map).to_csv(
-            out_dir / "stratified_political_threads_daily_legacy.csv", index=False
+    df = _ensure_ban_topic_column(df)
+    share_df = flag_share_by_group(df, ["subreddit", "date_utc"])
+    if not share_df.empty:
+        share_path = out_dir / "ban_topic_flag_share_by_forum_day.csv"
+        share_df.to_csv(share_path, index=False)
+        print(
+            f"[prepare_polarization_descriptives] wrote {share_path.name} rows={len(share_df)}",
+            flush=True,
         )
 
-    if "comment_in_political_universe" in df.columns:
-        pol_comments = df[df["comment_in_political_universe"].astype(bool)]
-        daily_family_table(pol_comments, family_map).to_csv(
-            out_dir / "stratified_political_comments_daily.csv", index=False
+    if args.exclude_ban_topic:
+        df_ex = _apply_ban_topic_exclusion(df)
+        write_descriptives_tables(
+            df_ex,
+            out_dir=out_dir,
+            tables_dir=tables_dir,
+            subs=subs,
+            family_map=family_map,
+            topic_map=topic_map,
+            pol_cfg=pol_cfg,
+            launch=launch,
+            lift=lift,
+            suffix="_exbantopic",
+        )
+        print(
+            f"[prepare_polarization_descriptives] exbantopic n_comments={len(df_ex)} "
+            f"(dropped {int(df[BAN_TOPIC_COLUMN].sum())} ban-topic)",
+            flush=True,
+        )
+    else:
+        write_descriptives_tables(
+            df,
+            out_dir=out_dir,
+            tables_dir=tables_dir,
+            subs=subs,
+            family_map=family_map,
+            topic_map=topic_map,
+            pol_cfg=pol_cfg,
+            launch=launch,
+            lift=lift,
+            suffix="",
         )
 
-    if pol_cfg.get("restrict_to_political_comments") and "comment_in_political_universe" in df.columns:
-        pol_only = df[df["comment_in_political_universe"].astype(bool)]
-        daily_subreddit_table(pol_only, pol_cfg).to_csv(
-            out_dir / "daily_by_subreddit_political_universe.csv", index=False
-        )
-        daily_family_table(pol_only, family_map).to_csv(
-            out_dir / "daily_by_topic_family_political_universe.csv", index=False
-        )
-        daily_topic_table(pol_only, family_map, topic_map, pol_cfg).to_csv(
-            out_dir / "daily_by_topic_political_universe.csv", index=False
-        )
-
-    if "comment_in_political_universe" in df.columns:
-        cp_work = df.copy()
-        cp_work["country_panel"] = cp_work["topic_family"].map(COUNTRY_PANEL_FAMILIES)
-        cp_work = cp_work[cp_work["country_panel"].notna()]
-        daily_metrics_by_slice(cp_work, ["country_panel"], pol_cfg).to_csv(
-            out_dir / "daily_country_panel_by_universe_slice.csv", index=False
-        )
-        italy_all = cp_work[cp_work["topic_family"].isin(ITALY_TOPIC_FAMILIES)]
-        daily_metrics_by_slice(italy_all, [], pol_cfg).to_csv(
-            out_dir / "daily_italy_all_by_universe_slice.csv", index=False
-        )
-        it_pol = cp_work[cp_work["topic_family"] == "it_political"]
-        daily_metrics_by_slice(it_pol, [], pol_cfg).to_csv(
-            out_dir / "daily_it_political_by_universe_slice.csv", index=False
-        )
-        it_oth = cp_work[cp_work["topic_family"] == "it_others"]
-        daily_metrics_by_slice(it_oth, [], pol_cfg).to_csv(
-            out_dir / "daily_it_others_by_universe_slice.csv", index=False
-        )
-        daily_metrics_by_slice(df, ["subreddit"], pol_cfg).to_csv(
-            out_dir / "daily_by_subreddit_universe_slice.csv", index=False
-        )
-
-    attrition_table(tables_dir, subs).to_csv(out_dir / "attrition_by_subreddit.csv", index=False)
-    write_ai_diagnostic(country, out_dir / "ai_first_stage_diagnostic.txt", launch)
     print(f"[prepare_polarization_descriptives] wrote tables to {out_dir}", flush=True)
 
 

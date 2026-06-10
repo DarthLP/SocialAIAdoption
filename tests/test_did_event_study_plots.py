@@ -9,6 +9,7 @@ import pandas as pd
 from src.did.estimate import estimate_event_study
 from src.did.outputs import (
     EventStudySeries,
+    ITALY_THESIS_POLITICAL_EVENT_MARKERS,
     _prepare_event_study_plot_df,
     plot_event_study,
     plot_event_study_overlay,
@@ -41,6 +42,26 @@ def test_plot_event_study_smoke(tmp_path: Path) -> None:
     )
     out = tmp_path / "es.png"
     plot_event_study(es, "net_ideology", out, rel_col="rel_day")
+    assert out.is_file()
+
+
+def test_plot_event_study_with_political_markers_smoke(tmp_path: Path) -> None:
+    """Function summary: thesis variant with event markers writes a PNG."""
+    es = pd.DataFrame(
+        {
+            "rel_day": [-2, 0, 1, 5, 11, 28],
+            "gamma": [0.0, 0.4, 0.5, 0.3, 0.2, 0.1],
+            "se": [0.05, 0.05, 0.05, 0.05, 0.05, 0.05],
+        }
+    )
+    out = tmp_path / "sem_axis_emotion_events.png"
+    plot_event_study(
+        es,
+        "sem_axis_emotion",
+        out,
+        rel_col="rel_day",
+        event_markers=ITALY_THESIS_POLITICAL_EVENT_MARKERS,
+    )
     assert out.is_file()
 
 

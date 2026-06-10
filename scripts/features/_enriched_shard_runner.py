@@ -73,7 +73,9 @@ from src.config_utils import (  # noqa: E402
     subreddit_screening_action,
 )
 from src.embeddings import (  # noqa: E402
+    EMOTION_PRUNED_AXIS_NAMES,
     EXTENDED_AXIS_NAMES,
+    SEMAXIS_EMOTION_PRUNED_KEYS,
     SEMAXIS_EXTENDED_KEYS,
     SEMAXIS_LEGACY_KEYS,
     SEMAXIS_SCORE_KEYS,
@@ -87,6 +89,7 @@ from src.embeddings import (  # noqa: E402
     shard_embedding_cache_path,
     unload_embeddings_for_language,
 )
+from src.ban_topic import BAN_TOPIC_COLUMN, is_ban_topic_series  # noqa: E402
 from src.political_lexicon import (  # noqa: E402
     score_comment_ai_style,
     score_comment_polarization,
@@ -95,12 +98,15 @@ from src.political_lexicon import (  # noqa: E402
 from src.feature_shard_worker import feature_shard_worker  # noqa: E402
 from src.v4_lexicon import all_pair_framing_column_names, get_pairs_registry  # noqa: E402
 
-PassName = Literal["polarization", "semaxis", "semaxis_extend", "ai", "style"]
+PassName = Literal[
+    "polarization", "semaxis", "semaxis_extend", "semaxis_emotion_pruned", "ai", "style", "bantopic"
+]
 PASS_ORDER: tuple[PassName, ...] = ("polarization", "semaxis", "ai", "style")
 
 SEMAXIS_COLUMNS: tuple[str, ...] = tuple(SEMAXIS_SCORE_KEYS)
 SEMAXIS_LEGACY_COLUMNS: tuple[str, ...] = tuple(SEMAXIS_LEGACY_KEYS)
 SEMAXIS_EXTENDED_COLUMNS: tuple[str, ...] = tuple(SEMAXIS_EXTENDED_KEYS)
+SEMAXIS_EMOTION_PRUNED_COLUMNS: tuple[str, ...] = tuple(SEMAXIS_EMOTION_PRUNED_KEYS)
 
 POLARIZATION_COMMENT_COLUMNS: tuple[str, ...] = (
     "left_hits",
@@ -182,13 +188,18 @@ def parse_args(
         choices=["it", "en", "de"],
         help="Process only subreddits with this primary_lexicon (one language wave).",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Recompute is_ban_topic even when column already exists (bantopic pass).",
+    )
     if fixed_pass is None:
         parser.add_argument(
             "--pass",
             dest="pass_name",
-            choices=list(PASS_ORDER) + ["semaxis_extend", "all"],
+            choices=list(PASS_ORDER) + ["semaxis_extend", "semaxis_emotion_pruned", "bantopic", "all"],
             default="all",
-            help="Feature pass: polarization, semaxis, semaxis_extend, ai, style, or all (default all).",
+            help="Feature pass: polarization, semaxis, semaxis_extend, semaxis_emotion_pruned, ai, style, bantopic, or all.",
         )
     return parser.parse_args()
 
@@ -203,7 +214,7 @@ def default_worker_count() -> int:
     return max(1, min(8, cpu - 1))
 
 
-TaskTuple = Tuple[str, str, str, str, str, str]
+TaskTuple = Tuple[str, str, str, str, str, str, str]
 DEFAULT_LANG_WAVE_ORDER: tuple[str, ...] = ("it", "en", "de")
 
 
@@ -598,6 +609,87 @@ def _process_semaxis_extend_shard(
     return len(out)
 
 
+def _process_semaxis_emotion_pruned_shard(
+    path: Path,
+    subreddit: str,
+    lex_lang: str,
+    sem_cfg: Dict[str, Any],
+    project_root: Path,
+    interim_dir: Path,
+) -> int:
+    """Function summary: append leakage-pruned emotion axis column using vector cache.
+
+    Parameters:
+    - path: enriched parquet shard path.
+    - subreddit: subreddit folder name.
+    - lex_lang: primary lexicon language.
+    - sem_cfg: semantic_axis config block.
+    - project_root: repository root.
+    - interim_dir: interim data directory for vector caches.
+
+    Returns:
+    - Number of rows written.
+    """
+    ensure_exclusive_vector_lang(lex_lang, sem_cfg)
+    get_axes_for_language(
+        lex_lang, project_root, sem_cfg, axis_names=EMOTION_PRUNED_AXIS_NAMES
+    )
+    df = read_parquet_shard_safe(path)
+    if df is None or df.empty:
+        return 0
+    required = {"body", "primary_lexicon", "n_words", "id", *SEMAXIS_LEGACY_COLUMNS}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"Missing columns {sorted(missing)} in {path}; run semaxis pass before semaxis_emotion_pruned."
+        )
+    out = df.drop(
+        columns=[c for c in SEMAXIS_EMOTION_PRUNED_COLUMNS if c in df.columns],
+        errors="ignore",
+    ).copy()
+    lang_series = (
+        out["lang_comment"].astype(str) if "lang_comment" in out.columns else pd.Series([lex_lang] * len(out))
+    )
+    bodies = out["body"].astype(str).tolist()
+    langs = lang_series.tolist()
+    ids = out["id"].astype(str).tolist()
+    comment_vecs = None
+    coverages = None
+    if sem_cfg.get("write_vector_cache", True):
+        cache_path = shard_embedding_cache_path(interim_dir, subreddit, path.stem)
+        comment_vecs, coverages = load_shard_vector_cache(cache_path, ids)
+    if comment_vecs is None:
+        active_bodies: List[str] = []
+        active_idx: List[int] = []
+        for i, (body, lang_c) in enumerate(zip(bodies, langs, strict=True)):
+            if sem_cfg.get("lang_match_filter") and lang_c != lex_lang:
+                continue
+            active_bodies.append(body)
+            active_idx.append(i)
+        vecs, covs = build_comment_vectors_for_texts(active_bodies, lex_lang, project_root, sem_cfg)
+        comment_vecs = [None] * len(bodies)
+        coverages = [0.0] * len(bodies)
+        for j, idx in enumerate(active_idx):
+            comment_vecs[idx] = vecs[j]
+            coverages[idx] = covs[j]
+        if sem_cfg.get("write_vector_cache", True):
+            cache_path = shard_embedding_cache_path(interim_dir, subreddit, path.stem)
+            save_shard_vector_cache(cache_path, ids, comment_vecs, coverages)
+    axes = get_axes_for_language(
+        lex_lang, project_root, sem_cfg, axis_names=EMOTION_PRUNED_AXIS_NAMES
+    )
+    sem_rows = score_vectors_against_axes_subset(
+        comment_vecs, coverages, axes, SEMAXIS_EMOTION_PRUNED_KEYS
+    )
+    for i, lang_c in enumerate(langs):
+        if sem_cfg.get("lang_match_filter") and lang_c != lex_lang:
+            sem_rows[i] = {col: 0.0 for col in SEMAXIS_EMOTION_PRUNED_KEYS}
+    for col in SEMAXIS_EMOTION_PRUNED_COLUMNS:
+        out[col] = [r[col] for r in sem_rows]
+    out.to_parquet(path, index=False, engine="pyarrow", compression="snappy")
+    return len(out)
+
+
 def _process_all_features_shard(
     path: Path,
     subreddit: str,
@@ -702,6 +794,31 @@ def _process_ai_shard(path: Path, lex_lang: str, cfg: Dict[str, Any], project_ro
     return len(out)
 
 
+def _process_bantopic_shard(path: Path, *, force: bool = False) -> int:
+    """Function summary: append is_ban_topic column from comment body regex.
+
+    Parameters:
+    - path: enriched parquet shard path.
+    - force: when False, skip shard if is_ban_topic already present.
+
+    Returns:
+    - Number of rows written (0 when skipped).
+    """
+    df = read_parquet_shard_safe(path)
+    if df is None or df.empty:
+        return 0
+    if BAN_TOPIC_COLUMN in df.columns and not force:
+        return 0
+    if "body" not in df.columns:
+        raise ValueError(f"Missing body column in {path}; run enrich_cleaned_chunks.py first.")
+    out = df.copy()
+    if force and BAN_TOPIC_COLUMN in out.columns:
+        out = out.drop(columns=[BAN_TOPIC_COLUMN])
+    out[BAN_TOPIC_COLUMN] = is_ban_topic_series(out["body"].astype(str)).astype(bool)
+    out.to_parquet(path, index=False, engine="pyarrow", compression="snappy")
+    return len(out)
+
+
 def _process_style_shard(path: Path, lex_lang: str, cfg: Dict[str, Any], project_root: Path) -> int:
     """Function summary: add style columns to one Parquet shard."""
     df = read_parquet_shard_safe(path)
@@ -740,6 +857,7 @@ def _feature_shard_worker(
     pass_name: str,
     config_path_str: str,
     project_root_str: str,
+    force_flag: str = "0",
 ) -> Tuple[str, str, str, int, float]:
     """Function summary: process-pool worker for one shard and feature pass.
 
@@ -777,8 +895,14 @@ def _feature_shard_worker(
         n = _process_semaxis_extend_shard(
             path, subreddit, lex_lang, sem_cfg, project_root, interim_dir
         )
+    elif pass_name == "semaxis_emotion_pruned":
+        n = _process_semaxis_emotion_pruned_shard(
+            path, subreddit, lex_lang, sem_cfg, project_root, interim_dir
+        )
     elif pass_name == "ai":
         n = _process_ai_shard(path, lex_lang, ai_cfg, project_root)
+    elif pass_name == "bantopic":
+        n = _process_bantopic_shard(path, force=str(force_flag) == "1")
     else:
         n = _process_style_shard(path, lex_lang, style_cfg, project_root)
     elapsed = time.perf_counter() - t0
@@ -826,6 +950,7 @@ def run_passes(
     combined_all = _is_combined_all_pass(passes)
     use_language_waves = bool(sem_cfg.get("language_waves", True)) and _passes_need_fasttext(passes)
     wave_order = _language_wave_order(sem_cfg)
+    force_flag = "1" if getattr(args, "force", False) else "0"
     tasks: List[TaskTuple] = []
     for subreddit in subs:
         action = subreddit_screening_action(screening_by_sub, subreddit)
@@ -853,7 +978,15 @@ def run_passes(
         if combined_all:
             for shard in shards:
                 tasks.append(
-                    (str(shard.resolve()), subreddit, lex_lang, "all", config_path_str, project_root_str)
+                    (
+                        str(shard.resolve()),
+                        subreddit,
+                        lex_lang,
+                        "all",
+                        config_path_str,
+                        project_root_str,
+                        force_flag,
+                    )
                 )
         else:
             for shard in shards:
@@ -866,6 +999,7 @@ def run_passes(
                             pass_name,
                             config_path_str,
                             project_root_str,
+                            force_flag,
                         )
                     )
     if not tasks:

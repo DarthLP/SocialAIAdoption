@@ -6,10 +6,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.transforms import blended_transform_factory
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -244,6 +245,38 @@ def _write_summary_txt(sub: pd.DataFrame, path: Path, title: str, launch_date: s
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
+SUMMARY_DEDUPE_KEYS = ("outcome_id", "strategy_id", "spec", "weights")
+
+
+def normalize_summary_weights(df: pd.DataFrame) -> pd.DataFrame:
+    """Function summary: coerce weights column to empty string (CSV NaN round-trip safe).
+
+    Parameters:
+    - df: did_summary-style frame.
+
+    Returns:
+    - Copy with weights normalized for stable dedupe keys.
+    """
+    out = df.copy()
+    if "weights" in out.columns:
+        out["weights"] = out["weights"].fillna("").astype(str)
+    return out
+
+
+def dedupe_summary_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Function summary: drop duplicate summary rows after normalizing weights.
+
+    Parameters:
+    - df: did_summary-style frame.
+
+    Returns:
+    - Deduped copy (last row wins per outcome/strategy/spec/weights).
+    """
+    out = normalize_summary_weights(df)
+    keys = [c for c in SUMMARY_DEDUPE_KEYS if c in out.columns]
+    return out.drop_duplicates(subset=keys, keep="last")
+
+
 def write_summary_exports(
     summary_df: pd.DataFrame,
     summary_dir: Path,
@@ -258,6 +291,7 @@ def write_summary_exports(
     """
     if summary_df.empty:
         return
+    summary_df = dedupe_summary_rows(summary_df)
     labeled = add_strategy_labels(summary_df)
     summary_dir.mkdir(parents=True, exist_ok=True)
 
@@ -339,6 +373,16 @@ EVENT_STUDY_OVERLAY_STYLES: tuple[dict[str, Any], ...] = (
     {"color": "#2d6a4f", "marker": "^", "mfc": "white", "label": ""},
 )
 
+EventStudyMarker = Tuple[int, str]
+
+ITALY_THESIS_POLITICAL_EVENT_MARKERS: tuple[EventStudyMarker, ...] = (
+    (2, "Friuli vote"),
+    (5, "Berlusconi ICU"),
+    (11, "migration crisis"),
+    (25, "Liberation Day"),
+    (28, "ban lifted"),
+)
+
 
 @dataclass(frozen=True)
 class EventStudySeries:
@@ -384,6 +428,37 @@ def apply_event_study_axes_style(ax: plt.Axes, *, xlabel: str = "Event Time") ->
         spine.set_color("black")
 
 
+def apply_event_study_markers(ax: plt.Axes, markers: Sequence[EventStudyMarker]) -> None:
+    """Function summary: overlay thin vertical dotted lines and rotated labels on an event-study axes.
+
+    Parameters:
+    - ax: matplotlib axes with coefficients already drawn.
+    - markers: sequence of (rel_day, label) pairs (days relative to 2023-03-31 ban launch).
+
+    Returns:
+    - None; mutates ax in place; labels are drawn inside the plot area.
+    """
+    if not markers:
+        return
+    label_trans = blended_transform_factory(ax.transData, ax.transAxes)
+    y_levels = (0.96, 0.78)
+    for idx, (rel_day, label) in enumerate(markers):
+        ax.axvline(rel_day, color="0.55", linestyle=":", linewidth=0.8, zorder=1)
+        ax.text(
+            rel_day,
+            y_levels[idx % len(y_levels)],
+            label,
+            transform=label_trans,
+            rotation=90,
+            va="top",
+            ha="center",
+            fontsize=6,
+            color="0.45",
+            clip_on=True,
+            zorder=4,
+        )
+
+
 def plot_event_study(
     es_df: pd.DataFrame,
     outcome_id: str,
@@ -392,8 +467,23 @@ def plot_event_study(
     title: Optional[str] = None,
     subtitle: str = "",
     rel_col: str = "rel_day",
+    event_markers: Sequence[EventStudyMarker] | None = None,
 ) -> None:
-    """Function summary: single-series classic event-study plot."""
+    """Function summary: single-series classic event-study plot.
+
+    Parameters:
+    - es_df: event-study coefficient table.
+    - outcome_id: outcome slug for title/labels.
+    - out_path: PNG output path.
+    - launch_label: unused (kept for API compatibility).
+    - title: optional plot title override.
+    - subtitle: unused (kept for API compatibility).
+    - rel_col: relative-day column name in es_df.
+    - event_markers: optional (rel_day, label) pairs for thesis-style political-event overlays.
+
+    Returns:
+    - None; writes PNG to out_path.
+    """
     del launch_label, subtitle
     if es_df.empty:
         return
@@ -421,6 +511,8 @@ def plot_event_study(
         zorder=3,
     )
     apply_event_study_axes_style(ax)
+    if event_markers:
+        apply_event_study_markers(ax, event_markers)
     ax.set_title(title or outcome_label(outcome_id, short=True))
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
@@ -855,9 +947,15 @@ def plot_placebo_robustness(rob_df: pd.DataFrame, outcome_id: str, out_path: Pat
     """Function summary: placebo vs baseline bar comparison."""
     if rob_df.empty:
         return
+    plot_df = rob_df.copy()
+    if "estimation_note" in plot_df.columns:
+        plot_df = plot_df[plot_df["estimation_note"].astype(str) != "skipped_insufficient_pre"]
+    plot_df = plot_df[plot_df["beta"].map(lambda v: pd.notna(v) and abs(float(v)) < 1e6)]
+    if plot_df.empty:
+        return
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(7, 4))
-    sns.barplot(data=rob_df, x="check", y="beta", ax=ax, color="#457b9d")
+    sns.barplot(data=plot_df, x="check", y="beta", ax=ax, color="#457b9d")
     ax.axhline(0, color="gray", linewidth=0.8)
     ax.set_title(
         f"Robustness: {outcome_label(outcome_id, short=True)}\n"

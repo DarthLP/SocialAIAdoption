@@ -5,7 +5,9 @@ Build subreddit-day DiD panels from polarization descriptives for prompt 04 esti
 Functionality:
 - Reads daily_by_subreddit.csv and daily_by_subreddit_universe_slice.csv.
 - Adds rel_day, post, IT/treatment flags, and control-family indicators.
-- Writes did_subreddit_panel_1d.csv and did_subreddit_panel_by_universe_slice_1d.csv.
+- Writes did_subreddit_panel_1d.csv, did_subreddit_panel_by_universe_slice_1d.csv, and
+  did_subreddit_quantity_panel_1d.csv (zero-filled active forums with log1p counts).
+  With --exclude-ban-topic, parallel *_exbantopic.csv variants including quantity panel.
 
 How to apply/run:
   .venv/bin/python scripts/diagnostics/prepare_polarization_descriptives.py --config config/italy_polarization_setup.yaml
@@ -16,9 +18,11 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List
 
+import numpy as np
 import pandas as pd
 
 ITALY_FAMILIES = frozenset({"it_political", "it_others"})
@@ -52,6 +56,12 @@ def parse_args() -> argparse.Namespace:
     """Function summary: parse CLI arguments."""
     parser = argparse.ArgumentParser(description="Build subreddit-day DiD panels.")
     parser.add_argument("--config", type=str, default="config/italy_polarization_setup.yaml")
+    parser.add_argument(
+        "--exclude-ban-topic",
+        action="store_true",
+        help="Read *_exbantopic descriptives and write did_subreddit_panel_*_exbantopic.csv "
+        "(including did_subreddit_quantity_panel_1d_exbantopic.csv).",
+    )
     return parser.parse_args()
 
 
@@ -109,6 +119,99 @@ def _annotate_subreddit_panel(panel: pd.DataFrame, launch: str, end_excl: str) -
     return _add_treatment_flags(out)
 
 
+def _calendar_days(start: str, end_exclusive: str) -> List[str]:
+    """Function summary: enumerate inclusive-start exclusive-end UTC calendar days.
+
+    Parameters:
+    - start: YYYY-MM-DD window start (inclusive).
+    - end_exclusive: YYYY-MM-DD window end (exclusive).
+
+    Returns:
+    - Sorted list of date strings.
+    """
+    cur = datetime.strptime(start, "%Y-%m-%d")
+    end = datetime.strptime(end_exclusive, "%Y-%m-%d")
+    days: List[str] = []
+    while cur < end:
+        days.append(cur.strftime("%Y-%m-%d"))
+        cur += timedelta(days=1)
+    return days
+
+
+def _active_forums_both_months(sub: pd.DataFrame) -> List[str]:
+    """Function summary: subreddits with >=1 comment in both March and April 2023.
+
+    Parameters:
+    - sub: daily_by_subreddit rows in event window with n_comments.
+
+    Returns:
+    - Sorted list of active subreddit names.
+    """
+    work = sub.copy()
+    work["date_utc"] = work["date_utc"].astype(str)
+    work["month"] = work["date_utc"].str.slice(0, 7)
+    march = set(
+        work.loc[(work["month"] == "2023-03") & (work["n_comments"].astype(float) > 0), "subreddit"]
+        .astype(str)
+        .unique()
+    )
+    april = set(
+        work.loc[(work["month"] == "2023-04") & (work["n_comments"].astype(float) > 0), "subreddit"]
+        .astype(str)
+        .unique()
+    )
+    return sorted(march & april)
+
+
+def build_quantity_panel(
+    sub: pd.DataFrame,
+    start: str,
+    end_excl: str,
+    launch: str,
+) -> pd.DataFrame:
+    """Function summary: zero-filled subreddit-day quantity panel for DiD estimation.
+
+    Parameters:
+    - sub: daily_by_subreddit in event window (sparse days only).
+    - start: YYYY-MM-DD inclusive.
+    - end_excl: YYYY-MM-DD exclusive.
+    - launch: ban onset for annotation.
+
+    Returns:
+    - Annotated panel with n_comments, n_authors, log_n_comments, log_n_authors.
+    """
+    if sub.empty:
+        return pd.DataFrame()
+
+    active = _active_forums_both_months(sub)
+    if not active:
+        return pd.DataFrame()
+
+    meta = (
+        sub[["subreddit", "topic_family", "topic"]]
+        .drop_duplicates("subreddit")
+        .set_index("subreddit")
+    )
+    counts = sub[["subreddit", "date_utc", "n_comments", "n_authors"]].copy()
+    counts["date_utc"] = counts["date_utc"].astype(str)
+
+    days = _calendar_days(start, end_excl)
+    grid = pd.MultiIndex.from_product([active, days], names=["subreddit", "date_utc"])
+    panel = grid.to_frame(index=False)
+    panel = panel.merge(counts, on=["subreddit", "date_utc"], how="left")
+    panel["n_comments"] = panel["n_comments"].fillna(0).astype(int)
+    panel["n_authors"] = panel["n_authors"].fillna(0).astype(int)
+    panel["topic_family"] = panel["subreddit"].map(meta["topic_family"])
+    panel["topic"] = panel["subreddit"].map(meta.get("topic", pd.Series(dtype=str)))
+    panel["log_n_comments"] = np.log1p(panel["n_comments"].astype(float))
+    panel["log_n_authors"] = np.log1p(panel["n_authors"].astype(float))
+
+    out = _annotate_subreddit_panel(panel, launch, end_excl)
+    out["period_start"] = out["date_utc"]
+    out["bin_days"] = 1
+    return out
+
+
 def main() -> None:
     """Function summary: write DiD-ready subreddit panels."""
     args = parse_args()
@@ -117,15 +220,18 @@ def main() -> None:
     desc_dir = tables_subdir(config, "descriptives")
     did_dir = did_panels_dir(config, "subreddit")
     did_dir.mkdir(parents=True, exist_ok=True)
+    suffix = "_exbantopic" if args.exclude_ban_topic else ""
 
-    sub_path = desc_dir / "daily_by_subreddit.csv"
+    sub_path = desc_dir / f"daily_by_subreddit{suffix}.csv"
     if not sub_path.is_file():
         raise FileNotFoundError(
-            f"Missing {sub_path}; run prepare_polarization_descriptives.py first."
+            f"Missing {sub_path}; run prepare_polarization_descriptives.py"
+            + (" --exclude-ban-topic" if args.exclude_ban_topic else "")
+            + " first."
         )
     sub = pd.read_csv(sub_path)
     if "topic_family" not in sub.columns or sub["topic_family"].isna().all():
-        sem_path = tables_subdir(config, "semantic_axis") / "semantic_axis_panel.csv"
+        sem_path = tables_subdir(config, "semantic_axis") / f"semantic_axis_panel{suffix}.csv"
         if sem_path.is_file():
             meta = (
                 pd.read_csv(sem_path, usecols=["subreddit", "topic_family", "topic"])
@@ -144,11 +250,11 @@ def main() -> None:
     sub_out = _annotate_subreddit_panel(sub, launch, end_excl)
     sub_out["period_start"] = sub_out["date_utc"]
     sub_out["bin_days"] = 1
-    out_sub = did_dir / "did_subreddit_panel_1d.csv"
+    out_sub = did_dir / f"did_subreddit_panel_1d{suffix}.csv"
     sub_out.to_csv(out_sub, index=False)
     print(f"[prepare_did_subreddit_panel] {out_sub.name} rows={len(sub_out)}", flush=True)
 
-    slice_path = desc_dir / "daily_by_subreddit_universe_slice.csv"
+    slice_path = desc_dir / f"daily_by_subreddit_universe_slice{suffix}.csv"
     if slice_path.is_file():
         sl = pd.read_csv(slice_path)
         sl = sl[(sl["date_utc"].astype(str) >= start) & (sl["date_utc"].astype(str) < end_excl)]
@@ -158,13 +264,28 @@ def main() -> None:
         sl_out = _annotate_subreddit_panel(sl, launch, end_excl)
         sl_out["period_start"] = sl_out["date_utc"]
         sl_out["bin_days"] = 1
-        out_sl = did_dir / "did_subreddit_panel_by_universe_slice_1d.csv"
+        out_sl = did_dir / f"did_subreddit_panel_by_universe_slice_1d{suffix}.csv"
         sl_out.to_csv(out_sl, index=False)
         print(f"[prepare_did_subreddit_panel] {out_sl.name} rows={len(sl_out)}", flush=True)
     else:
         print(
             "[prepare_did_subreddit_panel] skip universe slice "
             "(re-run prepare_polarization_descriptives.py)",
+            flush=True,
+        )
+
+    qty_out = build_quantity_panel(sub, start, end_excl, launch)
+    out_qty = did_dir / f"did_subreddit_quantity_panel_1d{suffix}.csv"
+    if qty_out.empty:
+        print(
+            "[prepare_did_subreddit_panel] skip quantity panel (no active forums in Mar+Apr)",
+            flush=True,
+        )
+    else:
+        qty_out.to_csv(out_qty, index=False)
+        print(
+            f"[prepare_did_subreddit_panel] {out_qty.name} rows={len(qty_out)} "
+            f"forums={qty_out['subreddit'].nunique()}",
             flush=True,
         )
 

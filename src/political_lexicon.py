@@ -884,6 +884,8 @@ def score_comment_ai_style(
     Returns:
     - Dict with ai_style hits/rate and lightweight style proxies.
     """
+    from src.comment_style import count_em_dash_extended
+
     hits, n_words = count_categorized_hits(text, lang_code, "ai_style", project_root)
     total = sum(hits.values())
     body = text or ""
@@ -907,6 +909,6 @@ def score_comment_ai_style(
         "avg_words_per_sentence": float(avg_wps),
         "exclamation_rate_100w": political_rate_100w(exclam, n_words),
         "caps_word_share": float(caps_share),
-        "em_dash_count": float(body.count("\u2014")),
+        "em_dash_count": float(count_em_dash_extended(body)),
         "sentence_length_variance": float(length_var),
     }

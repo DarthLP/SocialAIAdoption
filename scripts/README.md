@@ -96,7 +96,7 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
 
 ### 4f–4g) Enriched-shard features (polarization, semantic axis, AI-use, style)
 - Canonical: `compute_enriched_shard_features.py --pass all` (single parquet read/write per shard when all passes run).
-- Wrappers (same behavior): `compute_polarization_features.py`, `compute_semantic_axis_features.py`, `compute_semantic_axis_extend.py` (append extended `sem_axis_*` only; preserves legacy scores), `compute_ai_use_features.py`, `compute_comment_style_features.py`.
+- Wrappers (same behavior): `compute_polarization_features.py`, `compute_semantic_axis_features.py`, `compute_semantic_axis_extend.py` (append extended `sem_axis_*` only; preserves legacy scores), `compute_ai_use_features.py`, `compute_comment_style_features.py`, `compute_ban_topic_flag.py` (append `is_ban_topic`; `--force` to recompute).
 - Input/output: enriched `cleaned_monthly_chunks/*.parquet` (in place).
 - Parallelism: `--workers N` (default `min(8, cpu_count-1)`; `1` = sequential). Logs include per-shard `elapsed=` seconds.
 - Semantic axis / `--pass all`: **language waves** (`language_waves: true`) run IT → EN → DE with a fresh ProcessPool per wave. **Exclusive cache** (`vector_cache_exclusive: true`): each worker holds at most one fastText model; switching `lex_lang` unloads others. `--lex-lang {it,en,de}` limits to one language. On ~8GB RAM use `--workers 1` (~7GB per model per worker).
@@ -147,16 +147,23 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
 - Prepare: `prepare_circumvention_descriptives.py` → `results/tables/italy_polarization/circumvention/`
 - Merge: `prepare_did_merged_panels.py` → `did/panels/country/` (lexical + geo VPN: `did_country_panel_{1,3,7}d.csv`, universe-slice variants) and `did/panels/semantic/` (`did_semantic_{topic_family,language,language_universe}_{1,3,7}d.csv`)
 - Plot: `plot_circumvention_descriptives.py` → `circumvention/daily/` (VPN/Tor daily), `semantic_ideology_vs_vpn_it.png`, `circumvention/bins_{1,3,7}d/vpn_geo_levels_vs_it_broadcast.png`
+- Thesis figures: `plot_circumvention_thesis_figures.py` → `circumvention/thesis/` (`trends_{vpn,chatgpt}_thesis.png` + pre-ban-indexed `*_indexed.png` + caption `.txt`)
 - Config: `circumvention.country_panel_geo_map`, `circumvention.panel_bin_days`
-- **Estimate:** `prepare_did_subreddit_panel.py` → `did/panels/subreddit/`; optional `prepare_did_comment_panel.py` → `did/panels/comment/` (partitioned comment Parquet + `did_author_day_panel_1d.csv`) → `scripts/analysis/did_event_study.py` (TWFE DiD via `linearmodels`; comment-level via `pyfixest` author+calendar FE; strategies include `italy_only_post` entity-FE-only on IT forums/comments; `did.author_wordfish_spec` / `--author-spec week3` for author-bin robustness; `did_summary.spec` includes `full_ban`, early-ban, and post-phase windows per `did.post_phases`) → `did/estimates/summary/` and `did/estimates/{family}/`; figures under `results/figures/italy_polarization/did/{family}/` with per-folder `README.md`. **Inference:** `inference_role` on summary rows; cross-country forum-clustered p is descriptive; **`p_placebo_space` / `perm_p` only for pooled multi-control strategies** (`cross_country_all`, IT-family splits, etc.) via `is_placebo_in_space_eligible_strategy`; **`cross_country_vs_{de,eu,uk,us}` get `placebo_note=not_applicable_single_country_contrast`** (patch: `scripts/diagnostics/patch_did_inference.py --placebo-only`). Headline `p_placebo_space` + `scripts/analysis/run_did_gsynth.py`; within-Italy/author restricted WCB (`wildboottest`, default 9999 draws).
+- **Estimate:** `prepare_did_subreddit_panel.py` → `did/panels/subreddit/`; optional `prepare_did_comment_panel.py` → `did/panels/comment/` (partitioned comment Parquet + `did_author_day_panel_1d.csv`) → `scripts/analysis/did_event_study.py` (TWFE DiD via `linearmodels`; comment-level via `pyfixest` author+calendar FE; strategies include `italy_only_post` entity-FE-only on IT forums/comments; `did.author_wordfish_spec` / `--author-spec week3` for author-bin robustness; `did_summary.spec` includes `full_ban`, early-ban, and post-phase windows per `did.post_phases`) → `did/estimates/summary/` and `did/estimates/{family}/`; figures under `results/figures/italy_polarization/did/{family}/` with per-folder `README.md`. **Inference:** `inference_role` on summary rows; cross-country forum-clustered p is descriptive; **`p_placebo_space` / `perm_p` only for pooled multi-control strategies** (`cross_country_all`, IT-family splits, etc.) via `is_placebo_in_space_eligible_strategy`; **`cross_country_vs_{de,eu,uk,us}` get `placebo_note=not_applicable_single_country_contrast`** (patch: `scripts/diagnostics/patch_did_inference.py --placebo-only`). Headline `p_placebo_space` + `scripts/analysis/run_did_gsynth.py`; **gsynth v2** (`scripts/analysis/run_did_gsynth_v2.py`) → `did/estimates/gsynth_v2/` with demeaned SC, pre-fit gate (`pre_fit_ok` / `failed_pre_fit_do_not_cite`), pre-fit PNGs under `figures/.../did/gsynth_v2/`; pole_share sign vs `did_summary` full_ban (read-only); within-Italy/author restricted WCB (`wildboottest`, default 9999 draws).
 - **Migrate** flat `did/*.csv`: `scripts/devtools/migrate_did_table_layout.py` (`--dry-run` optional)
-- Run: `.venv/bin/python scripts/diagnostics/prepare_did_subreddit_panel.py --config config/italy_polarization_setup.yaml` then `.venv/bin/python scripts/analysis/did_event_study.py --config config/italy_polarization_setup.yaml` (add `--no-bootstrap` for a fast pass; `--outcomes wf_change,wf_extremity_z` to filter outcome ids; `--full-coefplots` for all strategies per outcome; `--figures-only` to rebuild plots from `did_summary.csv` without re-estimating)
+- **Summary dedupe:** incremental `did_summary.csv` merges normalize `weights` (`NaN` → `""`) before dedupe so `by_outcome/*.csv` does not accumulate duplicate rows on re-runs.
+- Run: `.venv/bin/python scripts/diagnostics/prepare_did_subreddit_panel.py --config config/italy_polarization_setup.yaml` then `.venv/bin/python scripts/analysis/did_event_study.py --config config/italy_polarization_setup.yaml` (add `--no-bootstrap` for a fast pass; `--outcomes wf_change,wf_extremity_z` to filter outcome ids; `--full-coefplots` for all strategies per outcome; `--figures-only` to rebuild plots from `did_summary.csv` without re-estimating; `--figures-only --exclude-ban-topic` reads `estimates_exbantopic/` and writes `figures/.../did_exbantopic/`). **Thesis variant:** baseline `semantic_axis/event_study/sem_axis_emotion_events.png` overlays Italian political-event markers on the standard `sem_axis_emotion.png` (same CSV; regenerated with estimate or `--figures-only --families semantic_axis`).
 - **Comment DiD:** after enriched shards + `--pass all`: `.venv/bin/python scripts/diagnostics/prepare_did_comment_panel.py --config config/italy_polarization_setup.yaml` then `.venv/bin/python scripts/analysis/did_event_study.py --families lexical_comment,semantic_axis_comment,lexical_author_day,semantic_axis_author_day --no-bootstrap` (smoke: `--max-shards 2` on prepare; `--comment-sample-frac 0.05` on estimate). **Italy-only forum:** `italy_only_post` included in default subreddit families. **Author bins:** `--author-spec week3` robustness pass.
 - **Bucket-then-comment event study** (polarization decomposition): **two stratifications** — **lexical** (same asymmetric L/R + `net_ideology` rule as `user_week`, applied to each scheme’s March labeling-window comments) and **semantic** (pre-ban user-week `semantic_bucket` from `assign_author_ideology_buckets.py`, replicated across schemes). Run `prepare_did_comment_panel.py --bin-days 3` once (includes lexical rate columns: `aggression_rate_100w`, `negative_rate_100w`, `extremity`), then `assign_author_ideology_buckets.py --cohort strict`, then `scripts/analysis/bucket_event_study.py`. Outputs: `did/lean_buckets/` (lexical) + `did/lean_buckets_semantic/` + `did/bucket_event_study/{1,3}d/` (legacy root = lexical + `net_ideology`) + nested `strat_lexical/<outcome>/` and `strat_semantic/<outcome>/` + matching figure trees. Config: `did.bucket_event_study` (`label_outcome`, `bucket_stratifications`, `additional_outcomes` for semantic axes and lexical rates). CLI: `--stratification lexical|semantic`, `--outcome <col>`. **`split_sample` cross-fit:** `split_method: random` with `n_splits: 5`. **Table 1 static (headline):** `y ~ post + post:IT | author`. **Event study:** `i(rel_period, IT)` with `author + time_id` FE. **Inference:** placebo-in-space on headline static rows for `all_controls_pooled` only. Smoke: `--max-shards 2 --scheme holdout_2wk --no-bootstrap --no-figures --stratification lexical --outcome net_ideology`. **8 GB RAM:** one stratification × outcome at a time.
+- **English-quality within-author DiD** (text-first-stage mechanism): `build_english_quality_roster.py` → `did/english_quality/roster_window={pre_ban|full}/author_roster.csv` (default **`--roster-window pre_ban`**: forum membership and `lang_bilingual` from **pre-launch comments only**; `full` retains legacy Mar–Apr classification for comparison). ~1.9k `italian_bilingual` authors under `full` (count drops under `pre_ban`); `native_control` = English-control only. English-control is decided by subreddit `primary_lexicon == "en"` across all control arms (**`ukpolitics` included**; German `de` excluded). Roster attaches `italian_share_pre`, `dominant_pre_lang`, and `lang_bilingual` (≥2 EN and ≥2 IT in the classification window). `prepare_english_quality_panel.py` → `.../roster_window=*/panel/{1,3}d/` (full event-window comments for DiD; projects `lang_comment`, writing-quality + polarization outcomes). **`prepare_english_quality_panel` stops (exit 0) when strict `cross_language` authors &lt; 50** (`CROSS_LANGUAGE_MIN_STRICT_AUTHORS`). `estimate_english_quality_did.py` (same `--roster-window`) runs four designs — **native_control**, **cross_language** (headline **within_author_diff**), **cross_language_native_it**, **cross_language_langmix**. Cross static: `y ~ post + is_english + post:is_english | author + time_id` + subreddit WCB. Cross headline outcomes: `log_len`, `avg_words_per_sentence_comment`, `ttr_50w`. Extra outputs under run subdir: `static_within_author_diff_{tag}.csv`, `cohort_audit.csv`, etc. Smoke: `--max-shards 1` on roster/panel. Core helpers: `src/did/english_quality.py`; tests: `tests/test_english_quality.py`, `tests/test_roster_window.py`.
 - Headline event-study overlays: `scripts/analysis/did_event_study_plots.py` → `did/event_study_{outcome}.csv` and `results/figures/.../did/event_study/*.png`
 - Overview-only replot: `scripts/diagnostics/plot_did_overview.py`
+- **Scan-wide multiple-testing audit (F10):** `scripts/diagnostics/export_scan_audit.py` → `did/estimates/summary/scan_audit.csv` + `scan_audit_summary.txt` (BH q-values over baseline `did_summary.csv` only; vintage signature with `ai_style_rate` full_ban β). Run **after** baseline `did_event_study.py` on the rebuilt panel. Cross-plan order: panel re-run → F9 (early_vs_control strategies) → F7 (`--weights n_comments`) → F10 (this script).
 - Lexical control heterogeneity: `scripts/diagnostics/plot_did_lexical_by_control.py` → `did/lexical/by_control_choice.png`
-- Ban-window descriptives: `scripts/diagnostics/plot_descriptives_ban_shaded.py` → `descriptives/ban_window/`
+- Ban-window descriptives: `scripts/diagnostics/plot_descriptives_ban_shaded.py` → `descriptives/ban_window/{lexical,semantic,wordfish}/` (cross-country IT vs DE/EU/UK/US; control id `US_political` displayed as US; Germany omitted on Wordfish by design with in-panel note). Lexical extras include `mean_n_words` (raw words/comment) alongside `log_len_mean` (log scale).
+- ChatGPT/AI mention salience: `scripts/diagnostics/plot_chatgpt_mentions_ban_shaded.py` → `descriptives/ban_window/chatgpt_mention_rate_100w.png` (2×2 IT vs DE/EU/UK/US) + `chatgpt_mention_rate_100w_pooled.png` (single panel IT vs word-weighted pooled controls) + `chatgpt_mention_rate_100w_pooled_range.png` (same with DE/EU/UK/US min–max band) + `descriptives/daily_chatgpt_mentions_by_topic_family.csv` (multi-language keyword scan on comment bodies; all comments, not political-universe only)
+- Participation margins (exploratory quantity): `scripts/diagnostics/plot_participation_ban_shaded.py` → `descriptives/ban_window/participation/` (by `lang_comment`) + `participation_by_arm/` (six DiD `topic_family` arms) + `daily_participation_by_{language,arm}.csv`; burn-in masks entry/return metrics; rolling re-masks NaN churn tail
+- **Quantity DiD** (estimable forum volume): `prepare_did_subreddit_panel.py` → `did/panels/subreddit/did_subreddit_quantity_panel_1d.csv` (zero-filled active forums; `log1p` counts) → `did_event_study.py --families quantity` → `did/quantity/{event_study,coefplots_headline}/`
 - Wordfish v1 vs v2 θ scatter: `scripts/diagnostics/plot_wordfish_v1_vs_v2.py`
 - DiD guards: `degenerate_collinear` and `insufficient_panel` in `src/did/estimate.py`; `pretrend_F_p` Wald test on leads \(k\in\{-3,-2,-1\}\)
 - Thesis handoff prose: `results/notes/context_updates_for_thesis_repo.md`
@@ -176,7 +183,53 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
 - Universe slices (requires `comment_in_political_universe` on shards): `daily_country_panel_by_universe_slice.csv`, `daily_italy_all_by_universe_slice.csv`, `daily_it_political_by_universe_slice.csv`, `daily_it_others_by_universe_slice.csv` (`universe_slice`: `in_political_tree` / `out_political_tree`; includes `share_of_panel_comments`)
 - Run: `.venv/bin/python scripts/diagnostics/prepare_polarization_descriptives.py --config config/italy_polarization_setup.yaml`
 
-### 4j) Polarization descriptives plots
+### 4j) Ban-window shaded descriptives
+- Script: `plot_descriptives_ban_shaded.py`
+- Output: `results/figures/italy_polarization/descriptives/ban_window/{lexical,semantic,wordfish}/{outcome_id}.png`
+- Outcomes: `BAN_WINDOW_DESCRIPTIVE_OUTCOMES` in `src/did/outcomes.py` (lexical/style from `daily_country_panel.csv`, semantic axes from `semantic_axis_panel.csv`, Wordfish from `wordfish_extremity_panel.csv`)
+- Prerequisites: `prepare_polarization_descriptives.py`; for semantic/wordfish panels also run `prepare_semantic_axis_descriptives.py` and `prepare_wordfish.py`
+- Run: `.venv/bin/python scripts/diagnostics/plot_descriptives_ban_shaded.py --config config/italy_polarization_setup.yaml`
+- Note: Germany has no Wordfish series (`wordfish.languages: [it, en]`); empty control panels show an annotation instead of a blank subplot
+- Comment length: `log_len_mean` (log scale) and `mean_n_words` (raw words/comment) both under `ban_window/lexical/`
+
+### 4j-bis) ChatGPT/AI mention ban-window plot
+- Script: `plot_chatgpt_mentions_ban_shaded.py`
+- Output: `results/figures/italy_polarization/descriptives/ban_window/chatgpt_mention_rate_100w.png` (2×2 panels, 7-day rolling) `chatgpt_mention_rate_100w_pooled.png` (single panel IT vs word-weighted pooled controls de+eu+uk+us; 3-day rolling with faint raw daily points; sanity-checked window means before export), and `chatgpt_mention_rate_100w_pooled_range.png` (pooled panel plus control-panel min–max band); table `descriptives/daily_chatgpt_mentions_by_topic_family.csv`
+- Scans enriched shard `body` text for multi-language ChatGPT/AI keywords (case-sensitive `AI`/`IA`/`KI` acronyms; case-insensitive product terms)
+- Run: `.venv/bin/python scripts/diagnostics/plot_chatgpt_mentions_ban_shaded.py --config config/italy_polarization_setup.yaml`
+- Optional: `--pooled-smoothing 3` (default; set to `1` for unsmoothed pooled lines only)
+
+### 4j-ter) Participation margins ban-window plot (exploratory)
+- Script: `plot_participation_ban_shaded.py`
+- Output: `descriptives/ban_window/participation/{all,political,non_political}/{metric}.png` (6 metrics × 3 slices); `descriptives/ban_window/participation_by_arm/` (same metrics by six DiD `topic_family` arms); tables `descriptives/daily_participation_by_language.csv` and `daily_participation_by_arm.csv`; notes `participation_margins_notes.txt`
+- Metrics: `n_comments`, `n_authors`, `comments_per_author`, `new_authors`, `returning_author_comment_share`, `churned_authors` (7d inactivity exit proxy; NaN final 7 days)
+- Burn-in: `--burn-in-days 14` (default) sets `new_authors` and `returning_author_comment_share` to NaN before 2023-03-15 (window-local `first_seen` left-censoring)
+- Rolling: `grouped_trailing_daily_rolling` re-masks smoothed values wherever raw series is NaN (fixes churn tail bridging)
+- Grouping: comment language (`lang_comment` in it/en/de) and DiD arms (`topic_family`); political/non_political slices require `comment_in_political_universe` on shard (rows from shards without flag stay in `all` only)
+- Run: `.venv/bin/python scripts/diagnostics/plot_participation_ban_shaded.py --config config/italy_polarization_setup.yaml`
+
+### 4j-quin) Quantity DiD (subreddit-day volume)
+- Panel: `prepare_did_subreddit_panel.py` also writes `did/panels/subreddit/did_subreddit_quantity_panel_1d.csv` — zero-filled calendar grid for forums with ≥1 comment in both March and April 2023; outcomes `log_n_comments`, `log_n_authors` = `log1p(n_comments)`, `log1p(n_authors)`. `--exclude-ban-topic` writes parallel `did_subreddit_quantity_panel_1d_exbantopic.csv` (does not overwrite canonical).
+- Registry: `src/did/outcomes.py` family `quantity` (`ddd_allowed=False`; uses separate panel, not shared lexical panel)
+- Estimate: `.venv/bin/python scripts/analysis/did_event_study.py --config config/italy_polarization_setup.yaml --families quantity` (headline `cross_country_all` + `early_ban_7d` in default strategy set)
+- Figures: `results/figures/italy_polarization/did/quantity/{event_study,coefplots_headline}/`
+
+### 4j-quat) Q&A substitution test (Italian advice forums)
+- Hypothesis: ChatGPT substitutes for asking strangers; Q&A forums should see higher comment volume and question-mark rate during the Italy ban (Mar 31–Apr 27) vs Italian non-Q&A controls.
+- Forum lists: `config/italy_polarization_subreddit_metadata.yaml` → `qa_advice_subreddits` (headline treated set); non-Q&A Italian controls derived in `src/config_utils.py` (`non_qa_italian_control_subreddits`).
+- Panel: `prepare_qa_volume_panel.py` — scans shard `body` for `?` (no full feature re-run); **zero-fills** every forum to full 61-day grid via `reindex_full_grid()` in `src/qa_substitution.py`; outputs `qa_substitution/qa_volume_panel_{1d,3d}.csv`, `qa_substitution_subreddit_roster.csv`
+- Estimate: `qa_volume_did.py` — within-Italy TWFE (`qa:post | subreddit + time_id`); **fepois** on zero-filled counts + **log1p OLS** check; LOO robustness dropping `ItaliaPersonalFinance` / `Universitaly` / both; 3d event study; hub placebo; outputs `qa_did_summary.csv`, `qa_event_study_3d.csv`, `qa_phase_contrasts.csv`, `qa_did_notes.txt`
+- Plots: `plot_qa_substitution.py` → `figures/italy_polarization/qa_substitution/` (indexed volume, question share, event-study coefficients)
+- **Verdict (Jun 2026): KILL.** Zero-filled headline still wrong-signed (fepois qa:post ≈ −15%, p≈0.10); effect attenuates/reverses when dropping dominant treated forums (IPF + Universitaly ≈81% volume). Question-rate lift (~+3 pp/100w, p≈0.07) is suggestive only. **Data bug:** `DomandeDaReddit` severely under-collected (42 RC comments / 21 days; not a filter name bug); biases treated panel.
+- Caveats: RC comment dumps only (not submission-level questions); post-lift window is ~3 days (Apr 28–30)
+- Run:
+  ```bash
+  .venv/bin/python scripts/diagnostics/prepare_qa_volume_panel.py --config config/italy_polarization_setup.yaml
+  .venv/bin/python scripts/analysis/qa_volume_did.py --config config/italy_polarization_setup.yaml
+  .venv/bin/python scripts/diagnostics/plot_qa_substitution.py --config config/italy_polarization_setup.yaml
+  ```
+
+### 4k) Polarization descriptives plots
 - Script: `plot_polarization_descriptives.py`
 - Output: `results/figures/italy_polarization/descriptives/daily/{by_family,by_topic,by_topic_italian,country_panel,ideology}/` and the same view tree under `descriptives/rolling_daily/` (7-day trailing past-only default)
 - Dual-universe overlays (thick in-tree, translucent non-tree): `descriptives/{daily,rolling_daily}/{country_panel_dual_universe,italy_all_dual_universe,italy_it_political_dual_universe,italy_it_others_dual_universe}/`
@@ -184,7 +237,7 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
 - Optional: `--rolling_window N` (days) for `rolling_daily/` figures
 - Run: `.venv/bin/python scripts/diagnostics/plot_cleaning_pipeline_trends.py --config config/italy_polarization_setup.yaml`
 
-### 4k) Wordfish robustness (prompt 03)
+### 4l) Wordfish robustness (prompt 03)
 - **Stopwords (one-time):** `scripts/devtools/generate_wordfish_stopwords.py` → `config/lexicons/stopwords_{it,en,de}.txt` (de for 03b-authors; **de not fitted** here)
 - **Prepare:** `prepare_wordfish.py` — four fits (`it`/`en` × `day`/`week`), event bins anchored at `2023-03-31`; German excluded from fits; adds `change`/`change_z` (rolling prior extremity, W from `change_window_days[0]`), placebo flags (`placebo_launch_date`), `date_utc` on day rows, `wordfish_placebo_window_summary.csv`
 - **Plot:** `plot_wordfish.py` → `results/figures/italy_polarization/wordfish/` including `extremity_timeseries_by_family.png` (day-primary; IT vs EN panels) and `axis_words_{it,en}.png` aliases
@@ -195,7 +248,7 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
   - `.venv/bin/python scripts/diagnostics/prepare_wordfish.py --config config/italy_polarization_setup.yaml`
   - `.venv/bin/python scripts/diagnostics/plot_wordfish.py --config config/italy_polarization_setup.yaml`
 
-### 4l) Wordfish authors (prompt 03b)
+### 4m) Wordfish authors (prompt 03b)
 - **Prepare:** `prepare_wordfish_authors.py` — author×bin documents; `it`/`en`/`de` fits; dual `full` / `balanced` panels per `week7`/`week3`/`window` spec; ban-anchored bins; `it > de > en` assignment; `change`/`change_z` (`rolling_bins_w`); headline `balanced_week7` copied to `wordfish_authors_extremity_panel.csv` for prompt **04** (TWFE/ES/placebo regressions run in 04, not here). Full runs pool languages into `wordfish_authors_extremity_panel_{tag}.csv`; `--language it` (etc.) writes only `_{tag}_{lang}.csv` and leaves pooled/headline files unchanged.
 - **Plot:** `plot_wordfish_authors.py` → `results/figures/italy_polarization/wordfish_authors/`
 - Tables: `results/tables/italy_polarization/wordfish_authors/` (`wordfish_authors_extremity_panel_{mode}_{spec}.csv`, assignment audit, validation, stability, `wordfish_authors_run_notes.txt`)
@@ -205,7 +258,7 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
   - `.venv/bin/python scripts/diagnostics/plot_wordfish_authors.py --config config/italy_polarization_setup.yaml`
   - Optional: `--spec week7 --panel-mode balanced --language it`; `--drop-cross-language` for robustness
 
-### 4k-bis) Wordfish v2 (validity pass; legacy paths unchanged)
+### 4m-bis) Wordfish v2 (validity pass; legacy paths unchanged)
 - **Authors v2 (primary ideology attempt):** `prepare_wordfish_authors_v2.py` → `wordfish_authors_v2/` — `fit_wordfish_v2`, 8k token cap, author-level `wordfish_authors_validation_gate.csv`; EN `split_us_uk` (`en_us` / `en_uk` fits); per-tag positions/extremity/dispersion/coverage/validation CSVs are concatenated across languages (`primary_lexicon` = `it`/`en`/`de` on panels). **Performance:** two shard passes (pass1+ideology, then all specs/languages in one body pass) with column-pruned parquet reads; `--reuse-assignment` skips pass1 lexicon scan when `wordfish_authors_assignment.csv` exists; BLAS pinned to 1 thread during fits (lower heat).
 - **Forum v2 (Tier B / labels):** `prepare_wordfish_forum_v2.py` → `wordfish_forum_v2/` — shard `topic_family` preserved, token cap; θ not validated as ideology
 - **Plot:** `plot_wordfish_authors_v2.py`, `plot_wordfish_forum_v2.py`
@@ -269,21 +322,30 @@ Run after `prepare_did_subreddit_panel.py` (and enriched shards for style index)
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/analysis/did_event_study.py --weights n_comments` | Comment-count weighted TWFE → `did/estimates_weighted/` |
-| `scripts/analysis/placebo_in_time.py` | Fixed 7d placebo-in-time + RI-t; `placebo_in_time.csv` |
+| `scripts/analysis/did_event_study.py --weights n_comments --families lexical,semantic_axis,quantity --no-figures --no-bootstrap` | Comment-count weighted TWFE → `did/estimates_weighted/` (thesis polarization + first-stage; **no wordfish**). Re-running lexical overwrites prior weighted rows (`wild_p` → NaN when `--no-bootstrap`). |
+| `scripts/analysis/verify_weighted_did_coverage.py` | Pre-run `--write-baseline`; post-run gates (unweighted hash, n_obs parity, ai_style reproduction, 4-outcome comparison table). |
+| `scripts/analysis/diagnose_ai_style_weighted.py` | Weighted `ai_style_rate` post-phase / exbantopic / LOO diagnosis → `estimates_weighted/ai_style_weighted_diagnosis.csv` (does not touch `did_summary.csv`). |
+| Ban-topic exclusion (Check 1) | `compute_ban_topic_flag.py` → prep `--exclude-ban-topic` → `did_event_study.py --exclude-ban-topic --families lexical,semantic_axis` → `compare_exbantopic_coefficients.py` | `*_exbantopic` panels; `did/estimates_exbantopic/`; `did/exbantopic_comparison.csv`; includes `emotion_rate`, `cognition_rate` |
+| Lexical emotion/cognition DiD | `run_lexical_emotion_cognition_did.sh` (or `--outcomes emotion_rate,cognition_rate --families lexical,lexical_comment`) | Forum + weighted + comment + exbantopic; triangulation vs `sem_axis_emotion` |
+| `scripts/analysis/placebo_in_time.py` | Fixed 7d placebo-in-time + RI-t; default 6 outcomes (`aggression_rate`, `sem_axis_ideology_var` included); `placebo_in_time.csv` |
 | `scripts/analysis/first_stage_mde.py` | MDE = 2.8×SE from saved `by_outcome/*.csv` |
-| `scripts/diagnostics/fit_style_index_stats.py` | Pre-period clip bounds → `did/style_index_stats.json` |
-| `scripts/features/compute_style_index_on_shards.py` | Persist `style_index_full` / `style_index_reduced` on shards |
-| `scripts/diagnostics/validate_style_index_gates.py` | Histogram, Spearman vs `ai_style_rate_100w`, pretrend F, 20+20 review CSV |
+| `scripts/analysis/plot_first_stage_eventstudy.py` | Thesis first-stage ±30d / 3d-bin event study (ai_style_rate, style_index_llm) → `did/first_stage/first_stage_eventstudy_3d.png` |
+| `scripts/diagnostics/fit_style_index_stats.py` | Pre-period clip bounds → `did/style_index_stats.json` (optional) |
+| `scripts/diagnostics/validate_style_index_weights.py` | Pick frozen `style_index_llm` weights → `style_index_stats.json` |
+| `scripts/features/compute_style_index_on_shards.py` | Persist `style_index_llm` + LOO ablations + `em_dash_*` on shards |
+| `scripts/features/compute_enriched_shard_features.py --pass style` | Re-score `em_dash_count` (extended dashes) and other style counters in-place |
+| `scripts/diagnostics/validate_style_index_gates.py` | Gates on `style_index_llm`; pretrend on `style_index_llm_mean` |
+| `scripts/diagnostics/run_italy_overnight_pipeline.sh` | Full Italy pipeline in order (screen: `screen -dmS italy_overnight bash -lc './scripts/diagnostics/run_italy_overnight_pipeline.sh'`) |
 | `scripts/analysis/prepare_adopter_flags.py` | Schemes 1–3 flags (thresholds **within country**) |
 | `scripts/analysis/adopter_ddd.py` | Triple-diff `post×flag`, `post×IT×flag` with `author` + `topic_family×date` FE |
 
-Descriptive date-placebo figures from `did_event_study.py` robustness grid are **not** permutation tests; do not merge into `placebo_in_time.csv`.
+Descriptive date-placebo figures from `did_event_study.py` robustness grid are **not** permutation tests; do not merge into `placebo_in_time.csv`. Date placebos with fewer than 10 pre-period days in-panel are skipped (`estimation_note=skipped_insufficient_pre`). `cross_country_vs_{de,eu,uk,us}` now has `early_ban_7d` specs alongside `full_ban`. F9 appendix gates are vintage-conditional (old panel: exact reproduction; rebuilt panel: structure-only + re-anchor printout).
 
 ---
 
 ## Optional diagnostics (Italy)
 
+- **Bucket event-study level leak:** `event_study_level_robustness.py` — FD_ref / FD_mean / baseline (B) by semantic bucket at 1d/3d; tables in `did/bucket_event_study/{1,3}d/strat_semantic/robustness/`; figures in `did/bucket_event_study/{1,3}d/FD/{ref,preban_mean}/` and `.../baseline/` (see README KNOWN ISSUE). Replot: `--figures-only`.
 - **Raw QA (no cleaning):** `plot_data_quality_trends.py` on `data/raw/italy_polarization/daily_chunks/`
 - **Dedupe after filter restart:** `dedupe_daily_chunks.py --apply`
 - **Cross-forum overlap:** `user_overlap_across_forums.py`, `user_same_day_cross_forum.py`

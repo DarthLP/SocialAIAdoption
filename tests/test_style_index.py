@@ -7,13 +7,14 @@ import math
 import pandas as pd
 
 from src.style_index import (
-    compute_index,
+    compute_style_index_llm,
     fit_preperiod_stats,
     readability_amstad,
     readability_flesch_en,
     readability_gulpease,
     ttr_first_n_tokens,
 )
+from src.style_index_llm import BUNDLE_LLM, LLM_CANDIDATES
 
 
 def test_readability_gulpease_hand_example() -> None:
@@ -61,8 +62,14 @@ def test_fit_preperiod_stats_persists_clip_bounds() -> None:
     stats = fit_preperiod_stats(pd.DataFrame(rows))
     meta = stats["languages"]["it"]["log_len"]
     assert "clip_lo" in meta and "clip_hi" in meta
-    full, _red = compute_index(rows[0], stats, "it")
-    assert full is None or isinstance(full, float)
+    cand = LLM_CANDIDATES["theory_base"]
+    stats["primary_candidate"] = "theory_base"
+    stats["languages"]["it"]["bundles"] = {
+        BUNDLE_LLM: {"candidate_id": "theory_base", "weights": dict(cand["weights"]), "interactions": []},
+    }
+    out = compute_style_index_llm({**rows[0], "n_words": 25.0}, stats, "it")
+    assert "style_index_llm" in out
+    assert out["style_index_llm"] is None or isinstance(out["style_index_llm"], float)
 
 
 def test_ttr_50w_requires_50_tokens() -> None:

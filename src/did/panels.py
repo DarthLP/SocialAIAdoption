@@ -22,6 +22,7 @@ class AnalysisPanels:
 
     sub_v1: pd.DataFrame
     sub_v2: pd.DataFrame
+    sub_quantity: pd.DataFrame
     slice_panel: pd.DataFrame
     auth_v1: pd.DataFrame
     auth_v2: pd.DataFrame
@@ -30,18 +31,42 @@ class AnalysisPanels:
     author_day_1d: pd.DataFrame
 
 
-def load_subreddit_panel(config: Dict[str, Any]) -> pd.DataFrame:
+def _panel_file_suffix(variant: Optional[str] = None) -> str:
+    """Function summary: filename suffix for parallel panel variants (e.g. _exbantopic)."""
+    if variant == "exbantopic":
+        return "_exbantopic"
+    return ""
+
+
+def load_subreddit_panel(config: Dict[str, Any], *, variant: Optional[str] = None) -> pd.DataFrame:
     """Function summary: load did_subreddit_panel_1d.csv with calendar fields."""
-    path = resolve_panel_path(config, "subreddit", "did_subreddit_panel_1d.csv")
+    suffix = _panel_file_suffix(variant)
+    path = resolve_panel_path(config, "subreddit", f"did_subreddit_panel_1d{suffix}.csv")
     if not path.is_file():
         raise FileNotFoundError(f"Missing {path}; run prepare_did_subreddit_panel.py")
     return pd.read_csv(path)
 
 
-def load_subreddit_slice_panel(config: Dict[str, Any]) -> pd.DataFrame:
-    """Function summary: load long-format subreddit × universe_slice panel."""
+def load_subreddit_quantity_panel(
+    config: Dict[str, Any], *, variant: Optional[str] = None
+) -> pd.DataFrame:
+    """Function summary: load zero-filled subreddit-day quantity panel for DiD."""
+    suffix = _panel_file_suffix(variant)
     path = resolve_panel_path(
-        config, "subreddit", "did_subreddit_panel_by_universe_slice_1d.csv"
+        config, "subreddit", f"did_subreddit_quantity_panel_1d{suffix}.csv"
+    )
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Missing {path}; run prepare_did_subreddit_panel.py to build quantity panel."
+        )
+    return pd.read_csv(path)
+
+
+def load_subreddit_slice_panel(config: Dict[str, Any], *, variant: Optional[str] = None) -> pd.DataFrame:
+    """Function summary: load long-format subreddit × universe_slice panel."""
+    suffix = _panel_file_suffix(variant)
+    path = resolve_panel_path(
+        config, "subreddit", f"did_subreddit_panel_by_universe_slice_1d{suffix}.csv"
     )
     if not path.is_file():
         raise FileNotFoundError(f"Missing {path}; run prepare_did_subreddit_panel.py")
@@ -88,9 +113,15 @@ def slice_panel_for_ddd(sl: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def merge_semantic_axis(sub: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
+def merge_semantic_axis(
+    sub: pd.DataFrame,
+    config: Dict[str, Any],
+    *,
+    variant: Optional[str] = None,
+) -> pd.DataFrame:
     """Function summary: left-merge forum semantic-axis outcomes onto subreddit-day panel."""
-    sem_path = tables_subdir(config, "semantic_axis") / "semantic_axis_panel.csv"
+    suffix = _panel_file_suffix(variant)
+    sem_path = tables_subdir(config, "semantic_axis") / f"semantic_axis_panel{suffix}.csv"
     if not sem_path.is_file():
         return sub
     sem = pd.read_csv(sem_path)
@@ -386,16 +417,38 @@ def author_panel_has_multi_lang(auth: pd.DataFrame) -> Tuple[bool, bool]:
     return bool((lex == "en").any()), bool((lex == "de").any())
 
 
-def _build_subreddit_panel(config: Dict[str, Any], wf_subdir: str) -> pd.DataFrame:
+def _build_subreddit_quantity_panel(
+    config: Dict[str, Any], *, variant: Optional[str] = None
+) -> pd.DataFrame:
+    """Function summary: subreddit-day quantity panel with entity/time ids."""
+    sub = load_subreddit_quantity_panel(config, variant=variant)
+    sub["entity_id"] = sub["subreddit"].astype(str)
+    sub["time_id"] = sub["date_utc"].astype(str)
+    return sub
+
+
+def _build_subreddit_panel(
+    config: Dict[str, Any],
+    wf_subdir: str,
+    *,
+    variant: Optional[str] = None,
+) -> pd.DataFrame:
     """Function summary: subreddit-day panel with semantic axis and forum Wordfish merge."""
-    sub = load_subreddit_panel(config)
-    sub = merge_semantic_axis(sub, config)
+    sub = load_subreddit_panel(config, variant=variant)
+    sub = merge_semantic_axis(sub, config, variant=variant)
     sub = merge_wordfish_forum(sub, config, tables_subdir_name=wf_subdir)
     sub["entity_id"] = sub["subreddit"].astype(str)
     sub["time_id"] = sub["date_utc"].astype(str)
     if "n_comments" not in sub.columns and "n_comments_x" in sub.columns:
         sub["n_comments"] = sub["n_comments_x"]
     return sub
+
+
+def _families_need_quantity(families: Optional[Sequence[str]]) -> bool:
+    """Function summary: True when estimation needs zero-filled quantity panel."""
+    if not families:
+        return False
+    return "quantity" in set(families)
 
 
 def _families_need_subreddit(families: Optional[Sequence[str]]) -> bool:
@@ -451,6 +504,8 @@ def build_analysis_panels(
     author_wordfish_spec: Optional[str] = None,
     comment_sample_frac: Optional[float] = None,
     comment_max_rows: Optional[int] = None,
+    *,
+    variant: Optional[str] = None,
 ) -> AnalysisPanels:
     """Function summary: panels for DiD estimation (v1/v2 forum and author).
 
@@ -458,13 +513,14 @@ def build_analysis_panels(
     - config: loaded study YAML.
     - families: when set, skip loading panels not required by these outcome families.
     - author_wordfish_spec: override did.author_wordfish_spec (e.g. week3 robustness).
+    - variant: optional panel variant (e.g. ``exbantopic`` for ban-topic exclusion).
     """
     wfa_spec = resolve_author_wordfish_spec(config, override=author_wordfish_spec)
     if _families_need_subreddit(families):
-        sub_v1 = _build_subreddit_panel(config, "wordfish")
+        sub_v1 = _build_subreddit_panel(config, "wordfish", variant=variant)
         need_v2 = not families or "wordfish_forum_v2" in set(families)
         sub_v2 = (
-            _build_subreddit_panel(config, "wordfish_forum_v2")
+            _build_subreddit_panel(config, "wordfish_forum_v2", variant=variant)
             if need_v2 and wordfish_forum_v2_available(config)
             else pd.DataFrame()
         )
@@ -472,9 +528,17 @@ def build_analysis_panels(
         sub_v1 = pd.DataFrame()
         sub_v2 = pd.DataFrame()
 
+    if _families_need_quantity(families):
+        try:
+            sub_quantity = _build_subreddit_quantity_panel(config, variant=variant)
+        except FileNotFoundError:
+            sub_quantity = pd.DataFrame()
+    else:
+        sub_quantity = pd.DataFrame()
+
     if _families_need_slice(families):
         try:
-            sl = load_subreddit_slice_panel(config)
+            sl = load_subreddit_slice_panel(config, variant=variant)
             sl["entity_id"] = sl["subreddit"].astype(str) + "|" + sl["universe_slice"].astype(str)
             sl["time_id"] = sl["date_utc"].astype(str)
         except FileNotFoundError:
@@ -531,6 +595,7 @@ def build_analysis_panels(
     return AnalysisPanels(
         sub_v1=sub_v1,
         sub_v2=sub_v2,
+        sub_quantity=sub_quantity,
         slice_panel=sl,
         auth_v1=auth_v1,
         auth_v2=auth_v2,

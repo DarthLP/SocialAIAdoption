@@ -15,6 +15,8 @@ comment counts) for pooled standard errors downstream.
 
 Functionality:
 - Reads `paths.interim_dir/cleaned_monthly_chunks/`.
+- Skips screening-excluded subreddits by default (same rule as feature passes); use
+  `--include-excluded` only for audit runs.
 - Filters out empty/deleted authors, AutoModerator, and bot-name heuristic accounts.
 - Skips rows with missing `created_utc` or `n_words_comment <= 0`.
 - Computes per-row `iso_week_start` (Monday in UTC, ISO 8601 date string).
@@ -73,10 +75,46 @@ PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import (
     load_config,
+    load_screening_pooled,
     resolve_primary_subreddits,
+    screening_by_subreddit,
+    should_skip_screened_subreddit,
+    subreddit_screening_action,
     subreddit_topic_map,
     topic_groups,
 )
+
+
+# ----------------------------- Screening / subreddit selection -----------------------------
+
+
+def subreddits_for_panel(config: Dict[str, Any], include_excluded: bool = False) -> List[str]:
+    """Function summary: primary subreddits that pass screening (analysis sample by default).
+
+    Parameters:
+    - config: loaded study YAML.
+    - include_excluded: when True, retain screening-excluded forums for audit.
+
+    Returns:
+    - Sorted subreddit names to scan for user-week aggregation.
+    """
+    tables_dir = Path(config["paths"]["tables_dir"])
+    screening_by_sub = screening_by_subreddit(load_screening_pooled(tables_dir))
+    out: List[str] = []
+    skipped = 0
+    for subreddit in resolve_primary_subreddits(config):
+        action = subreddit_screening_action(screening_by_sub, subreddit)
+        if should_skip_screened_subreddit(action, include_excluded=include_excluded):
+            skipped += 1
+            continue
+        out.append(subreddit)
+    if skipped:
+        print(
+            f"[prepare_user_week_style_panel] skip_excluded_subreddits={skipped} "
+            f"include_excluded={include_excluded}",
+            flush=True,
+        )
+    return out
 
 
 # ----------------------------- Topic / hygiene helpers -----------------------------
@@ -112,6 +150,7 @@ MEAN_FEATURES_REQUIRED: List[str] = [
 ]
 
 ENRICHED_MEAN_FEATURES: List[str] = [
+    "ttr_50w",
     "net_ideology",
     "extremity",
     "ambivalence",
@@ -229,6 +268,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="Drop user-week rows with fewer than this many words (default 0 keeps all so downstream picks the cohort).",
+    )
+    parser.add_argument(
+        "--include-excluded",
+        action="store_true",
+        help="Include screening-excluded subreddits (default: analysis sample only).",
     )
     parser.add_argument(
         "--profile",
@@ -822,7 +866,7 @@ def main() -> None:
     config = load_config(args.config)
     config_topic_map = subreddit_topic_map(config, include_topic_aliases=False)
     config_topic_groups = topic_groups(config)
-    subreddits = resolve_primary_subreddits(config)
+    subreddits = subreddits_for_panel(config, include_excluded=bool(args.include_excluded))
     paths = build_paths(config)
 
     if not paths.input_shards_dir.is_dir():
@@ -870,7 +914,7 @@ def main() -> None:
     if shards_missing_sem_axis:
         print(
             f"[prepare_user_week_style_panel] shards_missing_sem_axis={shards_missing_sem_axis} "
-            f"(of {len(month_jobs)}); run compute_enriched_shard_features.py --pass all",
+            f"(of {len(month_jobs)} kept subreddits); run compute_enriched_shard_features.py --pass semaxis",
             flush=True,
         )
 

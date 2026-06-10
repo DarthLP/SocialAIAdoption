@@ -63,6 +63,20 @@ def _placebo_dates_from_launch(launch: str) -> List[str]:
     return dates
 
 
+MIN_PRE_DAYS = 10
+
+
+def _n_pre_period_days(panel: pd.DataFrame, placebo_date: str) -> int:
+    """Function summary: count unique calendar days with rel_day < 0 under placebo relabeling."""
+    pl = placebo_panel(panel, placebo_date)
+    return int(pl.loc[pl["rel_day"] < 0, "date_utc"].astype(str).nunique())
+
+
+def _robustness_note(result: Dict[str, Any]) -> str:
+    """Function summary: normalize estimation_note from a TWFE result dict."""
+    return str(result.get("estimation_note", "ok"))
+
+
 def run_robustness_grid(
     panel: pd.DataFrame,
     strategy: StrategySpec,
@@ -91,6 +105,7 @@ def run_robustness_grid(
             "se": base["se"],
             "pvalue": base["pvalue"],
             "p_placebo_space": float("nan"),
+            "estimation_note": _robustness_note(base),
         }
     )
 
@@ -104,6 +119,7 @@ def run_robustness_grid(
             "p_placebo_space": pis.p,
             "placebo_p_floor": pis.p_floor,
             "placebo_betas": ",".join(f"{b:.6g}" for b in pis.placebo_betas),
+            "estimation_note": "ok",
         }
     )
 
@@ -112,6 +128,21 @@ def run_robustness_grid(
         if pdate in seen:
             continue
         seen.add(pdate)
+        n_pre = _n_pre_period_days(panel, pdate)
+        if n_pre < MIN_PRE_DAYS:
+            rows.append(
+                {
+                    "check": f"placebo_{pdate}",
+                    "beta": float("nan"),
+                    "se": float("nan"),
+                    "pvalue": float("nan"),
+                    "p_placebo_space": float("nan"),
+                    "inference_role": "descriptive_unequal_window",
+                    "estimation_note": "skipped_insufficient_pre",
+                    "n_pre_days": n_pre,
+                }
+            )
+            continue
         pl = placebo_panel(panel, pdate)
         pl_strat = StrategySpec(strategy.strategy_id + "_placebo", description="placebo t*")
         r = run_strategy_twfe(pl, pl_strat, y_col)
@@ -123,6 +154,8 @@ def run_robustness_grid(
                 "pvalue": r["pvalue"],
                 "p_placebo_space": float("nan"),
                 "inference_role": "descriptive_unequal_window",
+                "estimation_note": _robustness_note(r),
+                "n_pre_days": n_pre,
             }
         )
 
@@ -136,6 +169,7 @@ def run_robustness_grid(
                 "se": r["se"],
                 "pvalue": r["pvalue"],
                 "p_placebo_space": float("nan"),
+                "estimation_note": _robustness_note(r),
             }
         )
     return rows

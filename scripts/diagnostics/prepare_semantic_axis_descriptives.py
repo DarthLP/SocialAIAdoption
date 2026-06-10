@@ -81,6 +81,7 @@ from scripts.diagnostics.descriptives_util import (  # noqa: E402
     event_dates_from_config,
     weighted_mean,
 )
+from src.ban_topic import BAN_TOPIC_COLUMN, ensure_ban_topic_column  # noqa: E402
 from src.circumvention import (  # noqa: E402
     attach_italy_circumvention_columns,
     build_circumvention_geo_panel,
@@ -121,8 +122,11 @@ _BASE_PANEL_COLUMNS: Tuple[str, ...] = (
     "net_ideology",
     "sem_axis_coverage",
     "has_sem_axis",
+    "is_ban_topic",
 )
-_SCORE_PANEL_COLUMNS: Tuple[str, ...] = tuple(AXIS_SCORE_COLUMNS[axis] for axis in ALL_AXIS_NAMES)
+_SCORE_PANEL_COLUMNS: Tuple[str, ...] = tuple(AXIS_SCORE_COLUMNS[axis] for axis in ALL_AXIS_NAMES) + (
+    "sem_axis_emotion_pruned",
+)
 PANEL_COLUMNS: Tuple[str, ...] = _BASE_PANEL_COLUMNS + _SCORE_PANEL_COLUMNS
 READ_COLUMNS = list(PANEL_COLUMNS) + list(VALIDATION_EXTRA_COLUMNS) + list(EXAMPLE_EXTRA_COLUMNS)
 WEIGHTED_MEAN_COLS: Tuple[str, ...] = _SCORE_PANEL_COLUMNS + ("sem_axis_coverage", "net_ideology")
@@ -161,6 +165,11 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="Comma-separated bin sizes (e.g. 1,3,7); default from semantic_axis.panel_bin_days.",
+    )
+    parser.add_argument(
+        "--exclude-ban-topic",
+        action="store_true",
+        help="Drop is_ban_topic comments and write parallel *_exbantopic panel CSVs.",
     )
     return parser.parse_args()
 
@@ -611,6 +620,8 @@ def _write_panels_from_accumulators(
     out_dir: Path,
     config: Dict[str, Any],
     parent_lang_counts: Dict[int, Dict[Tuple[str, ...], int]],
+    *,
+    panel_suffix: str = "",
 ) -> None:
     """Function summary: finalize accumulators, attach VPN, write panel CSVs."""
     italy_lookup = _italy_circumvention_lookup(config, launch, panel_bin_days)
@@ -627,10 +638,10 @@ def _write_panels_from_accumulators(
                 panel = attach_italy_circumvention_columns(
                     panel, italy_period, panel_level=panel_level
                 )
-            path = out_dir / f"semantic_axis_panel_{slug}_{int(bin_days)}d.csv"
+            path = out_dir / _panel_filename(slug, int(bin_days), panel_suffix)
             panel.to_csv(path, index=False)
             if slug == "by_forum" and int(bin_days) == 1:
-                alias = out_dir / "semantic_axis_panel.csv"
+                alias = out_dir / f"semantic_axis_panel{panel_suffix}.csv"
                 panel.to_csv(alias, index=False)
             print(
                 f"[prepare_semantic_axis_descriptives] panel_level={panel_level} "
@@ -654,6 +665,22 @@ def _iter_shards(interim_dir: Path, subs: List[str], max_shards: int | None) -> 
     return paths
 
 
+def _filter_ban_topic_exclusion(df: pd.DataFrame, exclude: bool) -> pd.DataFrame:
+    """Function summary: optionally drop ban-topic comments (regex fallback for missing/NaN)."""
+    if not exclude or df.empty:
+        return df
+    work = ensure_ban_topic_column(df, log_prefix="prepare_semantic_axis_descriptives")
+    return work[~work[BAN_TOPIC_COLUMN].astype(bool)].copy()
+
+
+def _panel_filename(slug: str, bin_days: int, suffix: str) -> str:
+    """Function summary: semantic panel CSV basename with optional _exbantopic suffix."""
+    base = f"semantic_axis_panel_{slug}_{int(bin_days)}d.csv"
+    if not suffix:
+        return base
+    return f"semantic_axis_panel_{slug}_{int(bin_days)}d{suffix}.csv"
+
+
 def _in_event_window(df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
     """Function summary: filter rows to study event window by date_utc."""
     start, end_excl, _, _ = event_dates_from_config(config)
@@ -672,6 +699,8 @@ def _stream_shards_for_panels(
     percentile_lookup: Mapping[Tuple[str, str, int], float],
     panel_bin_days: Sequence[int],
     launch: str,
+    *,
+    exclude_ban_topic: bool = False,
 ) -> Tuple[
     MutableMapping[int, MutableMapping[str, MutableMapping[Any, Dict[str, Any]]]],
     Dict[int, Dict[Tuple[str, ...], int]],
@@ -697,6 +726,9 @@ def _stream_shards_for_panels(
             skipped_no_semaxis += 1
             continue
         df = _in_event_window(df, config)
+        if df.empty:
+            continue
+        df = _filter_ban_topic_exclusion(df, exclude_ban_topic)
         if df.empty:
             continue
         df = _enrich_comment_frame(df, config)
@@ -891,6 +923,8 @@ def main() -> None:
     _, _, launch, _ = event_dates_from_config(config)
 
     panel_read_cols = _columns_to_read(include_validation=False, include_examples=False)
+    if args.exclude_ban_topic:
+        panel_read_cols = tuple(dict.fromkeys((*panel_read_cols, "body")))
     cal_path = out_dir / "semantic_axis_lexicon_percentile_thresholds.csv"
     shard_paths = _iter_shards(interim_dir, subs, args.max_shards)
     cal_df = calibrate_lexicon_percentiles(
@@ -907,6 +941,7 @@ def main() -> None:
         )
     percentile_lookup = percentile_lookup_from_csv(cal_path)
 
+    panel_suffix = "_exbantopic" if args.exclude_ban_topic else ""
     accum, parent_lang_counts, found = _stream_shards_for_panels(
         interim_dir,
         subs,
@@ -918,12 +953,20 @@ def main() -> None:
         percentile_lookup,
         panel_bin_days,
         launch,
+        exclude_ban_topic=args.exclude_ban_topic,
     )
     if not found:
         print("[prepare_semantic_axis_descriptives] no shard data in event window", flush=True)
     else:
         _write_panels_from_accumulators(
-            accum, launch, bucket_specs, panel_bin_days, out_dir, config, parent_lang_counts
+            accum,
+            launch,
+            bucket_specs,
+            panel_bin_days,
+            out_dir,
+            config,
+            parent_lang_counts,
+            panel_suffix=panel_suffix,
         )
 
     if not args.skip_validation or not args.skip_examples:
