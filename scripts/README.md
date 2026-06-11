@@ -174,8 +174,9 @@ Archived AI-adoption config: `config/archive/ai_adoption_political_forums_setup.
   - `language/subreddit/` — five-series overlay on subreddit TWFE (3d bins outcomes via `bin_lexical_daily_panel`; entity = subreddit).
   - `language/hub_pooled/` — five-series overlay on `language_hub` aggregated panel (~5 clusters).
   - `language_universe/in_out_slice/` — two-series overlay (`cross_country_political_universe_in` / `_out`) on subreddit×`universe_slice` panel.
-  - Error bars: **±1.96 × SE** from entity-clustered TWFE (`cluster_entity=True`), not comment-level SD. **Degenerate series** (non-finite SE, e.g. single-entity `cross_country_vs_us` on hub panel) are skipped at export/plot (`_event_study_series_usable`; overlay drops series with &lt;2 finite SE).
+  - Error bars: **±1.96 × SE** from entity-clustered TWFE (`cluster_entity=True`), not comment-level SD. **Degenerate series** (non-finite SE, e.g. single-entity `cross_country_vs_us` on hub panel) are skipped at export/plot (`_event_study_series_usable`; overlay drops series with &lt;2 finite SE; scale-free \|γ\| &gt; 1e6 bound; tail shares additionally gated at \|γ\| ≤ 0.12).
   - CSVs: `did/estimates/{family}/event_study/{panel_level}/{bundle}/{bin}d/{strategy_id}/{outcome}.csv`
+  - **3d metadata carry-forward (2026-06):** `bin_lexical_daily_panel` keeps only numeric columns, so `prepare_subreddit_event_study_panel` restores entity-constant metadata (`topic_family`, `primary_lexicon`, `IT`, `is_control`, `control_*`) after binning (`restore_entity_meta_after_binning`). Without it, `filter_strategy_sample` silently collapsed `cross_country_all` to an Italian-only sample at 3d → fully collinear ES (γ ~1e13). Defense in depth: when `primary_lexicon` is missing the filter now falls back to `IT`/`control_*` flags. ES bundles use `first_strategy_by_id()` (FIRST duplicate wins) so they get the `full_ban` variant, not the `early_ban_7d` clone whose subwindow sample restriction truncates post-ban coefficients. Gate + scoped rerun: `diagnose_subreddit_3d_panel.py`, then `did_aggregated_event_study.py --panel-level language --bundle subreddit --bin-days 3 --tail-shift-only --no-figures` (tail CSVs only) or without `--tail-shift-only` for the full bundle.
 - Wordfish v2 DiD runs when `wordfish_forum_v2/wordfish_extremity_panel.csv` and `wordfish_authors_v2/wordfish_authors_extremity_panel.csv` exist; otherwise v2 families are skipped with a log message
 
 ### 4i) Polarization descriptives tables
@@ -332,6 +333,8 @@ Run after `prepare_did_subreddit_panel.py` (and enriched shards for style index)
 | `scripts/analysis/first_stage_mde.py` | MDE = 2.8×SE from saved `by_outcome/*.csv` |
 | `scripts/analysis/plot_first_stage_eventstudy.py` | Thesis first-stage ±30d / 3d-bin event study (ai_style_rate, style_index_llm) → `did/first_stage/first_stage_eventstudy_3d.png` |
 | `scripts/diagnostics/plot_pole_share_eventstudy.py` | Thesis two-panel pole_share (raw trajectories + 3d ES) → `did/lexical/event_study/pole_share_eventstudy.png` |
+| `scripts/diagnostics/diagnose_subreddit_3d_panel.py` | Gate before regenerating `language/subreddit/3d` CSVs: metadata carry-forward, treat mix, mono-treat time_ids, design cond, live tail ES \|γ\| ≤ 0.12 (exit 1 on any failure) |
+| `scripts/diagnostics/plot_semantic_leftright_eventstudy.py` | Thesis dual-tail ideology ES (LEFT `#34708F`, RIGHT `#CC0000`, x = rel_period×3) from `language/subreddit/3d/cross_country_all` with shape gate; hub_pooled fallback only when gate fails → `did/event_study/language/subreddit/3d/semantic_leftright_eventstudy.png` |
 | `scripts/diagnostics/fit_style_index_stats.py` | Pre-period clip bounds → `did/style_index_stats.json` (optional) |
 | `scripts/diagnostics/validate_style_index_weights.py` | Pick frozen `style_index_llm` weights → `style_index_stats.json` |
 | `scripts/features/compute_style_index_on_shards.py` | Persist `style_index_llm` + LOO ablations + `em_dash_*` on shards |

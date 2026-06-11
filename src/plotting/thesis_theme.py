@@ -23,6 +23,9 @@ import pandas as pd
 THESIS_ITALY = "#CC0000"
 THESIS_CONTROL = "#34708F"
 THESIS_CONTROL_BAND = "#B8CEDD"
+# Marker edge/error-bar color for single-series coefficient plots (neutral
+# dark gray; reserves Italy red / control blue for group identity).
+THESIS_COEF_MARKER = "#333333"
 
 BAN_ONSET_LINE = "#4D4D4D"
 BAN_LIFT_LINE = "#B3B3B3"

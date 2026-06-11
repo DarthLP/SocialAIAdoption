@@ -79,6 +79,17 @@ FOOTNOTE_INDEXED = (
 INDEXED_YLABEL = "Index (pre-ban mean = 100)"
 INDEXED_REFERENCE_Y = 100.0
 
+# Indexed variants ship at ~0.49\textwidth in the thesis: compact canvas,
+# larger fonts, explicit sparse date ticks so labels stay legible at ~3in.
+COMPACT_FIGSIZE = (6.5, 4.3)
+COMPACT_DPI = 200
+COMPACT_LABEL_FONTSIZE = 13
+COMPACT_TITLE_FONTSIZE = 15
+COMPACT_TICK_FONTSIZE = 12
+COMPACT_TICK_DATES = pd.to_datetime(
+    ["2023-03-01", "2023-03-15", "2023-04-01", "2023-04-15", "2023-05-01"]
+)
+
 ITALY_COLOR = THESIS_ITALY
 CONTROL_COLOR = THESIS_CONTROL
 
@@ -354,6 +365,7 @@ def _plot_thesis_figure(
     *,
     footnote: str = FOOTNOTE,
     reference_y: float | None = None,
+    compact: bool = False,
 ) -> None:
     """Function summary: render single-panel thesis figure with ban annotations.
 
@@ -364,15 +376,17 @@ def _plot_thesis_figure(
     - out_path: PNG output path (.txt caption written alongside).
     - footnote: caption text for figure and .txt sidecar.
     - reference_y: optional horizontal reference line (e.g. 100 for indexed plots).
+    - compact: half-page thesis styling (6.5x4.3 in, dpi 200, fonts 13/15/12,
+      explicit Mar 01 / Mar 15 / Apr 01 / Apr 15 / May 01 ticks).
 
     Returns:
     - None.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
     x_start = pd.Timestamp(STUDY_START)
-    x_end = pd.Timestamp(STUDY_END)
+    x_end = COMPACT_TICK_DATES[-1] if compact else pd.Timestamp(STUDY_END)
 
-    fig, ax = plt.subplots(figsize=(10, 4.5))
+    fig, ax = plt.subplots(figsize=COMPACT_FIGSIZE if compact else (10, 4.5))
     shade_ban_window(ax, mode="calendar", ban_start=BAN_START, ban_end=BAN_END, zorder=0)
     if reference_y is not None:
         ax.axhline(reference_y, color="0.6", linestyle=":", linewidth=0.8, zorder=2)
@@ -403,13 +417,27 @@ def _plot_thesis_figure(
     )
 
     ax.set_xlim(x_start, x_end)
-    ax.set_xlabel(XLABEL_CALENDAR)
-    ax.set_ylabel(ylabel)
-    ax.legend(loc="upper left", fontsize=8)
-    ax.grid(True, alpha=0.25)
-    fig.autofmt_xdate()
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    if compact:
+        ax.set_xlabel(XLABEL_CALENDAR, fontsize=COMPACT_LABEL_FONTSIZE)
+        ax.set_ylabel(ylabel, fontsize=COMPACT_LABEL_FONTSIZE)
+        ax.set_xticks(COMPACT_TICK_DATES)
+        ax.set_xticklabels(
+            [d.strftime("%b %d") for d in COMPACT_TICK_DATES],
+            fontsize=COMPACT_TICK_FONTSIZE,
+        )
+        ax.tick_params(axis="y", labelsize=COMPACT_TICK_FONTSIZE)
+        ax.legend(loc="upper left", fontsize=COMPACT_TICK_FONTSIZE)
+        ax.grid(True, alpha=0.25)
+        fig.tight_layout()
+        fig.savefig(out_path, dpi=COMPACT_DPI, bbox_inches="tight")
+    else:
+        ax.set_xlabel(XLABEL_CALENDAR)
+        ax.set_ylabel(ylabel)
+        ax.legend(loc="upper left", fontsize=8)
+        ax.grid(True, alpha=0.25)
+        fig.autofmt_xdate()
+        fig.tight_layout()
+        fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
     caption_path = out_path.with_suffix(".txt")
@@ -456,6 +484,7 @@ def main() -> None:
             indexed_path,
             footnote=FOOTNOTE_INDEXED,
             reference_y=INDEXED_REFERENCE_Y,
+            compact=True,
         )
         print(f"[plot_circumvention_thesis_figures] wrote {indexed_path}", flush=True)
         print(

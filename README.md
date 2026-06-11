@@ -74,6 +74,43 @@ from CSV only: add `--figures-only` (no re-estimation).
 
 ---
 
+## RESOLVED ISSUE (2026-06) — `language/subreddit/3d` event studies were degenerate
+
+**Symptom.** Every CSV under `did/estimates/*/event_study/language/subreddit/3d/cross_country_all/`
+had γ ~1e12–1e14 with matching SEs. Same outcomes were sane at `language/subreddit/1d` and
+`language/hub_pooled/3d`.
+
+**Cause.** `bin_lexical_daily_panel` keeps only numeric columns, so 1d → 3d binning dropped
+`topic_family`; `filter_strategy_sample` then hit the lexicon fallback with an empty
+`primary_lexicon` and kept **only Italian subreddits** (zero treat variation per time bin →
+fully collinear TWFE event-study interactions, design cond ~4e15).
+
+**Fix.** `prepare_subreddit_event_study_panel` restores entity-constant metadata after binning
+(`restore_entity_meta_after_binning`); `filter_strategy_sample` falls back to `IT`/`control_*`
+flags when `primary_lexicon` is absent; `estimate_event_study` returns an empty table with
+`estimation_note=degenerate_collinear` for absurd-magnitude fits; tail-share CSVs are gated at
+|γ| ≤ 0.12. A related pass-1 regression was fixed at the same time: ES bundles previously picked
+the `early_ban_7d` duplicate of `cross_country_all` (last-wins dict), whose subwindow sample
+restriction truncated post-ban coefficients past day 6 — `first_strategy_by_id()` now selects the
+`full_ban` variant. Gate before regenerating:
+
+```bash
+.venv/bin/python scripts/diagnostics/diagnose_subreddit_3d_panel.py --config config/italy_polarization_setup.yaml
+# then (scoped tail CSVs)
+.venv/bin/python scripts/analysis/did_aggregated_event_study.py \
+  --config config/italy_polarization_setup.yaml \
+  --panel-level language --bundle subreddit --bin-days 3 --tail-shift-only --no-figures
+# or the full bundle (drop --tail-shift-only)
+```
+
+Thesis figure from the corrected CSVs: `plot_semantic_leftright_eventstudy.py` →
+`did/event_study/language/subreddit/3d/semantic_leftright_eventstudy.png` (shape-gated; falls back
+to `hub_pooled` only when the gate fails). Note: `fd_mean_sem_axis_emotion_all.png` in the thesis
+is the **1-day-bin** figure (`bucket_event_study/1d/FD/preban_mean/naive_full_march/all/`), matching
+its caption — regenerate with `event_study_level_robustness.py --bin-days 1 --figures-only`.
+
+---
+
 ## Quick Start (extraction milestone)
 
 Prerequisites: `.venv` with `pip install -r requirements.txt`; external dumps `RC_2023-03.zst` and `RC_2023-04.zst` under `/Volumes/Expansion/Masterthesis/RawData/reddit/comments/` (or your `--source_dir`).

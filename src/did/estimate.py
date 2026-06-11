@@ -445,6 +445,14 @@ def estimate_twfe(
     return packed
 
 
+# Scale-free degeneracy bound for event-study coefficients: no outcome in this
+# project legitimately reaches |gamma| anywhere near this (sane maxima are
+# O(10-70) for variance-type outcomes); collinear treat-only fits explode to
+# 1e12+. Magnitude-based, so it never kills legitimate unbounded outcomes the
+# way a blanket 0.12/0.5 cut would (e.g. sentence_len_var, avg_wps).
+ES_DEGENERATE_ABS_GAMMA: float = 1e6
+
+
 def estimate_event_study(
     df: pd.DataFrame,
     y_col: str,
@@ -454,11 +462,21 @@ def estimate_event_study(
     entity_col: str = "entity_id",
     time_col: str = "time_id",
     weights_col: str | None = None,
+    bin_days: int = 1,
+    max_abs_gamma: float | None = None,
 ) -> Tuple[Dict[str, Any], pd.DataFrame]:
     """Function summary: dynamic TWFE event study with lead/lag dummies × treat.
 
+    Parameters (additions):
+    - bin_days: calendar days per rel_col unit; when rel_col != 'rel_day' the
+      companion rel_day column is written as k * bin_days (calendar days).
+    - max_abs_gamma: optional outcome-specific degeneracy cap on |gamma|
+      (e.g. 0.12 for bounded tail shares); the scale-free
+      ES_DEGENERATE_ABS_GAMMA bound always applies.
+
     Returns:
-    - Summary dict (pretrend_F_p, etc.) and coefficient table.
+    - Summary dict (pretrend_F_p, etc.) and coefficient table; empty table with
+      estimation_note='degenerate_collinear' when the fit is numerically degenerate.
     """
     work = df.copy()
     work["y"] = pd.to_numeric(work[y_col], errors="coerce")
@@ -536,9 +554,25 @@ def estimate_event_study(
             "pvalue": float(2 * (1 - stats.norm.cdf(abs(b / se)))) if se > 0 else float("nan"),
         }
         if rel_col != "rel_day":
-            row["rel_day"] = k
+            row["rel_day"] = k * max(1, int(bin_days))
         rows.append(row)
     es_df = pd.DataFrame(rows).sort_values(rel_col) if rows else pd.DataFrame()
+    if not es_df.empty:
+        gamma_abs_max = float(es_df["gamma"].abs().max())
+        cap = ES_DEGENERATE_ABS_GAMMA
+        if max_abs_gamma is not None:
+            cap = min(cap, float(max_abs_gamma))
+        if not np.isfinite(gamma_abs_max) or gamma_abs_max > cap:
+            summary = _pack_result(
+                float("nan"),
+                float("nan"),
+                int(res.nobs),
+                int(work[entity_col].nunique()),
+                estimation_note="degenerate_collinear",
+            )
+            summary["pretrend_F_p"] = float("nan")
+            summary["gamma_abs_max"] = gamma_abs_max
+            return summary, pd.DataFrame()
     summary = _pack_result(
         float("nan"), float("nan"), int(res.nobs), int(work[entity_col].nunique()), estimation_note=note
     )

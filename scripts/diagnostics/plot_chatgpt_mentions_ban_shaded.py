@@ -607,20 +607,24 @@ def plot_ban_window_pooled_with_control_range(
 
     shade_ban_window(ax, mode="calendar", ban_start=BAN_START, ban_end=BAN_END, zorder=0)
 
-    for group in POOL_GROUP_LABELS:
-        style = POOL_GROUP_STYLE[group]
-        raw = pooled[pooled["pool_group"] == group]
-        if raw.empty:
-            continue
-        if show_smoothing_legend:
+    # Faint raw daily series: Italy only (controls are summarized by the
+    # pooled line + range band; their raw daily lines read as clutter).
+    if show_smoothing_legend:
+        italy_raw = pooled[pooled["pool_group"] == "Italy"]
+        if not italy_raw.empty:
             ax.plot(
-                raw["date_utc"],
-                raw["value"],
-                color=str(style["color"]),
-                linewidth=0.8,
-                alpha=0.25,
+                italy_raw["date_utc"],
+                italy_raw["value"],
+                linestyle="none",
+                marker=".",
+                markersize=3,
+                color=str(POOL_GROUP_STYLE["Italy"]["color"]),
+                alpha=0.35,
+                label="Italy (raw daily rate)",
                 zorder=1,
             )
+    for group in POOL_GROUP_LABELS:
+        style = POOL_GROUP_STYLE[group]
         smooth = roll[roll["pool_group"] == group]
         if not smooth.empty:
             ax.plot(
@@ -635,19 +639,7 @@ def plot_ban_window_pooled_with_control_range(
     ax.set_xlabel(XLABEL_CALENDAR)
     ax.set_ylabel("Mentions per 100 words")
     ax.set_title("ChatGPT / AI mention rate")
-    legend_handles, legend_labels = ax.get_legend_handles_labels()
-    if show_smoothing_legend:
-        legend_handles.append(
-            Line2D(
-                [0],
-                [0],
-                color="0.45",
-                linewidth=0.8,
-                alpha=0.25,
-                label="Daily unsmoothed (faint)",
-            )
-        )
-    ax.legend(legend_handles, legend_labels, fontsize=8)
+    ax.legend(fontsize=8)
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight")

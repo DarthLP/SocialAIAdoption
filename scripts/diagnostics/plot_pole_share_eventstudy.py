@@ -50,6 +50,7 @@ from src.config_utils import figures_subdir, load_config, tables_subdir  # noqa:
 from src.did.panels import load_subreddit_panel  # noqa: E402
 from src.did.specs import CONTROL_FAMILIES, ITALY_FAMILIES  # noqa: E402
 from src.plotting.thesis_theme import (  # noqa: E402
+    THESIS_COEF_MARKER,
     THESIS_CONTROL,
     THESIS_ITALY,
     shade_ban_window,
@@ -227,7 +228,7 @@ def _plot_panel_b(ax: plt.Axes, es: pd.DataFrame) -> None:
         y[mask],
         yerr=[yerr_lo[mask], yerr_hi[mask]],
         fmt="none",
-        ecolor="black",
+        ecolor=THESIS_COEF_MARKER,
         capsize=3,
         zorder=5,
     )
@@ -237,7 +238,7 @@ def _plot_panel_b(ax: plt.Axes, es: pd.DataFrame) -> None:
         linestyle="none",
         marker="o",
         markerfacecolor="white",
-        markeredgecolor="black",
+        markeredgecolor=THESIS_COEF_MARKER,
         markeredgewidth=1.0,
         zorder=6,
     )

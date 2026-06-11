@@ -32,6 +32,7 @@ from src.did.specs import (
     strategy_label,
 )
 from src.plotting.thesis_theme import (
+    THESIS_COEF_MARKER,
     THESIS_ITALY,
     THESIS_CONTROL,
     shade_ban_window,
@@ -551,7 +552,7 @@ def plot_event_study(
         plot.loc[mask, "gamma"],
         yerr=1.96 * plot.loc[mask, "se"],
         fmt="none",
-        ecolor="black",
+        ecolor=THESIS_COEF_MARKER,
         capsize=3,
         zorder=5,
     )
@@ -561,7 +562,7 @@ def plot_event_study(
         linestyle="none",
         marker="o",
         markerfacecolor="white",
-        markeredgecolor="black",
+        markeredgecolor=THESIS_COEF_MARKER,
         markeredgewidth=1.0,
         zorder=6,
     )

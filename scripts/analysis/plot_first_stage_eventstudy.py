@@ -66,7 +66,7 @@ from src.did.panels import load_subreddit_panel  # noqa: E402
 from src.did.paths import did_panels_dir  # noqa: E402
 from src.did.specs import StrategySpec, filter_strategy_sample  # noqa: E402
 from src.plotting.thesis_theme import (  # noqa: E402
-    THESIS_ITALY,
+    THESIS_COEF_MARKER,
     shade_ban_window,
     thesis_title_for_outcome,
     xlabel_event_study,
@@ -328,13 +328,13 @@ def _plot_two_panel(results: List[OutcomeResult], out_path: Path) -> None:
                 plot_df.loc[mask, "beta"],
                 yerr=1.96 * plot_df.loc[mask, "se"],
                 fmt="o",
-                color=THESIS_ITALY,
-                ecolor="black",
+                color=THESIS_COEF_MARKER,
+                ecolor=THESIS_COEF_MARKER,
                 elinewidth=0.9,
                 capsize=3,
                 markersize=5,
                 markerfacecolor="white",
-                markeredgecolor=THESIS_ITALY,
+                markeredgecolor=THESIS_COEF_MARKER,
                 zorder=6,
             )
         ref = plot_df[plot_df["rel_bin"] == REF_BIN]
@@ -343,10 +343,10 @@ def _plot_two_panel(results: List[OutcomeResult], out_path: Path) -> None:
                 ref["rel_day_mid"],
                 ref["beta"],
                 "o",
-                color=THESIS_ITALY,
+                color=THESIS_COEF_MARKER,
                 markersize=5,
                 markerfacecolor="white",
-                markeredgecolor=THESIS_ITALY,
+                markeredgecolor=THESIS_COEF_MARKER,
                 zorder=6,
             )
         ax.axhline(0, color="gray", linewidth=0.8, zorder=4)

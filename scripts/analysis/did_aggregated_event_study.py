@@ -58,7 +58,7 @@ from src.did.aggregated import (  # noqa: E402
     outcomes_for_panel_level,
     rel_col_for_bin,
 )
-from src.did.estimate import estimate_event_study  # noqa: E402
+from src.did.estimate import ES_DEGENERATE_ABS_GAMMA, estimate_event_study  # noqa: E402
 from src.did.outcomes import OutcomeSpec  # noqa: E402
 from src.did.panels import (  # noqa: E402
     load_subreddit_event_study_panel,
@@ -84,8 +84,8 @@ from src.did.outputs import (  # noqa: E402
 from src.did.specs import (  # noqa: E402
     EVENT_WINDOW_DAYS_BY_BIN,
     StrategySpec,
-    default_strategies,
     event_study_language_universe_slice_strategies,
+    first_strategy_by_id,
     event_study_overlay_strategies,
     event_study_topic_family_it_others_strategy,
     event_study_topic_family_it_political_strategy,
@@ -104,6 +104,11 @@ class AggregatedEsJob:
     overlay: bool
     strategies_fn: Callable[[], Tuple[StrategySpec, ...]]
 
+
+# Tail shares are bounded in [0, 1]; sane event-study coefficients sit well
+# below 0.12 (left peak ~ +0.05, right trough ~ -0.06). Anything larger marks a
+# degenerate fit (e.g. Italian-only sample with zero treat variation).
+TAIL_SHARE_MAX_ABS_GAMMA = 0.12
 
 STALE_AGGREGATED_ES_REL_DIRS: Tuple[str, ...] = (
     "event_study/language/1d",
@@ -131,7 +136,7 @@ def _tail_shift_strategy_specs(job: AggregatedEsJob) -> List[Tuple[StrategySpec,
         ("language", "hub_pooled"): ("cross_country_all", ""),
     }
     sid, suffix = by_key[key]
-    by_id = {s.strategy_id: s for s in default_strategies()}
+    by_id = first_strategy_by_id()
     return [(by_id[sid], suffix)]
 
 
@@ -200,6 +205,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bin-days", type=int, default=None, choices=(1, 3))
     parser.add_argument("--no-figures", action="store_true")
     parser.add_argument("--figures-only", action="store_true", help="Replot from saved CSVs.")
+    parser.add_argument(
+        "--tail-shift-only",
+        action="store_true",
+        help="Skip run_estimation; only re-estimate/rewrite dual-tail ideology CSVs (+PNGs unless --no-figures).",
+    )
     parser.add_argument("--refresh-panels", action="store_true", help="Rebuild aggregated panels first.")
     return parser.parse_args()
 
@@ -290,6 +300,7 @@ def _estimate_event_study_bundle(
             window=window,
             entity_col=entity_col,
             time_col=time_col,
+            bin_days=bin_days,
         )
         if es_df.empty:
             continue
@@ -314,9 +325,23 @@ def _estimate_event_study_bundle(
     return series
 
 
-def _event_study_series_usable(es_df: pd.DataFrame, min_finite_se: int = 2) -> bool:
-    """Function summary: True when event-study table has enough identified coefficients."""
+def _event_study_series_usable(
+    es_df: pd.DataFrame,
+    min_finite_se: int = 2,
+    max_abs_gamma: float = ES_DEGENERATE_ABS_GAMMA,
+) -> bool:
+    """Function summary: True when event-study table has enough identified coefficients.
+
+    Parameters:
+    - es_df: event-study coefficient table.
+    - min_finite_se: minimum count of finite positive SEs.
+    - max_abs_gamma: degeneracy cap on |gamma|; default scale-free bound, pass
+      a tight cap (e.g. TAIL_SHARE_MAX_ABS_GAMMA) only for bounded share outcomes.
+    """
     if es_df.empty or "se" not in es_df.columns:
+        return False
+    gamma = pd.to_numeric(es_df.get("gamma"), errors="coerce")
+    if gamma.notna().any() and float(gamma.abs().max()) > float(max_abs_gamma):
         return False
     finite = es_df["se"].apply(lambda v: np.isfinite(v) and float(v) > 1e-12)
     return int(finite.sum()) >= min_finite_se
@@ -446,9 +471,12 @@ def run_tail_shift_figures(
     bin_filter: Optional[int],
     write_figures: bool,
 ) -> int:
-    """Function summary: dual-tail (p10/p90) ideology event studies for each bundle × bin."""
-    if not write_figures:
-        return 0
+    """Function summary: dual-tail (p10/p90) ideology event studies for each bundle × bin.
+
+    Always (re)writes the extreme-left/right strategy CSVs; PNGs only when
+    write_figures is True. Degenerate fits (|gamma| above the tail-share cap)
+    are skipped without overwriting existing CSVs.
+    """
     fig_dir = figures_subdir(config, "did")
     jobs = _jobs_for_filters(panel_filter, bundle_filter)
     bins = [bin_filter] if bin_filter else list(AGGREGATED_BIN_DAYS)
@@ -484,15 +512,34 @@ def run_tail_shift_figures(
                 ):
                     if y_col not in work.columns:
                         continue
-                    _, es_df = estimate_event_study(
+                    summary, es_df = estimate_event_study(
                         work,
                         y_col,
                         rel_col=rel_col,
                         window=window,
                         entity_col=entity_col,
                         time_col=time_col,
+                        bin_days=bin_days,
+                        max_abs_gamma=TAIL_SHARE_MAX_ABS_GAMMA,
                     )
                     if es_df.empty:
+                        note = str(summary.get("estimation_note", ""))
+                        print(
+                            f"[did_aggregated_event_study] skip tail {oid} "
+                            f"{job.panel_level}/{job.bundle} {bin_days}d "
+                            f"{strat.strategy_id}: {note or 'empty ES'}",
+                            flush=True,
+                        )
+                        continue
+                    if not _event_study_series_usable(
+                        es_df, max_abs_gamma=TAIL_SHARE_MAX_ABS_GAMMA
+                    ):
+                        print(
+                            f"[did_aggregated_event_study] skip degenerate tail {oid} "
+                            f"{job.panel_level}/{job.bundle} {bin_days}d "
+                            f"{strat.strategy_id}: |gamma| > {TAIL_SHARE_MAX_ABS_GAMMA}",
+                            flush=True,
+                        )
                         continue
                     es_out = es_df.copy()
                     es_out["strategy_id"] = strat.strategy_id
@@ -515,7 +562,7 @@ def run_tail_shift_figures(
                     series_pair.append(
                         EventStudySeries(label=label, es_df=es_out, rel_col=rel_col)
                     )
-                if len(series_pair) != 2:
+                if len(series_pair) != 2 or not write_figures:
                     continue
                 out = aggregated_tail_shift_figure_path(
                     fig_dir,
@@ -617,6 +664,21 @@ def main() -> None:
         return
     panels = build_aggregated_panels(config)
     write_figures = not args.no_figures
+    if args.tail_shift_only:
+        n_tail = run_tail_shift_figures(
+            config,
+            panels,
+            panel_filter=args.panel_level,
+            bundle_filter=args.bundle,
+            bin_filter=args.bin_days,
+            write_figures=write_figures,
+        )
+        print(
+            f"[did_aggregated_event_study] tail-shift-only: {n_tail} tail-shift PNGs "
+            f"(CSVs rewritten for usable fits)",
+            flush=True,
+        )
+        return
     counts = run_estimation(
         config,
         panels,

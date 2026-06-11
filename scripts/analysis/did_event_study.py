@@ -357,9 +357,16 @@ def _regenerate_saved_outcome_figures(
     - None; writes PNGs under fig_dir.
     """
     fam_filter = set(families) if families else None
-    for oid in summary_df["outcome_id"].unique():
-        rows = summary_df[summary_df["outcome_id"] == oid]
-        fam = str(rows["outcome_family"].iloc[0])
+    # Iterate (outcome, family) pairs: outcomes like sem_axis_emotion live in
+    # several families (semantic_axis + semantic_axis_author_week); taking the
+    # first row's family silently skipped figures when it fell outside --families.
+    pairs = (
+        summary_df[["outcome_id", "outcome_family"]]
+        .astype(str)
+        .drop_duplicates()
+        .itertuples(index=False, name=None)
+    )
+    for oid, fam in pairs:
         if fam_filter is not None and fam not in fam_filter:
             continue
         oid_str = str(oid)

@@ -77,10 +77,14 @@ Build a reproducible pipeline for **The Effects of AI Access on Online Political
 - For AI lexicon features: entries ending in `*` are matched by Porter stems; non-`*` entries are exact-token matches.
 
 ## Thesis figure styling (2026-06)
-- Shared module: `src/plotting/thesis_theme.py` — palette (Italy `#CC0000`, controls `#34708F`, band `#B8CEDD`), standardized axis labels (`Italy × bin coefficient`; `Days relative to ban onset (N-day bins)`; `Date (UTC)`), `shade_ban_window()` ban guides (onset `#4D4D4D`, lift `#B3B3B3`, shade `#D9D9D9`).
+- Shared module: `src/plotting/thesis_theme.py` — palette (Italy `#CC0000`, controls `#34708F`, band `#B8CEDD`, single-series coefficient markers `THESIS_COEF_MARKER` `#333333`), standardized axis labels (`Italy × bin coefficient`; `Days relative to ban onset (N-day bins)`; `Date (UTC)`), `shade_ban_window()` ban guides (onset `#4D4D4D`, lift `#B3B3B3`, shade `#D9D9D9`).
 - Headline ES plots: `src/did/outputs.py` (`plot_event_study`, tail-shift); regenerate via `did_event_study.py --figures-only`.
 - Composite pole_share: `scripts/diagnostics/plot_pole_share_eventstudy.py` → `did/lexical/event_study/pole_share_eventstudy.png`.
+- Dual-tail ideology: `plot_semantic_leftright_eventstudy.py` → `did/event_study/language/subreddit/3d/semantic_leftright_eventstudy.png` (LEFT blue/RIGHT red, shape gate |γ|≤0.12 + post-ban left peak [+0.03,+0.08] / right trough [−0.08,−0.03]; hub_pooled fallback only on gate failure).
+- `fd_mean_sem_axis_emotion_all` thesis figure = **1-day bins** (`bucket_event_study/1d/FD/preban_mean/naive_full_march/all/sem_axis_emotion.png`), per its caption.
+- Circumvention indexed figures are compact half-width (6.5×4.3 in, dpi 200, fonts 13/15/12, ticks Mar 01/Mar 15/Apr 01/Apr 15/May 01); ChatGPT pooled-range shows Italy raw daily points only (`Italy (raw daily rate)` in legend), controls summarized by pooled line + range band.
 - No ATT/β/p-value text inside thesis PNGs; interpretation belongs in LaTeX captions.
+- **3d ES panel fix (2026-06):** `prepare_subreddit_event_study_panel` restores entity-constant metadata after `bin_lexical_daily_panel` (numeric-only) so `filter_strategy_sample` keeps control forums at 3d; ES bundles take the `full_ban` strategy variant via `first_strategy_by_id()`; `estimate_event_study` tags absurd fits `degenerate_collinear`. Gate: `scripts/diagnostics/diagnose_subreddit_3d_panel.py`. See README "RESOLVED ISSUE (2026-06)".
 
 ## Quality Gates
 A work item is complete only if:

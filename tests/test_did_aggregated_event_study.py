@@ -146,6 +146,9 @@ def test_slice_in_out_strategies_produce_two_series() -> None:
         sub = f"sub_{idx}"
         for k in range(-5, 6):
             day = (anchor + pd.Timedelta(days=k)).strftime("%Y-%m-%d")
+            # Deterministic residual variance: a noiseless linear y fits exactly,
+            # leaving SEs ~1e-17 that the usable-series gate rightly rejects.
+            wiggle = 0.004 * ((idx * 7 + k * 3) % 5 - 2)
             rows.append(
                 {
                     "subreddit": sub,
@@ -157,7 +160,7 @@ def test_slice_in_out_strategies_produce_two_series() -> None:
                     "topic_family": fam,
                     "IT": treat,
                     "treat": float(treat),
-                    "y": 0.2 + 0.05 * k + 0.01 * treat,
+                    "y": 0.2 + 0.05 * k + 0.01 * treat + wiggle,
                 }
             )
     panel = pd.DataFrame(rows)

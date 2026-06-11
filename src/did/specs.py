@@ -774,8 +774,8 @@ def filter_strategy_sample(
                 work = work[work["treat"] == 1]
             else:
                 work = work[(work["treat"] == 1) | hub.isin(CONTROL_FAMILIES)]
-        else:
-            lex = work.get("primary_lexicon", pd.Series(dtype=str)).astype(str)
+        elif "primary_lexicon" in work.columns:
+            lex = work["primary_lexicon"].astype(str)
             if strategy.control_family:
                 ctrl_lex = lexicon_for_control_family(strategy.control_family)
                 work = work[(work["treat"] == 1) | (lex == ctrl_lex)]
@@ -783,6 +783,21 @@ def filter_strategy_sample(
                 work = work[work["treat"] == 1]
             else:
                 work = work[(work["treat"] == 1) | lex.isin(CONTROL_LEXICONS)]
+        else:
+            # primary_lexicon dropped (e.g. metadata lost in outcome binning):
+            # fall back to IT/control flags instead of silently keeping an
+            # Italian-only sample with zero treat variation.
+            if strategy.control_family:
+                flag = f"control_{strategy.control_family}"
+                if flag in work.columns:
+                    ctrl_mask = pd.to_numeric(work[flag], errors="coerce").fillna(0) > 0
+                else:
+                    ctrl_mask = work["IT"].astype(int) == 0
+                work = work[(work["treat"] == 1) | ctrl_mask]
+            elif strategy.treated_family:
+                work = work[work["treat"] == 1]
+            else:
+                work = work[(work["treat"] == 1) | (work["IT"].astype(int) == 0)]
         work = apply_post_window(work, strategy.post_mode, "")
         if window_days is not None:
             work = work[work["rel_day"].between(-window_days, window_days)]
@@ -888,15 +903,30 @@ def subreddit_panel_strategies() -> Sequence[StrategySpec]:
     )
 
 
+def first_strategy_by_id() -> dict[str, StrategySpec]:
+    """Function summary: default strategies keyed by id, FIRST occurrence wins.
+
+    default_strategies() repeats some strategy_ids with restricted post_modes
+    (e.g. cross_country_all again with post_mode='early_ban_7d'). Event studies
+    estimate dynamic rel-time dummies and must use the full-window (full_ban)
+    variant; a last-wins dict would silently inherit the early-ban subwindow
+    sample restriction and truncate every post-ban coefficient past day 6.
+    """
+    by_id: dict[str, StrategySpec] = {}
+    for s in default_strategies():
+        by_id.setdefault(s.strategy_id, s)
+    return by_id
+
+
 def event_study_overlay_strategies() -> tuple[StrategySpec, ...]:
     """Function summary: five-strategy bundle for one overlay figure (pooled + all single controls)."""
-    by_id = {s.strategy_id: s for s in default_strategies()}
+    by_id = first_strategy_by_id()
     return tuple(by_id[sid] for sid in EVENT_STUDY_OVERLAY_STRATEGY_IDS if sid in by_id)
 
 
 def event_study_language_universe_slice_strategies() -> tuple[StrategySpec, ...]:
     """Function summary: in-tree vs out-of-tree IT-vs-controls overlay for slice panels."""
-    by_id = {s.strategy_id: s for s in default_strategies()}
+    by_id = first_strategy_by_id()
     return tuple(by_id[sid] for sid in EVENT_STUDY_LANGUAGE_UNIVERSE_SLICE_IDS if sid in by_id)
 
 
