@@ -11,6 +11,7 @@ from src.did.specs import (
     StrategySpec,
     activate_post_phases_from_config,
     apply_post_window,
+    ban_split_strategies,
     default_strategies,
     event_study_overlay_strategies,
     filter_strategy_sample,
@@ -20,11 +21,13 @@ from src.did.specs import (
     italy_only_strategies,
     lexicon_for_control_family,
     load_post_phases,
+    phase_joint_strategies,
     post_phase_strategies,
     rel_day_from_date,
     reset_post_phase_bounds,
     spec_label_short,
     strategy_label,
+    subreddit_panel_strategies,
 )
 
 
@@ -36,10 +39,10 @@ def test_rel_day_launch() -> None:
 
 
 def test_early_ban_post_window() -> None:
-    """Function summary: early-ban post is 1 only for rel_day 0..6."""
+    """Function summary: early-ban post is 1 only for rel_day 0..6; non-focal post days dropped."""
     df = pd.DataFrame({"rel_day": [-1, 0, 6, 7, 14], "post": 1})
     out = apply_post_window(df, "early_ban_7d", "")
-    assert list(out["post"]) == [0, 1, 1, 0, 0]
+    assert list(out["post"]) == [0, 1, 1]
 
 
 def test_default_strategies_early_ban_vs_control() -> None:
@@ -64,16 +67,16 @@ def test_post_first_2bd_calendar_window() -> None:
         }
     )
     out = apply_post_window(df, "post_first_2bd", "2023-03-31")
-    assert list(out["post"]) == [0, 1, 1, 0]
+    assert list(out["post"]) == [1, 1]
 
 
 def test_post_phase_apply_post_window_defaults() -> None:
     """Function summary: post-phase post indicators match default rel_day windows."""
     activate_post_phases_from_config(None)
     df = pd.DataFrame({"rel_day": [-1, 0, 2, 3, 9, 10, 25], "post": 1})
-    assert list(apply_post_window(df.copy(), "post_short_3d", "")["post"]) == [0, 1, 1, 0, 0, 0, 0]
-    assert list(apply_post_window(df.copy(), "post_medium_7d", "")["post"]) == [0, 0, 0, 1, 1, 0, 0]
-    assert list(apply_post_window(df.copy(), "post_long_tail", "")["post"]) == [0, 0, 0, 0, 0, 1, 1]
+    assert list(apply_post_window(df.copy(), "post_short_3d", "")["post"]) == [0, 1, 1]
+    assert list(apply_post_window(df.copy(), "post_medium_7d", "")["post"]) == [0, 1, 1]
+    assert list(apply_post_window(df.copy(), "post_long_tail", "")["post"]) == [0, 1, 1]
 
 
 def test_load_post_phases_yaml_override_short() -> None:
@@ -85,17 +88,80 @@ def test_load_post_phases_yaml_override_short() -> None:
     activate_post_phases_from_config(cfg)
     try:
         df = pd.DataFrame({"rel_day": [0, 1, 2], "post": 1})
-        assert list(apply_post_window(df.copy(), "post_short_3d", "")["post"]) == [1, 1, 0]
+        assert list(apply_post_window(df.copy(), "post_short_3d", "")["post"]) == [1, 1]
     finally:
         reset_post_phase_bounds()
 
 
 def test_post_phase_strategies_count() -> None:
-    """Function summary: post_phase_strategies yields 6 strategies × 4 post phases (incl. post_first_2bd)."""
-    from src.did.specs import headline_base_strategies, post_phase_strategies
-
+    """Function summary: legacy post_phase_strategies still yields 24 rows for backward tests."""
     assert len(post_phase_strategies()) == 24
     assert len(headline_base_strategies()) == 6
+
+
+def test_ban_split_and_phase_joint_strategies() -> None:
+    """Function summary: subreddit panels use ban_split + phase_joint instead of post_phase clones."""
+    assert len(ban_split_strategies()) == 12
+    assert len(phase_joint_strategies()) == 6
+    modes = {s.post_mode for s in subreddit_panel_strategies()}
+    assert "ban_in_effect" in modes
+    assert "post_lift" in modes
+    assert "phase_joint" in modes
+    assert "post_short_3d" not in modes
+
+
+def test_early_ban_sample_smaller_than_full_ban() -> None:
+    """Function summary: sub-window early_ban_7d sample is strict subset of full_ban."""
+    panel = _example_panel()
+    full = filter_strategy_sample(panel, StrategySpec("cross_country_all", post_mode="full_ban"))
+    early = filter_strategy_sample(panel, StrategySpec("cross_country_all", post_mode="early_ban_7d"))
+    assert len(early) < len(full)
+
+
+def test_subwindow_baseline_only_pre() -> None:
+    """Function summary: post==0 rows in sub-window specs are all pre-ban."""
+    panel = _example_panel()
+    for mode in ("early_ban_7d", "post_short_3d", "post_medium_7d", "post_long_tail"):
+        out = filter_strategy_sample(panel, StrategySpec("cross_country_all", post_mode=mode))
+        zeros = out[out["post"].astype(int) == 0]
+        assert (zeros["rel_day"] < 0).all()
+
+
+def test_post_first_2bd_baseline_excludes_immediate_post() -> None:
+    """Function summary: post_first_2bd baseline has no rel_day in [0, 4]."""
+    panel = _example_panel()
+    out = filter_strategy_sample(panel, StrategySpec("cross_country_all", post_mode="post_first_2bd"))
+    zeros = out[out["post"].astype(int) == 0]
+    assert not zeros["rel_day"].between(0, 4).any()
+
+
+def test_ban_in_effect_excludes_lift_days() -> None:
+    """Function summary: ban_in_effect post==1 only for rel_day 0..27."""
+    panel = _example_panel()
+    out = filter_strategy_sample(panel, StrategySpec("cross_country_all", post_mode="ban_in_effect"))
+    post_rows = out[out["post"].astype(int) == 1]
+    assert post_rows["rel_day"].max() <= 27
+    assert not post_rows["rel_day"].isin([28, 29, 30]).any()
+
+
+def _example_panel() -> pd.DataFrame:
+    """Function summary: synthetic subreddit-day panel spanning pre/post/lift."""
+    rows = []
+    for sub, treat in [("it_a", 1), ("de_a", 0)]:
+        for rd in range(-5, 31):
+            rows.append(
+                {
+                    "subreddit": sub,
+                    "entity_id": sub,
+                    "topic_family": "it_political" if treat else "de",
+                    "IT": treat,
+                    "rel_day": rd,
+                    "post": int(rd >= 0),
+                    "date_utc": f"2023-04-{max(1, min(30, rd + 31)):02d}",
+                    "time_id": f"2023-04-{max(1, min(30, rd + 31)):02d}",
+                }
+            )
+    return pd.DataFrame(rows)
 
 
 def test_filter_it_political_vs_controls() -> None:

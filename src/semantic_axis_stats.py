@@ -165,6 +165,8 @@ def calibrate_lexicon_percentiles(
     sem_cfg: Mapping[str, Any],
     *,
     read_shard_fn,
+    preban_only: bool = False,
+    launch_day: Optional[str] = None,
 ) -> pd.DataFrame:
     """Function summary: sample scored comments and compute per-lexicon score percentiles.
 
@@ -173,6 +175,8 @@ def calibrate_lexicon_percentiles(
     - read_columns: columns to read from each shard.
     - sem_cfg: semantic_axis config block.
     - read_shard_fn: callable(path, columns) -> DataFrame | None.
+    - preban_only: when True, restrict calibration sample to date_utc < launch_day.
+    - launch_day: ban launch date (YYYY-MM-DD) for pre-ban filter.
 
     Returns:
     - DataFrame with primary_lexicon, axis, percentile, threshold, n_sample.
@@ -182,21 +186,30 @@ def calibrate_lexicon_percentiles(
         return pd.DataFrame()
     max_per_lang = int(cal.get("max_comments_per_lang", 50000))
     percentiles = [int(p) for p in (sem_cfg.get("pole_percentiles") or [10, 90])]
+    use_preban = preban_only
+    if launch_day is None and use_preban:
+        use_preban = False
 
     samples: Dict[str, Dict[str, List[float]]] = {
         lang: {axis: [] for axis in SEMANTIC_AXES} for lang in ("it", "en", "de")
     }
     counts = {lang: 0 for lang in samples}
 
+    read_cols = list(read_columns)
+    if use_preban and "date_utc" not in read_cols:
+        read_cols.append("date_utc")
+
     for path in shard_paths:
         if all(counts[lang] >= max_per_lang for lang in counts):
             break
-        df = read_shard_fn(path, read_columns)
+        df = read_shard_fn(path, read_cols)
         if df is None or df.empty:
             continue
         if "has_sem_axis" not in df.columns:
             continue
         scored = df[df["has_sem_axis"].astype(float) > 0]
+        if use_preban and launch_day and "date_utc" in scored.columns:
+            scored = scored[scored["date_utc"].astype(str) < str(launch_day)]
         if scored.empty or "primary_lexicon" not in scored.columns:
             continue
         for lex in scored["primary_lexicon"].astype(str).unique():

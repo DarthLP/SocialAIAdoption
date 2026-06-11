@@ -281,6 +281,8 @@ def write_single_spec_figure(
     scheme: str,
     bucket: str,
     out_path: Path,
+    *,
+    bin_days: int = 1,
 ) -> bool:
     """Function summary: write one single-series event-study PNG.
 
@@ -299,12 +301,16 @@ def write_single_spec_figure(
     se = pd.to_numeric(es_df.get("se"), errors="coerce")
     if int((se.notna() & (se > 1e-12)).sum()) < 2:
         return False
+    title = f"{outcome} / {scheme} / {bucket}"
+    if outcome == "sem_axis_emotion" and scheme == "naive_full_march" and bucket == "all":
+        title = "Emotion–cognition axis, within-author first differences"
     plot_event_study(
         es_df,
         outcome,
         out_path,
         rel_col="rel_period",
-        title=f"{outcome} / {scheme} / {bucket}",
+        title=title,
+        bin_days=int(bin_days),
     )
     return True
 
@@ -346,7 +352,9 @@ def write_figures_from_tidy(
             continue
         es_df = tidy_group_to_es_df(grp)
         out_path = figure_path_for_spec(root, spec, scheme, bucket, outcome)
-        if write_single_spec_figure(es_df, outcome, scheme, bucket, out_path):
+        if write_single_spec_figure(
+            es_df, outcome, scheme, bucket, out_path, bin_days=int(bin_days)
+        ):
             n_written += 1
     return n_written
 
@@ -801,13 +809,16 @@ def write_cell_figures(
     Returns:
     - Count of PNG files written.
     """
+    bin_days = 3 if "/3d" in str(fig_root).replace("\\", "/") else 1
     n = 0
     for spec in (SPEC_B, SPEC_FD_REF, SPEC_FD_MEAN):
         es_df = es_by_spec.get(spec)
         if es_df is None or es_df.empty:
             continue
         out_path = figure_path_for_spec(fig_root, spec, scheme, bucket, outcome)
-        if write_single_spec_figure(es_df, outcome, scheme, bucket, out_path):
+        if write_single_spec_figure(
+            es_df, outcome, scheme, bucket, out_path, bin_days=bin_days
+        ):
             n += 1
     return n
 

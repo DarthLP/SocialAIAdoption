@@ -17,9 +17,12 @@ except ImportError as exc:
 from scipy import stats
 
 from src.did.specs import (
+    PHASE_JOINT_DEFINITIONS,
     StrategySpec,
+    add_phase_columns,
     filter_strategy_sample,
     is_entity_fe_only_strategy,
+    post_lift_treated_mass,
 )
 
 
@@ -679,10 +682,13 @@ def run_strategy_twfe(
         return estimate_ddd(italy, y_col, entity_col, time_col)
     sample = filter_strategy_sample(panel, strategy, window_days=window_days)
     if sample.empty:
-        return _empty_result(0, 0, "empty_sample")
+        empty = _empty_result(0, 0, "empty_sample")
+        empty["n_postlift_obs"] = 0
+        empty["n_postlift_clusters"] = 0
+        return empty
     author_col = "author" if "author" in sample.columns else entity_col
     if panel_kind == "comment":
-        return estimate_comment_feols(
+        result = estimate_comment_feols(
             sample,
             y_col,
             author_col=author_col,
@@ -691,20 +697,341 @@ def run_strategy_twfe(
             entity_only=is_entity_fe_only_strategy(strategy.strategy_id),
             weights_col=weights,
         )
+        return _attach_postlift_coverage(
+            _maybe_mark_post_lift_degenerate(
+                result, sample, author_col, strategy.post_mode == "post_lift"
+            ),
+            sample,
+            author_col,
+        )
     if panel_kind == "author_day":
         entity_col = author_col
         cluster_col = author_col
     if is_entity_fe_only_strategy(strategy.strategy_id):
-        return estimate_twfe_entity_only(sample, y_col, entity_col, time_col, weights_col=weights)
+        result = estimate_twfe_entity_only(sample, y_col, entity_col, time_col, weights_col=weights)
+        return _attach_postlift_coverage(
+            _maybe_mark_post_lift_degenerate(
+                result, sample, entity_col, strategy.post_mode == "post_lift"
+            ),
+            sample,
+            entity_col,
+        )
     if _insufficient_panel(sample, entity_col, time_col):
-        return _empty_result(
+        empty = _empty_result(
             len(sample),
             int(sample[entity_col].nunique()),
             "insufficient_panel",
         )
+        empty["n_postlift_obs"] = 0
+        empty["n_postlift_clusters"] = 0
+        return empty
     if sample["treat"].nunique() < 2:
         return _empty_result(len(sample), int(sample[entity_col].nunique()), "no_treat_variation")
-    return estimate_twfe(sample, y_col, entity_col, time_col, cluster_col, weights_col=weights)
+    result = estimate_twfe(sample, y_col, entity_col, time_col, cluster_col, weights_col=weights)
+    return _attach_postlift_coverage(
+        _maybe_mark_post_lift_degenerate(result, sample, entity_col, strategy.post_mode == "post_lift"),
+        sample,
+        entity_col,
+    )
+
+
+def _attach_postlift_coverage(
+    result: Dict[str, Any],
+    sample: pd.DataFrame,
+    entity_col: str,
+) -> Dict[str, Any]:
+    """Function summary: add n_postlift_obs and n_postlift_clusters to a TWFE result dict."""
+    n_obs, n_cl = post_lift_treated_mass(sample, entity_col)
+    out = dict(result)
+    out["n_postlift_obs"] = n_obs
+    out["n_postlift_clusters"] = n_cl
+    return out
+
+
+def _maybe_mark_post_lift_degenerate(
+    result: Dict[str, Any],
+    sample: pd.DataFrame,
+    entity_col: str,
+    is_lift_spec: bool,
+) -> Dict[str, Any]:
+    """Function summary: NaN lift/post_lift betas when coverage or design_cond indicate rank deficiency."""
+    if not is_lift_spec:
+        return result
+    n_obs, n_cl = post_lift_treated_mass(sample, entity_col)
+    out = dict(result)
+    beta = out.get("beta", float("nan"))
+    cond = float(out.get("design_cond", float("nan")))
+    if n_obs == 0 or n_cl == 0 or not np.isfinite(beta):
+        out.update(
+            {
+                "beta": float("nan"),
+                "se": float("nan"),
+                "ci_low": float("nan"),
+                "ci_high": float("nan"),
+                "pvalue": float("nan"),
+                "estimation_note": "degenerate_collinear_lift",
+            }
+        )
+        return out
+    if np.isfinite(cond) and cond > 1e10:
+        out.update(
+            {
+                "beta": float("nan"),
+                "se": float("nan"),
+                "ci_low": float("nan"),
+                "ci_high": float("nan"),
+                "pvalue": float("nan"),
+                "estimation_note": "degenerate_collinear_lift",
+            }
+        )
+    return out
+
+
+def _prep_phase_joint_panel(
+    df: pd.DataFrame,
+    y_col: str,
+    entity_col: str,
+    time_col: str,
+    weights_col: str | None = None,
+) -> pd.DataFrame:
+    """Function summary: panel MultiIndex frame with tp_* interaction columns for joint phase TWFE."""
+    work = add_phase_columns(df)
+    cols = [entity_col, time_col, y_col, "treat", "tp_short", "tp_medium", "tp_long", "tp_lift"]
+    if weights_col and weights_col in work.columns:
+        cols.append(weights_col)
+    panel = work[cols].copy()
+    panel = panel.rename(columns={y_col: "y", entity_col: "entity", time_col: "time"})
+    panel["y"] = pd.to_numeric(panel["y"], errors="coerce")
+    drop = ["y"]
+    if weights_col and weights_col in panel.columns:
+        panel[weights_col] = pd.to_numeric(panel[weights_col], errors="coerce")
+        drop.append(weights_col)
+    panel = panel.dropna(subset=drop)
+    panel["time"] = pd.to_datetime(panel["time"].astype(str))
+    return panel.set_index(["entity", "time"])
+
+
+def estimate_twfe_phase_joint(
+    df: pd.DataFrame,
+    y_col: str,
+    entity_col: str = "entity_id",
+    time_col: str = "time_id",
+    weights_col: str | None = None,
+) -> List[Dict[str, Any]]:
+    """Function summary: joint multi-phase TWFE with one beta per treat×phase window.
+
+    Parameters:
+    - df: filtered strategy sample with rel_day and treat.
+    - y_col: outcome column.
+    - entity_col, time_col: panel keys.
+    - weights_col: optional observation weights.
+
+    Returns:
+    - List of four result dicts keyed by phase_joint_{short,medium,long,lift} spec ids.
+    """
+    n_pl_obs, n_pl_cl = post_lift_treated_mass(df, entity_col)
+    work = _prep_phase_joint_panel(df, y_col, entity_col, time_col, weights_col=weights_col)
+    n_obs = len(work)
+    n_clusters = int(df[entity_col].nunique()) if not df.empty else 0
+    if n_obs < 30 or work.index.get_level_values(0).nunique() < 3:
+        empty = _empty_result(n_obs, n_clusters, "insufficient_obs_or_clusters")
+        return _phase_joint_rows_from_fit(empty, n_pl_obs, n_pl_cl)
+
+    interact_cols = ["tp_short", "tp_medium", "tp_long", "tp_lift"]
+    formula_rhs = " + ".join(interact_cols) + " + EntityEffects + TimeEffects"
+    w = _panelols_weights(work, weights_col)
+    try:
+        kwargs: Dict[str, Any] = {"drop_absorbed": True}
+        if w is not None:
+            kwargs["weights"] = w
+        mod = PanelOLS.from_formula(f"y ~ {formula_rhs}", data=work, **kwargs)
+        res = mod.fit(cov_type="clustered", cluster_entity=True)
+    except ValueError:
+        empty = _empty_result(n_obs, n_clusters, "fully_absorbed")
+        return _phase_joint_rows_from_fit(empty, n_pl_obs, n_pl_cl)
+    except Exception:
+        empty = _empty_result(n_obs, n_clusters, "estimation_error")
+        return _phase_joint_rows_from_fit(empty, n_pl_obs, n_pl_cl)
+
+    cond = design_matrix_condition_number_phase_joint(work, interact_cols)
+    rows: List[Dict[str, Any]] = []
+    for _phase_key, spec_id, _lo, _hi, coef_col in PHASE_JOINT_DEFINITIONS:
+        beta = float(res.params.get(coef_col, np.nan))
+        se = float(res.std_errors.get(coef_col, np.nan))
+        if not np.isfinite(beta):
+            packed = _pack_result(
+                beta,
+                se,
+                int(res.nobs),
+                n_clusters,
+                estimation_note=f"{coef_col}_absorbed",
+            )
+        else:
+            packed = _pack_result(beta, se, int(res.nobs), n_clusters, estimation_note="ok")
+        packed["design_cond"] = cond
+        packed["spec"] = spec_id
+        packed["coef_name"] = coef_col
+        packed["n_postlift_obs"] = n_pl_obs
+        packed["n_postlift_clusters"] = n_pl_cl
+        if spec_id == "phase_joint_lift":
+            packed = _maybe_mark_post_lift_degenerate(packed, df, entity_col, True)
+        rows.append(packed)
+    return rows
+
+
+def _phase_joint_rows_from_fit(
+    base: Dict[str, Any],
+    n_pl_obs: int,
+    n_pl_cl: int,
+) -> List[Dict[str, Any]]:
+    """Function summary: replicate one empty/failed result across four phase_joint spec rows."""
+    rows: List[Dict[str, Any]] = []
+    for _phase_key, spec_id, _lo, _hi, coef_col in PHASE_JOINT_DEFINITIONS:
+        row = dict(base)
+        row["spec"] = spec_id
+        row["coef_name"] = coef_col
+        row["n_postlift_obs"] = n_pl_obs
+        row["n_postlift_clusters"] = n_pl_cl
+        if spec_id == "phase_joint_lift" and row.get("estimation_note") not in (
+            "degenerate_collinear_lift",
+        ):
+            if n_pl_obs == 0 or n_pl_cl == 0:
+                row["estimation_note"] = "degenerate_collinear_lift"
+        rows.append(row)
+    return rows
+
+
+def design_matrix_condition_number_phase_joint(
+    work: pd.DataFrame,
+    interact_cols: List[str],
+) -> float:
+    """Function summary: condition number of joint-phase TWFE design matrix."""
+    try:
+        entities = work.index.get_level_values(0)
+        times = work.index.get_level_values(1)
+        ent_d = pd.get_dummies(entities, drop_first=True)
+        time_d = pd.get_dummies(times, drop_first=True)
+        parts = [work[c].astype(float).values.reshape(-1, 1) for c in interact_cols if c in work.columns]
+        if ent_d.shape[1]:
+            parts.append(ent_d.values)
+        if time_d.shape[1]:
+            parts.append(time_d.values)
+        x = np.column_stack(parts)
+        if x.shape[1] < 2:
+            return float("inf")
+        return float(np.linalg.cond(x))
+    except Exception:
+        return float("inf")
+
+
+def run_strategy_phase_joint(
+    panel: pd.DataFrame,
+    strategy: StrategySpec,
+    y_col: str,
+    window_days: Optional[int] = None,
+    entity_col: str = "entity_id",
+    time_col: str = "time_id",
+    cluster_col: str = "entity_id",
+    panel_kind: str = "subreddit_day",
+    weights: str | None = None,
+) -> List[Dict[str, Any]]:
+    """Function summary: joint multi-phase TWFE for one strategy/outcome (four spec rows).
+
+    Mirrors run_strategy_twfe signature and sample-filter branches; returns four result dicts.
+    """
+    del cluster_col
+    if strategy.strategy_id == "within_italy_ddd" or strategy.strategy_id.startswith("within_italy"):
+        italy = panel[panel["IT"].astype(int) == 1].copy()
+        if "treat" not in italy.columns:
+            italy["treat"] = 1
+        single = estimate_ddd(italy, y_col, entity_col, time_col)
+        n_pl_obs, n_pl_cl = post_lift_treated_mass(italy, entity_col)
+        return _phase_joint_rows_from_fit(single, n_pl_obs, n_pl_cl)
+    sample = filter_strategy_sample(panel, strategy, window_days=window_days)
+    if sample.empty:
+        return _phase_joint_rows_from_fit(_empty_result(0, 0, "empty_sample"), 0, 0)
+    author_col = "author" if "author" in sample.columns else entity_col
+    if panel_kind == "comment":
+        rows = _estimate_comment_phase_joint(
+            sample,
+            y_col,
+            author_col=author_col,
+            time_col=time_col,
+            entity_only=is_entity_fe_only_strategy(strategy.strategy_id),
+            weights_col=weights,
+        )
+        return rows
+    if panel_kind == "author_day":
+        entity_col = author_col
+    if is_entity_fe_only_strategy(strategy.strategy_id):
+        single = estimate_twfe_entity_only(sample, y_col, entity_col, time_col, weights_col=weights)
+        n_pl_obs, n_pl_cl = post_lift_treated_mass(sample, entity_col)
+        return _phase_joint_rows_from_fit(single, n_pl_obs, n_pl_cl)
+    if _insufficient_panel(sample, entity_col, time_col):
+        return _phase_joint_rows_from_fit(
+            _empty_result(len(sample), int(sample[entity_col].nunique()), "insufficient_panel"),
+            *post_lift_treated_mass(sample, entity_col),
+        )
+    if sample["treat"].nunique() < 2:
+        return _phase_joint_rows_from_fit(
+            _empty_result(len(sample), int(sample[entity_col].nunique()), "no_treat_variation"),
+            *post_lift_treated_mass(sample, entity_col),
+        )
+    return estimate_twfe_phase_joint(
+        sample, y_col, entity_col, time_col, weights_col=weights
+    )
+
+
+def _estimate_comment_phase_joint(
+    df: pd.DataFrame,
+    y_col: str,
+    author_col: str = "author",
+    time_col: str = "time_id",
+    entity_only: bool = False,
+    weights_col: str | None = None,
+) -> List[Dict[str, Any]]:
+    """Function summary: comment-level joint phase DiD via pyfixest (four coef rows)."""
+    try:
+        from pyfixest.estimation import feols
+    except ImportError:
+        return _phase_joint_rows_from_fit(_empty_result(0, 0, "pyfixest_missing"), 0, 0)
+    work = add_phase_columns(_prep_comment_regression(df, y_col, author_col, time_col, weights_col=weights_col))
+    n_pl_obs, n_pl_cl = post_lift_treated_mass(work, author_col)
+    if len(work) < 30 or work[author_col].nunique() < 3:
+        return _phase_joint_rows_from_fit(
+            _empty_result(len(work), int(work[author_col].nunique()) if len(work) else 0, "insufficient_obs_or_clusters"),
+            n_pl_obs,
+            n_pl_cl,
+        )
+    n_cl = int(work[author_col].nunique())
+    try:
+        feols_kw: Dict[str, Any] = {"vcov": {"CRV1": author_col}}
+        if weights_col and weights_col in work.columns:
+            feols_kw["weights"] = work[weights_col].astype(float).fillna(1.0).clip(lower=1e-9)
+        if entity_only:
+            fit = feols("y ~ tp_short + tp_medium + tp_long + tp_lift | author", data=work, **feols_kw)
+            note = "ok_entity_fe_only"
+        else:
+            fit = feols(
+                f"y ~ tp_short + tp_medium + tp_long + tp_lift | {author_col} + {time_col}",
+                data=work,
+                **feols_kw,
+            )
+            note = "ok"
+    except Exception:
+        return _phase_joint_rows_from_fit(_empty_result(len(work), n_cl, "estimation_error"), n_pl_obs, n_pl_cl)
+
+    rows: List[Dict[str, Any]] = []
+    for _phase_key, spec_id, _lo, _hi, coef_col in PHASE_JOINT_DEFINITIONS:
+        packed = _feols_result_to_dict(fit, coef_col, len(work), n_cl, estimation_note=note)
+        packed["spec"] = spec_id
+        packed["coef_name"] = coef_col
+        packed["n_postlift_obs"] = n_pl_obs
+        packed["n_postlift_clusters"] = n_pl_cl
+        if spec_id == "phase_joint_lift":
+            packed = _maybe_mark_post_lift_degenerate(packed, work, author_col, True)
+        rows.append(packed)
+    return rows
 
 
 def _pack_result(

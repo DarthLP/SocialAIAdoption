@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -48,9 +47,15 @@ def _setup_project_root() -> Path:
 
 PROJECT_ROOT = _setup_project_root()
 
-from scripts.diagnostics.descriptives_util import event_dates_from_config  # noqa: E402
 from src.config_utils import figures_subdir, load_config, tables_subdir  # noqa: E402
 from src.did.outputs import _prepare_event_study_plot_df  # noqa: E402
+from src.plotting.thesis_theme import (  # noqa: E402
+    THESIS_CONTROL,
+    THESIS_ITALY,
+    shade_ban_window,
+    xlabel_event_study,
+    ylabel_italy_bin_coefficient,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,50 +72,16 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _rel_period_markers(config: Dict[str, Any], bin_days: int = BIN_DAYS) -> Tuple[int, int, int]:
-    """Function summary: rel-period positions for ban launch, Apr 25, and lift on binned x-axis.
-
-    Parameters:
-    - config: study YAML.
-    - bin_days: calendar days per event-time period (3 for headline ES).
-
-    Returns:
-    - Tuple (period0, period25, period28) in rel_period units.
-    """
-    _, _, launch, lift = event_dates_from_config(config)
-    launch_dt = datetime.strptime(launch, "%Y-%m-%d")
-    day25 = (datetime.strptime("2023-04-25", "%Y-%m-%d") - launch_dt).days
-    day28 = (datetime.strptime(lift, "%Y-%m-%d") - launch_dt).days
-    bd = max(1, int(bin_days))
-    return 0, day25 // bd, day28 // bd
-
-
-def _apply_overlay_axes_style(ax: plt.Axes, *, xlabel: str = "Event Time") -> None:
-    """Function summary: overlay axes style without the default ref-bin line at x=-0.5."""
-    ax.axhline(0, color="black", linewidth=0.9, zorder=0)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel("Coefficient")
+def _apply_overlay_axes_style(ax: plt.Axes) -> None:
+    """Function summary: thesis overlay axes style with standardized labels and ban guides."""
+    ax.axhline(0, color="black", linewidth=0.9, zorder=4)
+    shade_ban_window(ax, mode="event_study", bin_days=BIN_DAYS, x_scale="days", zorder=0)
+    ax.set_xlabel(xlabel_event_study(BIN_DAYS))
+    ax.set_ylabel(ylabel_italy_bin_coefficient())
     ax.grid(False)
     for spine in ax.spines.values():
         spine.set_visible(True)
         spine.set_color("black")
-
-
-def _add_ban_markers(ax: plt.Axes, period0: int, period25: int, period28: int) -> None:
-    """Function summary: draw vertical lines at ban onset, Apr 25, and lift.
-
-    Parameters:
-    - ax: matplotlib axes.
-    - period0: rel-period 0 (solid).
-    - period25: Apr 25 (dotted).
-    - period28: lift date (dashed).
-
-    Returns:
-    - None; mutates ax in place.
-    """
-    ax.axvline(period0, color="black", linestyle="-", linewidth=0.9, zorder=1)
-    ax.axvline(period25, color="0.45", linestyle=":", linewidth=0.9, zorder=1)
-    ax.axvline(period28, color="0.45", linestyle="--", linewidth=0.9, zorder=1)
 
 
 def _format_p(p: float) -> str:
@@ -146,39 +117,44 @@ def _plot_overlay(
     series: Sequence[Tuple[str, pd.DataFrame, float, str]],
     *,
     title: str,
-    subtitle: str,
+    subtitle: str = "",
     out_path: Path,
     rel_col: str = "rel_period",
-    xlabel: str = "Event time (3-day periods)",
-    ylabel: str = "Coefficient",
-    ban_markers: Optional[Tuple[int, int, int]] = None,
     legend_fontsize: float = 8.0,
-    legend_bbox_y: float = -0.14,
+    legend_bbox_y: float = -0.18,
+    x_scale_days: bool = True,
 ) -> None:
     """Function summary: draw dodged event-study overlay with error bars.
 
     Parameters:
     - series: list of (label, es_df, x_offset, color).
-    - title: figure title.
-    - subtitle: figure subtitle (statics with p-values).
+    - title: axes title (neutral descriptor).
+    - subtitle: unused (kept for API compatibility).
     - out_path: PNG destination.
     - rel_col: event-time column.
-    - xlabel, ylabel: axis labels.
+    - x_scale_days: when True, multiply rel_period by BIN_DAYS for day-scale x-axis.
 
     Returns:
     - None; writes PNG.
     """
+    del subtitle
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(9, 5.2))
-    all_times: List[int] = []
+    all_times: List[float] = []
     for _, es_df, _, _ in series:
         plot = _prepare_event_study_plot_df(_sanitize_es_df(es_df), rel_col, ref_time=-1)
-        all_times.extend(plot["event_time"].astype(int).tolist())
+        x_base = plot["event_time"].astype(float)
+        if x_scale_days:
+            x_base = x_base * BIN_DAYS
+        all_times.extend(x_base.tolist())
     all_times = sorted(set(all_times))
 
     for label, es_df, offset, color in series:
         plot = _prepare_event_study_plot_df(_sanitize_es_df(es_df), rel_col, ref_time=-1)
-        x = plot["event_time"].astype(float) + offset
+        x = plot["event_time"].astype(float)
+        if x_scale_days:
+            x = x * BIN_DAYS
+        x = x + offset
         se = plot["se"].fillna(0)
         mask = se > 0
         ax.errorbar(
@@ -190,7 +166,7 @@ def _plot_overlay(
             alpha=0.75,
             capsize=2.5,
             elinewidth=0.9,
-            zorder=2,
+            zorder=5,
         )
         ax.plot(
             x,
@@ -202,11 +178,10 @@ def _plot_overlay(
             markeredgecolor=color,
             markeredgewidth=1.2,
             label=label,
-            zorder=3,
+            zorder=6,
         )
 
-    _apply_overlay_axes_style(ax, xlabel=xlabel)
-    ax.set_ylabel(ylabel)
+    _apply_overlay_axes_style(ax)
     ax.set_xticks(all_times)
     if all_times:
         yvals = []
@@ -219,14 +194,7 @@ def _plot_overlay(
         if yvals:
             pad = 0.05 * (max(yvals) - min(yvals) if max(yvals) > min(yvals) else 0.1)
             ax.set_ylim(min(yvals) - pad, max(yvals) + pad)
-    if ban_markers is not None:
-        _add_ban_markers(ax, *ban_markers)
-    ax.set_title(None)
-    fig.subplots_adjust(top=0.78, bottom=0.22)
-    fig.suptitle(title, fontsize=11, y=0.96)
-    if subtitle:
-        fig.text(0.5, 0.88, subtitle, ha="center", va="top", fontsize=9, color="0.25")
-        fig.subplots_adjust(bottom=0.18)
+    ax.set_title(title)
     ax.legend(
         loc="upper center",
         bbox_to_anchor=(0.5, legend_bbox_y),
@@ -308,26 +276,22 @@ def plot_pole_share_overlay(config: Dict[str, Any]) -> str:
     summary = pd.read_csv(fixed_dir / "summary.csv")
     all_static = _summary_row(summary, sample="all_authors", spec="full_ban")
     fixed_static = _summary_row(summary, sample="fixed_authors", spec="full_ban")
-    beta_a = float(all_static.get("beta", np.nan))
-    p_a = float(all_static.get("pvalue", np.nan))
     beta_f = float(fixed_static.get("beta", np.nan))
-    p_f = float(fixed_static.get("pvalue", np.nan))
-    subtitle = (
-        f"Full-ban statics: all authors β={beta_a:+.3f} ({_format_p(p_a)}); "
-        f"pre-ban author set β={beta_f:+.3f} ({_format_p(p_f)})"
-    )
-
-    markers = _rel_period_markers(config)
     out = figures_subdir(config, "did") / "pole_share_fixed_authors" / "pole_share_es_overlay.png"
     _plot_overlay(
         [
-            ("all authors", es_all, -DODGE_OFFSET, "#1d3557"),
-            ("pre-ban author set", es_fixed, DODGE_OFFSET, "#e76f51"),
+            ("all authors", es_all, -DODGE_OFFSET, THESIS_ITALY),
+            ("pre-ban author set", es_fixed, DODGE_OFFSET, THESIS_CONTROL),
         ],
-        title="pole_share event study (cross_country_all, 3-day bins, ref = −1)",
-        subtitle=subtitle,
+        title="All authors vs pre-ban author set",
         out_path=out,
-        ban_markers=markers,
+        x_scale_days=True,
+    )
+    print(
+        f"[plot_robustness_es_overlays] pole_share overlay labels: "
+        f"x={xlabel_event_study(BIN_DAYS)!r} y={ylabel_italy_bin_coefficient()!r} "
+        f"title='All authors vs pre-ban author set' xlim_days≈(-30,30)",
+        flush=True,
     )
 
     if np.isfinite(beta_f) and beta_f >= 0.04:
@@ -385,13 +349,13 @@ def plot_emotion_pruned_overlay(config: Dict[str, Any]) -> str:
     )
     _plot_overlay(
         [
-            ("baseline cognition pole", baseline_es, -DODGE_OFFSET, "#1d3557"),
-            (pruned_label, pruned_es, DODGE_OFFSET, "#e76f51"),
+            ("baseline cognition pole", baseline_es, -DODGE_OFFSET, THESIS_ITALY),
+            (pruned_label, pruned_es, DODGE_OFFSET, THESIS_CONTROL),
         ],
         title="sem_axis_emotion event study (cross_country_all, 3-day bins, ref = −1)",
         subtitle=subtitle,
         out_path=out,
-        ban_markers=_rel_period_markers(config),
+        x_scale_days=True,
         legend_fontsize=7.5,
         legend_bbox_y=-0.22,
     )

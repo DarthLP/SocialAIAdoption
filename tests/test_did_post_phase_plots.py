@@ -7,14 +7,14 @@ from pathlib import Path
 import pandas as pd
 
 from src.did.outputs import plot_coef_post_phases, plot_post_phase_comparison
-from src.did.specs import POST_PHASE_MODES
+from src.did.specs import PHASE_JOINT_SPECS
 
 
 def test_plot_coef_post_phases_writes_png(tmp_path: Path) -> None:
     """Function summary: phased coefplot writes a PNG when summary rows exist."""
     rows: list[dict] = []
     for sid in ("cross_country_all", "cross_country_it_political"):
-        for spec in POST_PHASE_MODES:
+        for spec in PHASE_JOINT_SPECS:
             rows.append(
                 {
                     "outcome_id": "net_ideology",
@@ -41,7 +41,7 @@ def test_plot_coef_post_phases_writes_png(tmp_path: Path) -> None:
 def test_plot_post_phase_comparison_writes_png(tmp_path: Path) -> None:
     """Function summary: overview-style post-phase bar chart writes PNG."""
     rows = []
-    for i, spec in enumerate(POST_PHASE_MODES):
+    for i, spec in enumerate(PHASE_JOINT_SPECS):
         rows.append(
             {
                 "outcome_id": "net_ideology",

@@ -25,12 +25,22 @@ from src.did.outcomes import (
     outcome_label,
 )
 from src.did.specs import (
+    PHASE_JOINT_SPECS,
     PLOT_STRATEGY_GROUPS,
-    POST_PHASE_MODES,
     spec_label_parenthetical,
     spec_label_short,
     strategy_label,
 )
+from src.plotting.thesis_theme import (
+    THESIS_ITALY,
+    THESIS_CONTROL,
+    shade_ban_window,
+    thesis_title_for_outcome,
+    xlabel_event_study,
+    ylabel_italy_bin_coefficient,
+)
+
+HEADLINE_TWFE_SPEC = "ban_in_effect"
 
 HEADLINE_STRATEGY_ORDER = list(PLOT_STRATEGY_GROUPS["headline"])
 
@@ -68,11 +78,29 @@ def coefplot_strategies_for_family(family: str) -> List[str]:
         return list(PLOT_STRATEGY_GROUPS["headline"]) + list(PLOT_STRATEGY_GROUPS["italy_only"])
     return list(PLOT_STRATEGY_GROUPS["headline"]) + list(PLOT_STRATEGY_GROUPS["italy_only"])
 
-POST_PHASE_PLOT_COLORS: dict[str, str] = {
-    "post_short_3d": "#1d3557",
-    "post_medium_7d": "#457b9d",
-    "post_long_tail": "#89c2d9",
+PHASE_JOINT_PLOT_COLORS: dict[str, str] = {
+    "phase_joint_short": "#1d3557",
+    "phase_joint_medium": "#457b9d",
+    "phase_joint_long": "#89c2d9",
+    "phase_joint_lift": "#e76f51",
 }
+
+
+def _drop_degenerate_lift_rows(sub: pd.DataFrame) -> pd.DataFrame:
+    """Function summary: exclude phase_joint_lift / post_lift rows marked degenerate_collinear_lift."""
+    if sub.empty or "estimation_note" not in sub.columns:
+        return sub
+    mask = sub["estimation_note"].astype(str) == "degenerate_collinear_lift"
+    return sub.loc[~mask].copy()
+
+
+def _filter_headline_spec(sub: pd.DataFrame, *, fallback: str = "full_ban") -> pd.DataFrame:
+    """Function summary: keep ban_in_effect rows, falling back to full_ban when absent."""
+    sub = _ensure_spec_column(sub)
+    primary = sub[sub["spec"].astype(str) == HEADLINE_TWFE_SPEC]
+    if not primary.empty:
+        return primary
+    return sub[sub["spec"].astype(str) == fallback]
 
 
 def _ensure_spec_column(sub: pd.DataFrame) -> pd.DataFrame:
@@ -416,12 +444,36 @@ def _prepare_event_study_plot_df(
     return work.sort_values("event_time")
 
 
-def apply_event_study_axes_style(ax: plt.Axes, *, xlabel: str = "Event Time") -> None:
-    """Function summary: classic boxed event-study axes (zero line, ban marker)."""
-    ax.axhline(0, color="black", linewidth=0.9, zorder=0)
-    ax.axvline(-0.5, color="black", linestyle="--", linewidth=0.9, zorder=0)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel("Coefficient")
+def apply_event_study_axes_style(
+    ax: plt.Axes,
+    *,
+    bin_days: int = 1,
+    x_scale: str = "days",
+    xlabel: Optional[str] = None,
+    ylabel: Optional[str] = None,
+) -> None:
+    """Function summary: thesis event-study axes (zero line, ban window, standardized labels).
+
+    Parameters:
+    - ax: matplotlib axes.
+    - bin_days: 1 or 3 for x-label parenthetical and ban-boundary math.
+    - x_scale: 'days' or 'period' for ban guide positions on the x-axis.
+    - xlabel: optional override; default from xlabel_event_study(bin_days).
+    - ylabel: optional override; default Italy × bin coefficient.
+
+    Returns:
+    - None; mutates ax in place.
+    """
+    ax.axhline(0, color="black", linewidth=0.9, zorder=4)
+    shade_ban_window(
+        ax,
+        mode="event_study",
+        bin_days=int(bin_days),
+        x_scale="period" if x_scale == "period" else "days",
+        zorder=0,
+    )
+    ax.set_xlabel(xlabel if xlabel is not None else xlabel_event_study(int(bin_days)))
+    ax.set_ylabel(ylabel if ylabel is not None else ylabel_italy_bin_coefficient())
     ax.grid(False)
     for spine in ax.spines.values():
         spine.set_visible(True)
@@ -468,6 +520,7 @@ def plot_event_study(
     subtitle: str = "",
     rel_col: str = "rel_day",
     event_markers: Sequence[EventStudyMarker] | None = None,
+    bin_days: int = 1,
 ) -> None:
     """Function summary: single-series classic event-study plot.
 
@@ -480,6 +533,7 @@ def plot_event_study(
     - subtitle: unused (kept for API compatibility).
     - rel_col: relative-day column name in es_df.
     - event_markers: optional (rel_day, label) pairs for thesis-style political-event overlays.
+    - bin_days: calendar bin width for axis label and ban guides (1 or 3).
 
     Returns:
     - None; writes PNG to out_path.
@@ -490,6 +544,7 @@ def plot_event_study(
     plot = _prepare_event_study_plot_df(es_df, rel_col)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(8, 4))
+    x_scale = "period" if rel_col == "rel_period" else "days"
     mask = plot["se"].fillna(0) > 0
     ax.errorbar(
         plot.loc[mask, "event_time"],
@@ -498,7 +553,7 @@ def plot_event_study(
         fmt="none",
         ecolor="black",
         capsize=3,
-        zorder=2,
+        zorder=5,
     )
     ax.plot(
         plot["event_time"],
@@ -508,12 +563,18 @@ def plot_event_study(
         markerfacecolor="white",
         markeredgecolor="black",
         markeredgewidth=1.0,
-        zorder=3,
+        zorder=6,
     )
-    apply_event_study_axes_style(ax)
+    apply_event_study_axes_style(ax, bin_days=bin_days, x_scale=x_scale)
     if event_markers:
         apply_event_study_markers(ax, event_markers)
-    ax.set_title(title or outcome_label(outcome_id, short=True))
+    resolved_title = title
+    if resolved_title is None:
+        resolved_title = thesis_title_for_outcome(
+            outcome_id,
+            fallback=outcome_label(outcome_id, short=True),
+        )
+    ax.set_title(resolved_title)
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
@@ -525,6 +586,7 @@ def plot_event_study_overlay(
     out_path: Path,
     title: Optional[str] = None,
     max_series: int = 5,
+    bin_days: int = 1,
 ) -> None:
     """Function summary: overlay up to max_series event studies with horizontal dodge."""
     usable = []
@@ -580,12 +642,17 @@ def plot_event_study_overlay(
             label=series.label,
             zorder=3 + idx,
         )
-    xlabel = "Event Time"
-    if any(s.rel_col == "rel_period" for s in usable):
-        xlabel = "Event Time (3-day periods)"
-    apply_event_study_axes_style(ax, xlabel=xlabel)
+    x_scale = "period" if any(s.rel_col == "rel_period" for s in usable) else "days"
+    bd = 3 if x_scale == "period" else int(bin_days)
+    apply_event_study_axes_style(ax, bin_days=bd, x_scale=x_scale)
     ax.set_xticks(all_times)
-    ax.set_title(title or outcome_label(outcome_id, short=True))
+    resolved_title = title
+    if resolved_title is None:
+        resolved_title = thesis_title_for_outcome(
+            outcome_id,
+            fallback=outcome_label(outcome_id, short=True),
+        )
+    ax.set_title(resolved_title)
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=min(n, 3), frameon=False)
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
@@ -693,13 +760,13 @@ def plot_sem_axis_ideology_tail_shift_event_study(
     fig, ax = plt.subplots(figsize=(9, 4.5))
     styles = (
         {
-            "color": "#1f4e79",
+            "color": THESIS_ITALY,
             "marker": "o",
             "mfc": "white",
             "label": "extreme-LEFT tail share (sem axis, <p10)",
         },
         {
-            "color": "#8b0000",
+            "color": THESIS_CONTROL,
             "marker": "s",
             "mfc": "white",
             "label": "extreme-RIGHT tail share (sem axis, >p90)",
@@ -718,7 +785,7 @@ def plot_sem_axis_ideology_tail_shift_event_study(
             fmt="none",
             ecolor=style["color"],
             capsize=3,
-            zorder=2,
+            zorder=5,
         )
         ax.plot(
             plot_df["event_time"],
@@ -729,22 +796,17 @@ def plot_sem_axis_ideology_tail_shift_event_study(
             markeredgecolor=style["color"],
             markeredgewidth=1.0,
             label=style["label"],
-            zorder=3,
+            zorder=6,
         )
-    xlabel = "days rel. to ban onset"
-    if int(bin_days) > 1:
-        xlabel = f"days rel. to ban onset ({int(bin_days)}-day bins)"
-    apply_event_study_axes_style(ax, xlabel=xlabel)
-    ax.set_ylabel("IT × bin coefficient")
+    x_scale = "period" if left.rel_col == "rel_period" or right.rel_col == "rel_period" else "days"
+    apply_event_study_axes_style(ax, bin_days=int(bin_days), x_scale=x_scale)
     all_times = sorted(
         set(left_plot["event_time"].astype(int).tolist())
         | set(right_plot["event_time"].astype(int).tolist())
     )
     if all_times:
         ax.set_xticks(all_times)
-    lb, lp = _post_ban_gamma_summary(left.es_df, left.rel_col)
-    rb, rp = _post_ban_gamma_summary(right.es_df, right.rel_col)
-    ax.set_title(tail_shift_interpretation_title(lb, lp, rb, rp), fontsize=9)
+    ax.set_title("Extreme-left and extreme-right tail shares", fontsize=10)
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=1, frameon=False, fontsize=8)
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
@@ -766,15 +828,15 @@ def plot_coef_post_phases(
     - outcome_id: outcome slug.
     - out_path: PNG path.
     - strategies: headline strategy_ids; default PLOT_STRATEGY_GROUPS['headline'].
-    - phase_specs: post_mode ids; default POST_PHASE_MODES.
+    - phase_specs: phase_joint_* spec ids; default PHASE_JOINT_SPECS.
     - title: optional plot title.
     """
     del title  # use outcome_label below
-    phase_specs = tuple(phase_specs or POST_PHASE_MODES)
+    phase_specs = tuple(phase_specs or PHASE_JOINT_SPECS)
     strategies = list(strategies or PLOT_STRATEGY_GROUPS["headline"])
     sub = summary[(summary["outcome_id"] == outcome_id) & (summary["strategy_id"].isin(strategies))].copy()
     sub = sub[sub["spec"].astype(str).isin(phase_specs)]
-    sub = _ensure_spec_column(sub)
+    sub = _drop_degenerate_lift_rows(_ensure_spec_column(sub))
     sub = sub.dropna(subset=["beta"], how="all")
     if sub.empty or sub["beta"].notna().sum() == 0:
         return
@@ -789,7 +851,7 @@ def plot_coef_post_phases(
     handles = []
     labels = []
     for j, spec in enumerate(phase_specs):
-        color = POST_PHASE_PLOT_COLORS.get(str(spec), "#333333")
+        color = PHASE_JOINT_PLOT_COLORS.get(str(spec), "#333333")
         for i, sid in enumerate(strategies):
             rows = sub[(sub["strategy_id"] == sid) & (sub["spec"].astype(str) == spec)]
             if rows.empty:
@@ -846,13 +908,13 @@ def plot_post_phase_comparison(summary: pd.DataFrame, outcome_id: str, out_path:
     sub = summary[
         (summary["outcome_id"] == outcome_id)
         & (summary["strategy_id"] == "cross_country_all")
-        & (summary["spec"].astype(str).isin(POST_PHASE_MODES))
+        & (summary["spec"].astype(str).isin(PHASE_JOINT_SPECS))
     ].copy()
-    sub = _ensure_spec_column(sub)
+    sub = _drop_degenerate_lift_rows(_ensure_spec_column(sub))
     if sub.empty:
         return
     records: List[Dict[str, Any]] = []
-    for spec in POST_PHASE_MODES:
+    for spec in PHASE_JOINT_SPECS:
         r = sub[sub["spec"].astype(str) == spec]
         if r.empty or pd.isna(r["beta"].iloc[0]):
             continue
@@ -896,8 +958,7 @@ def plot_coef_comparison(
     sub = summary[summary["outcome_id"] == outcome_id].copy()
     if strategies:
         sub = sub[sub["strategy_id"].isin(strategies)]
-    sub = _ensure_spec_column(sub)
-    sub = sub[sub["spec"].astype(str) == "full_ban"]
+    sub = _filter_headline_spec(sub)
     absorbed = sub[sub["estimation_note"].astype(str) == "no_treat_variation"]
     sub = sub[sub["estimation_note"].astype(str) != "no_treat_variation"]
     sub["plot_label"] = _strategy_plot_labels(sub)
@@ -989,8 +1050,7 @@ def plot_first_stage(summary: pd.DataFrame, out_path: Path) -> None:
 def plot_significance_heatmap(summary: pd.DataFrame, out_path: Path) -> None:
     """Function summary: outcome × strategy heatmap of sign and significance."""
     headline = list(PLOT_STRATEGY_GROUPS["headline"]) + list(PLOT_STRATEGY_GROUPS["by_topic"])
-    raw = _ensure_spec_column(summary[summary["strategy_id"].isin(headline)].copy())
-    raw = raw[raw["spec"].astype(str) == "full_ban"]
+    raw = _filter_headline_spec(summary[summary["strategy_id"].isin(headline)].copy())
     if raw.empty:
         return
     sub = raw[
@@ -1075,8 +1135,7 @@ def plot_headline_forest(summary: pd.DataFrame, out_path: Path) -> None:
         (summary["outcome_id"].isin(HEADLINE_OUTCOMES))
         & (summary["strategy_id"].isin(HEADLINE_FOREST_STRATEGIES))
     ].copy()
-    sub = _ensure_spec_column(sub)
-    sub = sub[sub["spec"].astype(str) == "full_ban"]
+    sub = _filter_headline_spec(sub)
     sub = sub[sub["estimation_note"].astype(str) == "ok"]
     if sub.empty:
         return
@@ -1137,18 +1196,26 @@ def plot_headline_forest(summary: pd.DataFrame, out_path: Path) -> None:
 
 
 def plot_early_ban_comparison(summary: pd.DataFrame, outcome_id: str, out_path: Path) -> None:
-    """Function summary: compare full-ban vs 7d vs 14d early-ban estimates."""
-    ids = (
-        "cross_country_all",
-        "cross_country_it_political",
-        "cross_country_it_others",
-        "cross_country_all_14d",
-    )
-    sub = summary[(summary["outcome_id"] == outcome_id) & (summary["strategy_id"].isin(ids))].copy()
+    """Function summary: compare ban-in-effect vs 7d vs 14d early-ban estimates."""
+    pairs = [
+        ("cross_country_all", HEADLINE_TWFE_SPEC),
+        ("cross_country_all", "early_ban_7d"),
+        ("cross_country_it_political", "early_ban_7d"),
+        ("cross_country_it_others", "early_ban_7d"),
+        ("cross_country_all_14d", "early_ban_14d"),
+    ]
+    sub = summary[summary["outcome_id"] == outcome_id].copy()
     if sub.empty:
         return
-    if "spec" not in sub.columns:
-        sub["spec"] = "full_ban"
+    sub = _ensure_spec_column(sub)
+    picked = []
+    for sid, spec in pairs:
+        rows = sub[(sub["strategy_id"] == sid) & (sub["spec"].astype(str) == spec)]
+        if not rows.empty:
+            picked.append(rows.iloc[-1])
+    if not picked:
+        return
+    sub = pd.DataFrame(picked)
     sub = sub.drop_duplicates(subset=["strategy_id", "spec"], keep="last")
     sub["plot_label"] = sub.apply(
         lambda r: (
@@ -1219,8 +1286,7 @@ def plot_pretrend_summary(summary: pd.DataFrame, out_path: Path) -> None:
         (summary["outcome_id"].isin(HEADLINE_OUTCOMES))
         & (summary["strategy_id"] == "cross_country_all")
     ].copy()
-    sub = _ensure_spec_column(sub)
-    sub = sub[sub["spec"].astype(str) == "full_ban"]
+    sub = _filter_headline_spec(sub)
     if "pretrend_quality" in sub.columns:
         sub = sub[sub["pretrend_quality"].astype(str) == "ok"]
     else:

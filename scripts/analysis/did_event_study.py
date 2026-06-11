@@ -63,9 +63,16 @@ from src.did.estimate import (  # noqa: E402
     apply_degeneracy_guard,
     estimate_event_study,
     estimate_pretrend_f,
+    run_strategy_phase_joint,
     run_strategy_twfe,
 )
-from src.did.inference import placebo_in_space_p, wild_cluster_bootstrap_p  # noqa: E402
+from src.did.inference import (  # noqa: E402
+    placebo_in_space_p,
+    placebo_in_space_phase_joint_all,
+    wild_cluster_bootstrap_p,
+    wild_cluster_bootstrap_phase_joint_p,
+)
+from src.did.specs import PHASE_JOINT_SPECS, spec_status_for_row  # noqa: E402
 from src.did.outcomes import (  # noqa: E402
     DEFAULT_FAMILIES,
     FIRST_STAGE_OUTCOMES,
@@ -321,7 +328,9 @@ def _plot_thesis_event_study_variant(
         es_df,
         outcome_id,
         figure_path(fig_dir, family, "event_study", f"{outcome_id}_events"),
+        title="Emotion–cognition axis",
         event_markers=ITALY_THESIS_POLITICAL_EVENT_MARKERS,
+        bin_days=1,
     )
 
 
@@ -660,6 +669,115 @@ def run_estimation(
             if oc.panel_kind in ("comment", "author_day") and "author" in work_panel.columns:
                 entity_col = "author"
                 cluster_col = "author"
+            role = inference_role_for_strategy(strat.strategy_id)
+            if strat.post_mode == "phase_joint":
+                phase_results = run_strategy_phase_joint(
+                    work_panel,
+                    strat,
+                    y_col,
+                    window_days=event_window,
+                    entity_col=entity_col,
+                    time_col="time_id",
+                    cluster_col=cluster_col,
+                    panel_kind=oc.panel_kind,
+                    weights=weights_col,
+                )
+                pis_by_spec: Dict[str, Any] = {}
+                if do_bootstrap and is_placebo_in_space_eligible_strategy(strat.strategy_id):
+                    try:
+                        pis_by_spec = placebo_in_space_phase_joint_all(
+                            work_panel,
+                            strat,
+                            y_col,
+                            entity_col=entity_col,
+                            time_col="time_id",
+                            window_days=event_window,
+                            panel_kind=oc.panel_kind,
+                        )
+                    except Exception:
+                        pis_by_spec = {}
+                pretrend_p = float("nan")
+                pretrend_note: Optional[str] = None
+                if strat.strategy_id != "within_italy_ddd" and not is_entity_fe_only_strategy(
+                    strat.strategy_id
+                ):
+                    pretrend_p, pretrend_note = estimate_pretrend_f(
+                        filter_strategy_sample(work_panel, strat, window_days=event_window),
+                        y_col,
+                        entity_col=entity_col,
+                        time_col="time_id",
+                        weights_col=weights_col,
+                    )
+                for res in phase_results:
+                    spec_id = str(res.get("spec", strat.post_mode))
+                    wild_p = float("nan")
+                    p_placebo_space = float("nan")
+                    perm_p_beta = float("nan")
+                    perm_p_t = float("nan")
+                    placebo_p_floor = float("nan")
+                    placebo_note = np.nan
+                    if do_bootstrap:
+                        try:
+                            if is_wcb_eligible_strategy(strat.strategy_id) and oc.panel_kind != "comment":
+                                wcb_entity = entity_col
+                                if is_author_strategy(strat.strategy_id) and "author" in work_panel.columns:
+                                    wcb_entity = "author"
+                                wild_p = wild_cluster_bootstrap_phase_joint_p(
+                                    work_panel,
+                                    strat,
+                                    y_col,
+                                    spec_id,
+                                    n_draws=bootstrap_draws,
+                                    entity_col=wcb_entity,
+                                    time_col="time_id",
+                                    window_days=event_window,
+                                )
+                            if is_placebo_in_space_eligible_strategy(strat.strategy_id):
+                                pis = pis_by_spec.get(spec_id)
+                                if pis is not None:
+                                    p_placebo_space = pis.p
+                                    placebo_p_floor = pis.p_floor
+                                    perm_p_beta = pis.perm_p_beta
+                                    perm_p_t = pis.perm_p_t
+                            elif is_cross_country_strategy(strat.strategy_id):
+                                placebo_note = "not_applicable_single_country_contrast"
+                        except Exception:
+                            pass
+                    phase_res = dict(res)
+                    phase_res["pretrend_F_p"] = pretrend_p
+                    if pretrend_note and phase_res.get("estimation_note") in ("ok", "ok_entity_fe_only"):
+                        note = str(phase_res.get("estimation_note", "ok"))
+                        phase_res["estimation_note"] = (
+                            pretrend_note if note == "ok" else f"{note};{pretrend_note}"
+                        )
+                    row = {
+                        "outcome_id": oc.outcome_id,
+                        "outcome_family": oc.family,
+                        "column": y_col,
+                        "weights": weights_col or "",
+                        "strategy_id": strat.strategy_id,
+                        "strategy_label": strategy_label(strat.strategy_id),
+                        "spec": spec_id,
+                        "spec_status": spec_status_for_row(spec_id, oc.panel_kind),
+                        "wordfish_tier": oc.tier or "",
+                        "sign_only_cross_country": int(oc.sign_only_cross_country),
+                        "inference_role": role,
+                        **phase_res,
+                        "wild_p": wild_p,
+                        "perm_p": p_placebo_space,
+                        "perm_p_beta": perm_p_beta
+                        if is_placebo_in_space_eligible_strategy(strat.strategy_id)
+                        else float("nan"),
+                        "perm_p_t": perm_p_t
+                        if is_placebo_in_space_eligible_strategy(strat.strategy_id)
+                        else float("nan"),
+                        "p_placebo_space": p_placebo_space,
+                        "placebo_p_floor": placebo_p_floor,
+                        "placebo_note": placebo_note,
+                    }
+                    strategy_rows.append(row)
+                continue
+
             res = run_strategy_twfe(
                 work_panel,
                 strat,
@@ -692,7 +810,6 @@ def run_estimation(
             perm_p_t = float("nan")
             placebo_p_floor = float("nan")
             placebo_note = np.nan
-            role = inference_role_for_strategy(strat.strategy_id)
             if do_bootstrap:
                 try:
                     if is_wcb_eligible_strategy(strat.strategy_id) and oc.panel_kind != "comment":
@@ -732,6 +849,7 @@ def run_estimation(
                 "strategy_id": strat.strategy_id,
                 "strategy_label": strategy_label(strat.strategy_id),
                 "spec": strat.post_mode,
+                "spec_status": spec_status_for_row(strat.post_mode, oc.panel_kind),
                 "wordfish_tier": oc.tier or "",
                 "sign_only_cross_country": int(oc.sign_only_cross_country),
                 "inference_role": role,

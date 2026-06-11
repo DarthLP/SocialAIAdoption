@@ -13,14 +13,18 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from src.did.estimate import estimate_twfe
+from src.did.estimate import estimate_twfe, run_strategy_phase_joint
 from src.did.specs import (
     CONTROL_FAMILIES,
     ITALY_FAMILIES,
+    PHASE_JOINT_DEFINITIONS,
+    PHASE_JOINT_SPECS,
     StrategySpec,
+    add_phase_columns,
     filter_strategy_sample,
     is_cross_country_strategy,
     is_entity_fe_only_strategy,
+    is_placebo_in_space_eligible_strategy,
     is_wcb_eligible_strategy,
 )
 
@@ -454,6 +458,212 @@ def _restricted_wcb_pyfixest_detail(
     except Exception as exc:
         logger.debug("restricted WCB failed: %s", exc)
     return empty
+
+
+def _phase_rows_to_map(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
+    """Function summary: map phase_joint spec id -> {beta, se} from joint fit rows."""
+    out: Dict[str, Dict[str, float]] = {}
+    for row in rows:
+        spec = str(row.get("spec", ""))
+        if not spec:
+            continue
+        out[spec] = {
+            "beta": float(row.get("beta", np.nan)),
+            "se": float(row.get("se", np.nan)),
+        }
+    return out
+
+
+def _pis_from_phase_placebos(
+    spec_id: str,
+    italy: Dict[str, float],
+    placebo_by_spec: Dict[str, List[float]],
+    placebo_t_by_spec: Dict[str, List[float]],
+    n_placebo: int,
+) -> PlaceboInSpaceResult:
+    """Function summary: build PlaceboInSpaceResult for one phase from pooled placebo draws."""
+    b_italy = italy.get("beta", float("nan"))
+    se_italy = italy.get("se", float("nan"))
+    t_italy = float(b_italy / se_italy) if se_italy and se_italy > 0 and np.isfinite(b_italy) else float("nan")
+    p_floor = 1.0 / (n_placebo + 1) if n_placebo else float("nan")
+    placebo_betas = placebo_by_spec.get(spec_id, [])
+    placebo_ts = placebo_t_by_spec.get(spec_id, [])
+    if not np.isfinite(b_italy):
+        return PlaceboInSpaceResult(float("nan"), float("nan"), p_floor, n_placebo, b_italy, t_italy, (), ())
+    if not placebo_betas:
+        return PlaceboInSpaceResult(
+            float("nan"), float("nan"), p_floor, n_placebo, b_italy, t_italy, tuple(), tuple()
+        )
+    n_ge_b = sum(1 for b in placebo_betas if abs(b) >= abs(b_italy))
+    p_beta = min(1.0, max(p_floor, float((n_ge_b + 1) / (n_placebo + 1))))
+    p_t = float("nan")
+    if np.isfinite(t_italy) and placebo_ts:
+        n_ge_t = sum(1 for t in placebo_ts if abs(t) >= abs(t_italy))
+        p_t = min(1.0, max(p_floor, float((n_ge_t + 1) / (len(placebo_ts) + 1))))
+    return PlaceboInSpaceResult(
+        p_beta,
+        p_t,
+        p_floor,
+        n_placebo,
+        float(b_italy),
+        t_italy,
+        tuple(placebo_betas),
+        tuple(placebo_ts),
+    )
+
+
+def placebo_in_space_phase_joint_all(
+    panel: pd.DataFrame,
+    strategy: StrategySpec,
+    y_col: str,
+    entity_col: str = "entity_id",
+    time_col: str = "time_id",
+    window_days: Optional[int] = None,
+    panel_kind: str = "subreddit_day",
+) -> Dict[str, PlaceboInSpaceResult]:
+    """Function summary: placebo-in-space for all phase_joint_* specs (one joint refit per draw)."""
+    empty = {
+        spec: PlaceboInSpaceResult(float("nan"), float("nan"), float("nan"), 0, float("nan"), float("nan"), (), ())
+        for spec in PHASE_JOINT_SPECS
+    }
+    if not is_placebo_in_space_eligible_strategy(strategy.strategy_id):
+        return empty
+
+    italy_rows = run_strategy_phase_joint(
+        panel,
+        strategy,
+        y_col,
+        window_days=window_days,
+        entity_col=entity_col,
+        time_col=time_col,
+        panel_kind=panel_kind,
+    )
+    italy_map = _phase_rows_to_map(italy_rows)
+
+    italy_sample = filter_strategy_sample(panel, strategy, window_days=window_days)
+    ent_country = assign_entity_country_series(italy_sample, entity_col)
+    controls = italy_sample[~ent_country.map(_is_italy_country)].copy()
+    control_countries = _control_countries_in_sample(controls, entity_col, strategy) if not controls.empty else []
+    n_placebo = len(control_countries)
+
+    placebo_by_spec: Dict[str, List[float]] = {spec: [] for spec in PHASE_JOINT_SPECS}
+    placebo_t_by_spec: Dict[str, List[float]] = {spec: [] for spec in PHASE_JOINT_SPECS}
+    baseline_treat = controls["treat"].astype(int).tolist() if not controls.empty else []
+    for fake_c in control_countries:
+        try:
+            pl = _apply_placebo_treat(controls, fake_c, entity_col)
+        except ValueError:
+            continue
+        if pl["treat"].astype(int).tolist() == baseline_treat:
+            continue
+        pl_rows = run_strategy_phase_joint(
+            pl,
+            strategy,
+            y_col,
+            entity_col=entity_col,
+            time_col=time_col,
+            panel_kind=panel_kind,
+        )
+        pl_map = _phase_rows_to_map(pl_rows)
+        for spec in PHASE_JOINT_SPECS:
+            beta = pl_map.get(spec, {}).get("beta", float("nan"))
+            se = pl_map.get(spec, {}).get("se", float("nan"))
+            if np.isfinite(beta):
+                placebo_by_spec[spec].append(float(beta))
+                if se and se > 0:
+                    placebo_t_by_spec[spec].append(float(beta / se))
+
+    return {
+        spec: _pis_from_phase_placebos(
+            spec,
+            italy_map.get(spec, {"beta": float("nan"), "se": float("nan")}),
+            placebo_by_spec,
+            placebo_t_by_spec,
+            n_placebo,
+        )
+        for spec in PHASE_JOINT_SPECS
+    }
+
+
+def placebo_in_space_phase_joint_p(
+    panel: pd.DataFrame,
+    strategy: StrategySpec,
+    y_col: str,
+    phase_spec: str,
+    entity_col: str = "entity_id",
+    time_col: str = "time_id",
+    window_days: Optional[int] = None,
+    panel_kind: str = "subreddit_day",
+) -> PlaceboInSpaceResult:
+    """Function summary: placebo-in-space p for one phase_joint_* coefficient."""
+    all_pis = placebo_in_space_phase_joint_all(
+        panel,
+        strategy,
+        y_col,
+        entity_col=entity_col,
+        time_col=time_col,
+        window_days=window_days,
+        panel_kind=panel_kind,
+    )
+    return all_pis.get(
+        phase_spec,
+        PlaceboInSpaceResult(float("nan"), float("nan"), float("nan"), 0, float("nan"), float("nan"), (), ()),
+    )
+
+
+def wild_cluster_bootstrap_phase_joint_p(
+    panel: pd.DataFrame,
+    strategy: StrategySpec,
+    y_col: str,
+    phase_spec: str,
+    n_draws: int = DEFAULT_WCB_DRAWS,
+    seed: int = 42,
+    entity_col: str = "entity_id",
+    time_col: str = "time_id",
+    window_days: Optional[int] = None,
+) -> float:
+    """Function summary: restricted WCB p for one phase_joint_* coefficient.
+
+    Parameters:
+    - panel, strategy, y_col, phase_spec: estimation target.
+    - n_draws, seed: bootstrap settings.
+    - entity_col, time_col, window_days: panel keys and window.
+
+    Returns:
+    - Two-sided WCB p-value or NaN when ineligible.
+    """
+    if is_cross_country_strategy(strategy.strategy_id) or not is_wcb_eligible_strategy(strategy.strategy_id):
+        return float("nan")
+
+    coef_name = next(
+        (c for _k, sid, _lo, _hi, c in PHASE_JOINT_DEFINITIONS if sid == phase_spec),
+        "",
+    )
+    if not coef_name:
+        return float("nan")
+
+    sample = filter_strategy_sample(panel, strategy, window_days=window_days)
+    if sample.empty:
+        return float("nan")
+
+    work = add_phase_columns(sample.copy())
+    work["y"] = pd.to_numeric(work[y_col], errors="coerce")
+    work = work.dropna(subset=["y", entity_col, time_col])
+    work[entity_col] = work[entity_col].astype(str)
+    work[time_col] = work[time_col].astype(str)
+    if work.empty or work[entity_col].nunique() < 3:
+        return float("nan")
+
+    if is_entity_fe_only_strategy(strategy.strategy_id):
+        full = f"y ~ tp_short + tp_medium + tp_long + tp_lift | {entity_col}"
+        rest = f"y ~ 1 | {entity_col}"
+    else:
+        full = f"y ~ tp_short + tp_medium + tp_long + tp_lift | {entity_col} + {time_col}"
+        other = [c for c in ("tp_short", "tp_medium", "tp_long", "tp_lift") if c != coef_name]
+        rest_rhs = " + ".join(other) if other else "1"
+        rest = f"y ~ {rest_rhs} | {entity_col} + {time_col}"
+
+    return _restricted_wcb_pyfixest(full, rest, work, coef_name, entity_col, n_draws, seed)
 
 
 def wild_cluster_bootstrap_p(

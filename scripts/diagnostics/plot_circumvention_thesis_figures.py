@@ -50,6 +50,13 @@ PROJECT_ROOT = _setup_project_root()
 
 from scripts.diagnostics.descriptives_util import grouped_trailing_daily_rolling  # noqa: E402
 from src.config_utils import figures_subdir, load_config, tables_subdir  # noqa: E402
+from src.plotting.thesis_theme import (  # noqa: E402
+    THESIS_CONTROL,
+    THESIS_CONTROL_BAND,
+    THESIS_ITALY,
+    XLABEL_CALENDAR,
+    shade_ban_window,
+)
 
 STUDY_START = "2023-03-01"
 STUDY_END = "2023-04-30"
@@ -72,8 +79,8 @@ FOOTNOTE_INDEXED = (
 INDEXED_YLABEL = "Index (pre-ban mean = 100)"
 INDEXED_REFERENCE_Y = 100.0
 
-ITALY_COLOR = "#c1121f"
-CONTROL_COLOR = "#457b9d"
+ITALY_COLOR = THESIS_ITALY
+CONTROL_COLOR = THESIS_CONTROL
 
 FIGURE_SPECS = (
     (
@@ -366,23 +373,17 @@ def _plot_thesis_figure(
     x_end = pd.Timestamp(STUDY_END)
 
     fig, ax = plt.subplots(figsize=(10, 4.5))
-    ax.axvspan(
-        pd.Timestamp(BAN_START),
-        pd.Timestamp(BAN_END),
-        color="0.85",
-        alpha=0.45,
-        zorder=0,
-    )
+    shade_ban_window(ax, mode="calendar", ban_start=BAN_START, ban_end=BAN_END, zorder=0)
     if reference_y is not None:
-        ax.axhline(reference_y, color="0.6", linestyle=":", linewidth=0.8, zorder=1)
+        ax.axhline(reference_y, color="0.6", linestyle=":", linewidth=0.8, zorder=2)
     ax.fill_between(
         band["date_utc"],
         band["ctrl_min"],
         band["ctrl_max"],
-        color=CONTROL_COLOR,
-        alpha=0.25,
+        color=THESIS_CONTROL_BAND,
+        alpha=0.45,
         label="Controls (range)",
-        zorder=1,
+        zorder=2,
     )
     ax.plot(
         band["date_utc"],
@@ -390,31 +391,22 @@ def _plot_thesis_figure(
         color=CONTROL_COLOR,
         linewidth=1.0,
         label="Controls (mean)",
-        zorder=2,
+        zorder=3,
     )
     ax.plot(
         italy["date_utc"],
         italy["value"],
         color=ITALY_COLOR,
-        linewidth=2.5,
+        linewidth=2.2,
         label="Italy",
-        zorder=3,
+        zorder=4,
     )
 
-    ban_ts = pd.Timestamp(BAN_START)
-    lift_ts = pd.Timestamp(BAN_END)
-    ax.axvline(ban_ts, color="0.35", linestyle="-", linewidth=1.0, zorder=4)
-    ax.axvline(lift_ts, color="0.35", linestyle="--", linewidth=1.0, zorder=4)
-    y_top = ax.get_ylim()[1]
-    ax.text(ban_ts, y_top * 0.98, " ban", fontsize=8, va="top", ha="left", color="0.35")
-    ax.text(lift_ts, y_top * 0.98, " lift", fontsize=8, va="top", ha="left", color="0.35")
-
     ax.set_xlim(x_start, x_end)
-    ax.set_xlabel("Date (UTC)")
+    ax.set_xlabel(XLABEL_CALENDAR)
     ax.set_ylabel(ylabel)
     ax.legend(loc="upper left", fontsize=8)
     ax.grid(True, alpha=0.25)
-    fig.text(0.01, -0.02, footnote, fontsize=8, wrap=True)
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight")

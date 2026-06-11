@@ -64,22 +64,34 @@ STRATEGY_LABELS_SHORT: dict[str, str] = {
 
 SPEC_LABELS_SHORT: dict[str, str] = {
     "full_ban": "full",
+    "ban_in_effect": "ban 0–27d",
+    "post_lift": "lift 28–30d",
     "early_ban_7d": "7d",
     "early_ban_14d": "14d",
     "post_short_3d": "short 0–2d",
     "post_medium_7d": "mid 3–9d",
     "post_long_tail": "long 10d+",
     "post_first_2bd": "first 2bd",
+    "phase_joint_short": "joint short",
+    "phase_joint_medium": "joint mid",
+    "phase_joint_long": "joint long",
+    "phase_joint_lift": "joint lift",
 }
 
 SPEC_LABELS_PAREN: dict[str, str] = {
     "full_ban": "(full ban)",
+    "ban_in_effect": "(ban in effect 0–27d)",
+    "post_lift": "(post-lift 28–30d)",
     "early_ban_7d": "(early ban)",
     "early_ban_14d": "(14d ban)",
     "post_short_3d": "(short 0–2d)",
     "post_medium_7d": "(medium 3–9d)",
     "post_long_tail": "(long 10d+)",
     "post_first_2bd": "(first 2 business days)",
+    "phase_joint_short": "(joint short 0–2d)",
+    "phase_joint_medium": "(joint mid 3–9d)",
+    "phase_joint_long": "(joint long 10–27d)",
+    "phase_joint_lift": "(joint lift 28–30d)",
 }
 
 # Calendar post-ban phase spec ids (post_mode) for TWFE; bounds merged from config did.post_phases.
@@ -93,11 +105,44 @@ POST_PHASE_MODES: tuple[str, ...] = (
 _DEFAULT_POST_PHASE_BOUNDS: dict[str, tuple[int, Optional[int]]] = {
     "post_short_3d": (0, 2),
     "post_medium_7d": (3, 9),
-    "post_long_tail": (10, None),
+    "post_long_tail": (10, 27),
 }
 
 # Merged bounds from load_post_phases / activate_post_phases_from_config; None => use _DEFAULT_POST_PHASE_BOUNDS.
 _ACTIVE_POST_PHASE_BOUNDS: Optional[dict[str, tuple[int, Optional[int]]]] = None
+
+_DEFAULT_BAN_LIFT_REL_DAY: int = 28
+_DEFAULT_BAN_IN_EFFECT_REL_DAY_MAX: int = 27
+_ACTIVE_BAN_LIFT_REL_DAY: Optional[int] = None
+_ACTIVE_BAN_IN_EFFECT_REL_DAY_MAX: Optional[int] = None
+
+# Joint phase regression spec ids (one coefficient per phase from a single fit).
+PHASE_JOINT_SPECS: tuple[str, ...] = (
+    "phase_joint_short",
+    "phase_joint_medium",
+    "phase_joint_long",
+    "phase_joint_lift",
+)
+
+# (phase_key, spec_id, rel_lo, rel_hi, coef_col)
+PHASE_JOINT_DEFINITIONS: tuple[tuple[str, str, int, int, str], ...] = (
+    ("short", "phase_joint_short", 0, 2, "tp_short"),
+    ("medium", "phase_joint_medium", 3, 9, "tp_medium"),
+    ("long", "phase_joint_long", 10, 27, "tp_long"),
+    ("lift", "phase_joint_lift", 28, 30, "tp_lift"),
+)
+
+# Sub-window modes that restrict sample to pre + focal window after redefining post.
+_SUBWINDOW_SAMPLE_RESTRICT_MODES: frozenset[str] = frozenset(
+    {
+        "early_ban_7d",
+        "early_ban_14d",
+        "post_short_3d",
+        "post_medium_7d",
+        "post_long_tail",
+        "post_first_2bd",
+    }
+)
 
 _YAML_PHASE_KEY_TO_SPEC: dict[str, str] = {
     "short": "post_short_3d",
@@ -262,17 +307,39 @@ def load_post_phases(config: Optional[Dict[str, Any]] = None) -> dict[str, tuple
     return out
 
 
+def load_ban_lift_bounds(config: Optional[Dict[str, Any]] = None) -> tuple[int, int]:
+    """Function summary: read ban lift and ban-in-effect rel_day caps from did config.
+
+    Parameters:
+    - config: project YAML dict.
+
+    Returns:
+    - Tuple (ban_lift_rel_day, ban_in_effect_rel_day_max).
+    """
+    if not config:
+        return _DEFAULT_BAN_LIFT_REL_DAY, _DEFAULT_BAN_IN_EFFECT_REL_DAY_MAX
+    did = config.get("did") or {}
+    lift = int(did.get("ban_lift_rel_day", _DEFAULT_BAN_LIFT_REL_DAY))
+    in_effect = int(did.get("ban_in_effect_rel_day_max", _DEFAULT_BAN_IN_EFFECT_REL_DAY_MAX))
+    return lift, in_effect
+
+
 def activate_post_phases_from_config(config: Optional[Dict[str, Any]] = None) -> None:
     """Function summary: set active post-phase rel_day bounds used by apply_post_window.
 
     Parameters:
     - config: loaded project config; None resets to built-in defaults (lazy via _ACTIVE None).
     """
-    global _ACTIVE_POST_PHASE_BOUNDS
+    global _ACTIVE_POST_PHASE_BOUNDS, _ACTIVE_BAN_LIFT_REL_DAY, _ACTIVE_BAN_IN_EFFECT_REL_DAY_MAX
     if config is None:
         _ACTIVE_POST_PHASE_BOUNDS = None
+        _ACTIVE_BAN_LIFT_REL_DAY = None
+        _ACTIVE_BAN_IN_EFFECT_REL_DAY_MAX = None
         return
     _ACTIVE_POST_PHASE_BOUNDS = load_post_phases(config)
+    lift, in_effect = load_ban_lift_bounds(config)
+    _ACTIVE_BAN_LIFT_REL_DAY = lift
+    _ACTIVE_BAN_IN_EFFECT_REL_DAY_MAX = in_effect
 
 
 def reset_post_phase_bounds() -> None:
@@ -280,11 +347,174 @@ def reset_post_phase_bounds() -> None:
     activate_post_phases_from_config(None)
 
 
+def _effective_ban_lift_rel_day() -> int:
+    """Function summary: active ban-lift rel_day (default 28)."""
+    if _ACTIVE_BAN_LIFT_REL_DAY is not None:
+        return int(_ACTIVE_BAN_LIFT_REL_DAY)
+    return _DEFAULT_BAN_LIFT_REL_DAY
+
+
+def _effective_ban_in_effect_rel_day_max() -> int:
+    """Function summary: active last ban-in-effect rel_day (default 27)."""
+    if _ACTIVE_BAN_IN_EFFECT_REL_DAY_MAX is not None:
+        return int(_ACTIVE_BAN_IN_EFFECT_REL_DAY_MAX)
+    return _DEFAULT_BAN_IN_EFFECT_REL_DAY_MAX
+
+
+def post_lift_treated_mass(
+    df: pd.DataFrame,
+    entity_col: str = "entity_id",
+    *,
+    rel_col: str = "rel_day",
+    treat_col: str = "treat",
+) -> tuple[int, int]:
+    """Function summary: count treated rows and clusters in post-lift window rel_day 28..30.
+
+    Parameters:
+    - df: filtered strategy sample.
+    - entity_col: cluster/entity column.
+    - rel_col: relative event day column.
+    - treat_col: treatment indicator column.
+
+    Returns:
+    - Tuple (n_postlift_obs, n_postlift_clusters).
+    """
+    if df.empty or rel_col not in df.columns:
+        return 0, 0
+    lift_lo = _effective_ban_lift_rel_day()
+    lift_hi = lift_lo + 2
+    mask = (
+        (df[rel_col] >= lift_lo)
+        & (df[rel_col] <= lift_hi)
+        & (df[treat_col].astype(int) == 1)
+    )
+    lift = df.loc[mask]
+    n_obs = int(lift.shape[0])
+    if n_obs == 0:
+        return 0, 0
+    ent = entity_col if entity_col in lift.columns else "entity_id"
+    if ent not in lift.columns:
+        return n_obs, 0
+    return n_obs, int(lift[ent].nunique())
+
+
+def add_phase_columns(df: pd.DataFrame, rel_col: str = "rel_day") -> pd.DataFrame:
+    """Function summary: add mutually exclusive phase_* and treat×phase interaction columns.
+
+    Parameters:
+    - df: panel with rel_day and treat.
+    - rel_col: relative event day column.
+
+    Returns:
+    - Copy with phase_short/medium/long/lift and tp_short/medium/long/lift columns.
+    """
+    out = df.copy()
+    rel = out[rel_col].astype(int)
+    treat = out["treat"].astype(float)
+    in_effect_max = _effective_ban_in_effect_rel_day_max()
+    lift_lo = _effective_ban_lift_rel_day()
+    lift_hi = lift_lo + 2
+    out["phase_short"] = ((rel >= 0) & (rel <= 2)).astype(int)
+    out["phase_medium"] = ((rel >= 3) & (rel <= 9)).astype(int)
+    out["phase_long"] = ((rel >= 10) & (rel <= in_effect_max)).astype(int)
+    out["phase_lift"] = ((rel >= lift_lo) & (rel <= lift_hi)).astype(int)
+    out["tp_short"] = treat * out["phase_short"]
+    out["tp_medium"] = treat * out["phase_medium"]
+    out["tp_long"] = treat * out["phase_long"]
+    out["tp_lift"] = treat * out["phase_lift"]
+    return out
+
+
+def spec_status_for_row(
+    post_mode: str,
+    panel_kind: str,
+) -> str:
+    """Function summary: headline vs superseded vs diagnostic status for did_summary rows.
+
+    Parameters:
+    - post_mode: spec / post_mode id.
+    - panel_kind: subreddit_day | comment | author_semantic_week | etc.
+
+    Returns:
+    - One of headline | superseded | diagnostic.
+    """
+    if post_mode == "full_ban" and panel_kind in ("subreddit_day", "comment", "author_day"):
+        return "superseded"
+    if post_mode in ("ban_in_effect", "post_lift") or post_mode in PHASE_JOINT_SPECS:
+        return "headline"
+    if post_mode.startswith("phase_joint"):
+        return "headline"
+    if post_mode == "phase_joint":
+        return "headline"
+    return "diagnostic"
+
+
 def _effective_post_phase_bounds() -> dict[str, tuple[int, Optional[int]]]:
     """Function summary: bounds dict for post_* post_mode values."""
     if _ACTIVE_POST_PHASE_BOUNDS is not None:
         return dict(_ACTIVE_POST_PHASE_BOUNDS)
     return dict(_DEFAULT_POST_PHASE_BOUNDS)
+
+
+def ban_split_strategies(
+    headline_specs: Optional[Sequence[StrategySpec]] = None,
+) -> tuple[StrategySpec, ...]:
+    """Function summary: clone headline strategies with ban_in_effect and post_lift post_modes.
+
+    Parameters:
+    - headline_specs: defaults to headline_base_strategies().
+
+    Returns:
+    - len(headline_specs) * 2 StrategySpec rows (ban_in_effect + post_lift).
+    """
+    base = tuple(headline_specs) if headline_specs is not None else headline_base_strategies()
+    out: list[StrategySpec] = []
+    for s in base:
+        for pm in ("ban_in_effect", "post_lift"):
+            out.append(
+                StrategySpec(
+                    strategy_id=s.strategy_id,
+                    treat_col=s.treat_col,
+                    description=s.description,
+                    universe_slice=s.universe_slice,
+                    treated_family=s.treated_family,
+                    treated_topic=s.treated_topic,
+                    control_family=s.control_family,
+                    post_mode=pm,
+                    placebo=s.placebo,
+                    author_only=s.author_only,
+                )
+            )
+    return tuple(out)
+
+
+def phase_joint_strategies(
+    headline_specs: Optional[Sequence[StrategySpec]] = None,
+) -> tuple[StrategySpec, ...]:
+    """Function summary: clone headline strategies for one joint multi-phase TWFE fit.
+
+    Parameters:
+    - headline_specs: defaults to headline_base_strategies().
+
+    Returns:
+    - len(headline_specs) StrategySpec rows with post_mode phase_joint.
+    """
+    base = tuple(headline_specs) if headline_specs is not None else headline_base_strategies()
+    return tuple(
+        StrategySpec(
+            strategy_id=s.strategy_id,
+            treat_col=s.treat_col,
+            description=s.description,
+            universe_slice=s.universe_slice,
+            treated_family=s.treated_family,
+            treated_topic=s.treated_topic,
+            control_family=s.control_family,
+            post_mode="phase_joint",
+            placebo=s.placebo,
+            author_only=s.author_only,
+        )
+        for s in base
+    )
 
 
 def post_phase_strategies(
@@ -443,33 +673,46 @@ def apply_post_window(df: pd.DataFrame, mode: str, launch: str) -> pd.DataFrame:
 
     Parameters:
     - df: panel with rel_day and post.
-    - mode: full_ban | early_ban_7d | early_ban_14d | post_short_3d | post_medium_7d | post_long_tail.
+    - mode: full_ban | ban_in_effect | post_lift | phase_joint | early_ban_* | post_*.
     - launch: ban date (unused for windowed modes; uses rel_day).
 
     Returns:
-    - Copy with post column adjusted.
+    - Copy with post column adjusted; sub-window modes keep pre + focal window only.
     """
+    del launch
     out = df.copy()
     if mode == "full_ban":
         return out
+    if mode == "phase_joint":
+        return out
+    if mode == "ban_in_effect":
+        in_effect_max = _effective_ban_in_effect_rel_day_max()
+        out["post"] = ((out["rel_day"] >= 0) & (out["rel_day"] <= in_effect_max)).astype(int)
+        return out
+    if mode == "post_lift":
+        lift_lo = _effective_ban_lift_rel_day()
+        lift_hi = lift_lo + 2
+        out["post"] = ((out["rel_day"] >= lift_lo) & (out["rel_day"] <= lift_hi)).astype(int)
+        return out
     if mode == "early_ban_7d":
         out["post"] = ((out["rel_day"] >= 0) & (out["rel_day"] <= 6)).astype(int)
-        return out
-    if mode == "early_ban_14d":
+    elif mode == "early_ban_14d":
         out["post"] = ((out["rel_day"] >= 0) & (out["rel_day"] <= 13)).astype(int)
-        return out
-    if mode == "post_first_2bd":
+    elif mode == "post_first_2bd":
         out["post"] = out["date_utc"].astype(str).isin(["2023-04-03", "2023-04-04"]).astype(int)
-        return out
-    phase_bounds = _effective_post_phase_bounds()
-    if mode in phase_bounds:
-        lo, hi = phase_bounds[mode]
-        if hi is None:
-            out["post"] = (out["rel_day"] >= lo).astype(int)
+    else:
+        phase_bounds = _effective_post_phase_bounds()
+        if mode in phase_bounds:
+            lo, hi = phase_bounds[mode]
+            if hi is None:
+                out["post"] = (out["rel_day"] >= lo).astype(int)
+            else:
+                out["post"] = ((out["rel_day"] >= lo) & (out["rel_day"] <= hi)).astype(int)
         else:
-            out["post"] = ((out["rel_day"] >= lo) & (out["rel_day"] <= hi)).astype(int)
-        return out
-    raise ValueError(f"Unknown post_mode: {mode}")
+            raise ValueError(f"Unknown post_mode: {mode}")
+    if mode in _SUBWINDOW_SAMPLE_RESTRICT_MODES:
+        out = out[(out["rel_day"] < 0) | (out["post"] == 1)]
+    return out
 
 
 def _filter_author_strategy(work: pd.DataFrame, strategy: StrategySpec) -> pd.DataFrame:
@@ -637,7 +880,12 @@ def italy_only_strategies() -> tuple[StrategySpec, ...]:
 
 def subreddit_panel_strategies() -> Sequence[StrategySpec]:
     """Function summary: full strategy list for subreddit-day and comment panels."""
-    return tuple(default_strategies()) + post_phase_strategies() + italy_only_strategies()
+    return (
+        tuple(default_strategies())
+        + ban_split_strategies()
+        + phase_joint_strategies()
+        + italy_only_strategies()
+    )
 
 
 def event_study_overlay_strategies() -> tuple[StrategySpec, ...]:

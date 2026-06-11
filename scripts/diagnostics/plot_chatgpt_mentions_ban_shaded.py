@@ -51,11 +51,6 @@ SANITY_BENCHMARKS: Dict[str, Tuple[str, str, str, float]] = {
 SANITY_IT_PEAK_DATE = "2023-04-01"
 SANITY_IT_PEAK_RATE = 0.36
 
-POOL_GROUP_STYLE: Dict[str, Dict[str, object]] = {
-    "Italy": {"color": "#c1121f", "linewidth": 2.0, "label": "Italy"},
-    "Controls": {"color": "#457b9d", "linewidth": 1.5, "label": "Pooled controls"},
-}
-
 CONTROL_PANEL_DISPLAY: Dict[str, str] = {
     "Germany": "Germany",
     "EU_hub_en": "EU_hub_en",
@@ -128,6 +123,18 @@ from src.config_utils import (  # noqa: E402
     subreddit_family_map,
     tables_subdir,
 )
+from src.plotting.thesis_theme import (  # noqa: E402
+    THESIS_CONTROL,
+    THESIS_CONTROL_BAND,
+    THESIS_ITALY,
+    XLABEL_CALENDAR,
+    shade_ban_window,
+)
+
+POOL_GROUP_STYLE: Dict[str, Dict[str, object]] = {
+    "Italy": {"color": THESIS_ITALY, "linewidth": 2.2, "label": "Italy"},
+    "Controls": {"color": THESIS_CONTROL, "linewidth": 1.5, "label": "Pooled controls"},
+}
 
 
 def _compile_keyword_patterns() -> Tuple[List[Pattern[str]], List[Pattern[str]]]:
@@ -592,11 +599,13 @@ def plot_ban_window_pooled_with_control_range(
             band["date_utc"],
             band["ctrl_min"],
             band["ctrl_max"],
-            color=control_color,
-            alpha=0.22,
+            color=THESIS_CONTROL_BAND,
+            alpha=0.45,
             label="Controls (panel range)",
-            zorder=1,
+            zorder=2,
         )
+
+    shade_ban_window(ax, mode="calendar", ban_start=BAN_START, ban_end=BAN_END, zorder=0)
 
     for group in POOL_GROUP_LABELS:
         style = POOL_GROUP_STYLE[group]
@@ -620,13 +629,12 @@ def plot_ban_window_pooled_with_control_range(
                 color=str(style["color"]),
                 linewidth=float(style["linewidth"]),
                 label=f"{style['label']}{smooth_label_suffix}",
-                zorder=2,
+                zorder=4,
             )
 
-    ax.axvspan(pd.Timestamp(BAN_START), pd.Timestamp(BAN_END), color="0.85", alpha=0.5, zorder=0)
-    ax.axvline(pd.Timestamp(BAN_START), color="0.4", linestyle="-", linewidth=0.9)
-    ax.axvline(pd.Timestamp(BAN_END), color="0.4", linestyle="--", linewidth=0.9)
-    ax.set_title("IT vs pooled controls (control-panel range)")
+    ax.set_xlabel(XLABEL_CALENDAR)
+    ax.set_ylabel("Mentions per 100 words")
+    ax.set_title("ChatGPT / AI mention rate")
     legend_handles, legend_labels = ax.get_legend_handles_labels()
     if show_smoothing_legend:
         legend_handles.append(
@@ -640,7 +648,6 @@ def plot_ban_window_pooled_with_control_range(
             )
         )
     ax.legend(legend_handles, legend_labels, fontsize=8)
-    fig.suptitle(OUTCOME_TITLE, fontsize=12)
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight")

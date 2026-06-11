@@ -62,10 +62,16 @@ PROJECT_ROOT = _setup_project_root()
 
 from src.config_utils import figures_subdir, load_config  # noqa: E402
 from src.did.bucket_estimate import _rel_period_from_coef_name  # noqa: E402
-from src.did.outcomes import outcome_label  # noqa: E402
 from src.did.panels import load_subreddit_panel  # noqa: E402
 from src.did.paths import did_panels_dir  # noqa: E402
 from src.did.specs import StrategySpec, filter_strategy_sample  # noqa: E402
+from src.plotting.thesis_theme import (  # noqa: E402
+    THESIS_ITALY,
+    shade_ban_window,
+    thesis_title_for_outcome,
+    xlabel_event_study,
+    ylabel_italy_bin_coefficient,
+)
 
 
 @dataclass
@@ -322,13 +328,14 @@ def _plot_two_panel(results: List[OutcomeResult], out_path: Path) -> None:
                 plot_df.loc[mask, "beta"],
                 yerr=1.96 * plot_df.loc[mask, "se"],
                 fmt="o",
-                color="#1d3557",
+                color=THESIS_ITALY,
                 ecolor="black",
                 elinewidth=0.9,
                 capsize=3,
                 markersize=5,
                 markerfacecolor="white",
-                markeredgecolor="#1d3557",
+                markeredgecolor=THESIS_ITALY,
+                zorder=6,
             )
         ref = plot_df[plot_df["rel_bin"] == REF_BIN]
         if not ref.empty:
@@ -336,22 +343,17 @@ def _plot_two_panel(results: List[OutcomeResult], out_path: Path) -> None:
                 ref["rel_day_mid"],
                 ref["beta"],
                 "o",
-                color="#1d3557",
+                color=THESIS_ITALY,
                 markersize=5,
                 markerfacecolor="white",
-                markeredgecolor="#1d3557",
+                markeredgecolor=THESIS_ITALY,
+                zorder=6,
             )
-        ax.axhline(0, color="gray", linewidth=0.8)
-        ax.axvline(0, color="black", linewidth=0.9, linestyle="-")
-        ax.axvline(LIFT_DAY, color="black", linewidth=0.9, linestyle="--")
-        ax.set_title(outcome_label(res.outcome_id, short=True))
-        ax.set_xlabel("Days relative to ban (3-day bin midpoints)")
-        ax.set_ylabel("Coefficient (IT × bin)")
-        subtitle = (
-            f"full-ban ATT = {res.static_beta:.4f} (p={res.static_p:.2f}); "
-            f"pre-trend F p = {res.pretrend_p:.2f}"
-        )
-        ax.text(0.5, -0.22, subtitle, transform=ax.transAxes, ha="center", fontsize=8)
+        ax.axhline(0, color="gray", linewidth=0.8, zorder=4)
+        shade_ban_window(ax, mode="event_study", bin_days=BIN_DAYS, x_scale="days", zorder=0)
+        ax.set_title(thesis_title_for_outcome(res.outcome_id))
+        ax.set_xlabel(xlabel_event_study(BIN_DAYS))
+        ax.set_ylabel(ylabel_italy_bin_coefficient())
     fig.tight_layout()
     fig.subplots_adjust(bottom=0.18)
     fig.savefig(out_path, dpi=150)

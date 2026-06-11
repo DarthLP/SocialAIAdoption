@@ -67,6 +67,9 @@ from src.config_utils import (
     topic_families,
     utc_ts,
 )
+from src.plotting.thesis_theme import XLABEL_CALENDAR  # noqa: E402
+
+ARCHIVE_AI_LEXICON_YLABEL = "AI-lexicon rate per 100 words"
 
 DEFAULT_CALENDAR_RELEASE_DATES = [datetime(2022, 11, 30), datetime(2023, 3, 14)]
 _calendar_release_dates_for_plotting: list[datetime] | None = None
@@ -659,9 +662,14 @@ def plot_metric(
     sns.lineplot(data=d, x="date", y=y_col, marker=("o" if show_markers else None))
     add_release_markers(plt.gca())
     format_month_start_axis(plt.gca())
-    plt.title(title)
-    plt.xlabel("Date (UTC)")
-    plt.ylabel(y_col)
+    plot_title = title
+    ylabel = y_col
+    if y_col == "ai_word_extended_rate_100w":
+        plot_title = "Extended AI-lexicon rate"
+        ylabel = ARCHIVE_AI_LEXICON_YLABEL
+    plt.title(plot_title)
+    plt.xlabel(XLABEL_CALENDAR)
+    plt.ylabel(ylabel)
     plt.tight_layout()
     plt.savefig(out_path, dpi=140)
     plt.close()
@@ -729,9 +737,14 @@ def plot_metric_by_family(
     )
     add_release_markers(plt.gca())
     format_month_start_axis(plt.gca())
-    plt.title(title)
-    plt.xlabel("Date (UTC)")
-    plt.ylabel(y_col)
+    plot_title = title
+    ylabel = y_col
+    if y_col == "ai_word_extended_rate_100w":
+        plot_title = "Extended AI-lexicon rate, by topic family"
+        ylabel = ARCHIVE_AI_LEXICON_YLABEL
+    plt.title(plot_title)
+    plt.xlabel(XLABEL_CALENDAR)
+    plt.ylabel(ylabel)
     plt.legend(
         title="Topic family",
         loc="best",

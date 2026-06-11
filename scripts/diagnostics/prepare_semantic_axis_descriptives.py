@@ -274,12 +274,55 @@ def _new_agg_accumulator(bucket_specs: Sequence[PoleBucketSpec]) -> Dict[str, An
     }
 
 
+def _accumulate_percentile_poles(
+    acc: Dict[str, Any],
+    grp: pd.DataFrame,
+    bucket_specs: Sequence[PoleBucketSpec],
+    percentile_lookup: Mapping[Tuple[str, str, int], float],
+    *,
+    suffix_tag: str = "",
+) -> None:
+    """Function summary: accumulate percentile pole bucket counts with optional column suffix tag."""
+    lex = group_primary_lexicon(grp)
+    vals_by_col: Dict[str, pd.Series] = {}
+    w = grp["n_words"].astype(float)
+    for spec in bucket_specs:
+        if spec.kind not in ("high_percentile", "low_percentile"):
+            continue
+        col = pole_column_prefix(spec.axis)
+        if col not in grp.columns:
+            continue
+        vals = vals_by_col.setdefault(col, grp[col].astype(float))
+        tagged_suffix = f"{spec.suffix}{suffix_tag}"
+        if spec.kind == "high_percentile":
+            pct = int(spec.suffix.replace("above_p", ""))
+            thr = percentile_lookup.get((str(lex).lower(), spec.axis, pct), float("nan"))
+            if thr != thr:
+                continue
+            high_mask = vals > thr
+            hk = (spec.axis, spec.high_label, tagged_suffix)
+            acc["pole"].setdefault(hk, {"n_comments": 0, "n_words": 0.0})
+            acc["pole"][hk]["n_comments"] += int(high_mask.sum())
+            acc["pole"][hk]["n_words"] += float(w[high_mask].sum())
+        else:
+            pct = int(spec.suffix.replace("below_p", ""))
+            thr = percentile_lookup.get((str(lex).lower(), spec.axis, pct), float("nan"))
+            if thr != thr:
+                continue
+            low_mask = vals < thr
+            lk = (spec.axis, spec.low_label, tagged_suffix)
+            acc["pole"].setdefault(lk, {"n_comments": 0, "n_words": 0.0})
+            acc["pole"][lk]["n_comments"] += int(low_mask.sum())
+            acc["pole"][lk]["n_words"] += float(w[low_mask].sum())
+
+
 def _accumulate_group(
     acc: Dict[str, Any],
     grp: pd.DataFrame,
     bucket_specs: Sequence[PoleBucketSpec],
     sem_cfg: Dict[str, Any],
     percentile_lookup: Mapping[Tuple[str, str, int], float],
+    extra_percentile_lookups: Optional[Mapping[str, Mapping[Tuple[str, str, int], float]]] = None,
 ) -> None:
     """Function summary: merge one comment group into accumulator state."""
     w = grp["n_words"].astype(float)
@@ -335,6 +378,8 @@ def _accumulate_group(
             lk = (spec.axis, spec.low_label, spec.suffix)
             acc["pole"][lk]["n_comments"] += int(low_mask.sum())
             acc["pole"][lk]["n_words"] += float(nw[low_mask].sum())
+    for tag, lookup in (extra_percentile_lookups or {}).items():
+        _accumulate_percentile_poles(acc, grp, bucket_specs, lookup, suffix_tag=tag)
 
 
 def _ideology_bucket_metric(out: Dict[str, Any], label: str, field: str) -> float | None:
@@ -353,6 +398,31 @@ def _ideology_bucket_metric(out: Dict[str, Any], label: str, field: str) -> floa
     return None
 
 
+def _pole_share_from_tails(
+    out: Dict[str, Any],
+    left_key: str,
+    right_key: str,
+    dest_key: str,
+) -> None:
+    """Function summary: compute pole share from named left/right tail share columns."""
+    n_comments = int(out.get("n_comments") or 0)
+    share_unscored = float(out.get("share_unscored") or 0.0)
+    if np.isnan(share_unscored):
+        share_unscored = 0.0
+    left_s = out.get(left_key)
+    right_s = out.get(right_key)
+    if left_s is not None and right_s is not None and not (
+        isinstance(left_s, float) and np.isnan(left_s)
+    ) and not (isinstance(right_s, float) and np.isnan(right_s)):
+        left_s = float(left_s)
+        right_s = float(right_s)
+        center_s = max(0.0, 1.0 - left_s - right_s - share_unscored)
+        denom = left_s + right_s + center_s + POLE_SHARE_EPS
+        out[dest_key] = float((left_s + right_s) / denom) if denom > 0 else float("nan")
+    else:
+        out[dest_key] = float("nan")
+
+
 def _append_ideology_derived_metrics(out: Dict[str, Any]) -> None:
     """Function summary: add sem_axis_ideology_pole_share and sem_axis_ideology_esteban_ray to panel row."""
     n_comments = int(out.get("n_comments") or 0)
@@ -367,6 +437,30 @@ def _append_ideology_derived_metrics(out: Dict[str, Any]) -> None:
         out["sem_axis_ideology_pole_share"] = float((left_s + right_s) / denom) if denom > 0 else float("nan")
     else:
         out["sem_axis_ideology_pole_share"] = float("nan")
+    _pole_share_from_tails(
+        out,
+        "sem_axis_ideology_share_left_below_p10",
+        "sem_axis_ideology_share_right_above_p90",
+        "sem_axis_ideology_pole_share_pct",
+    )
+    _pole_share_from_tails(
+        out,
+        "sem_axis_ideology_share_left_below_p5",
+        "sem_axis_ideology_share_right_above_p95",
+        "sem_axis_ideology_pole_share_p05p95",
+    )
+    _pole_share_from_tails(
+        out,
+        "sem_axis_ideology_share_left_below_p15",
+        "sem_axis_ideology_share_right_above_p85",
+        "sem_axis_ideology_pole_share_p15p85",
+    )
+    _pole_share_from_tails(
+        out,
+        "sem_axis_ideology_share_left_below_p10_global",
+        "sem_axis_ideology_share_right_above_p90_global",
+        "sem_axis_ideology_pole_share_global",
+    )
     n_left = _ideology_bucket_metric(out, "left", "n_comments")
     n_right = _ideology_bucket_metric(out, "right", "n_comments")
     if n_left is not None and n_right is not None:
@@ -438,6 +532,15 @@ def _finalize_accumulator(
                 out[f"sem_axis_{axis}_n_words_{spec.low_label}_{spec.suffix}"] = acc["pole"][key][
                     "n_words"
                 ]
+    for (axis, label, tagged_suffix), pdata in acc["pole"].items():
+        if not str(tagged_suffix).endswith("_global"):
+            continue
+        cnt = int(pdata["n_comments"])
+        out[f"sem_axis_{axis}_share_{label}_{tagged_suffix}"] = (
+            float(cnt) / float(n_comments) if n_comments else float("nan")
+        )
+        out[f"sem_axis_{axis}_n_comments_{label}_{tagged_suffix}"] = cnt
+        out[f"sem_axis_{axis}_n_words_{label}_{tagged_suffix}"] = pdata["n_words"]
     n_days = len(acc.get("calendar_days") or ())
     if n_days <= 0:
         n_days = 1
@@ -583,6 +686,7 @@ def _accumulate_shard_into_panels(
     panel_bin_days: Sequence[int],
     launch: str,
     parent_lang_counts: Dict[int, Dict[Tuple[str, ...], int]],
+    extra_percentile_lookups: Optional[Mapping[str, Mapping[Tuple[str, str, int], float]]] = None,
 ) -> None:
     """Function summary: update panel accumulators from one in-window shard chunk."""
     for bin_days in panel_bin_days:
@@ -609,6 +713,7 @@ def _accumulate_shard_into_panels(
                     bucket_specs,
                     sem_cfg,
                     percentile_lookup,
+                    extra_percentile_lookups=extra_percentile_lookups,
                 )
 
 
@@ -701,6 +806,7 @@ def _stream_shards_for_panels(
     launch: str,
     *,
     exclude_ban_topic: bool = False,
+    extra_percentile_lookups: Optional[Mapping[str, Mapping[Tuple[str, str, int], float]]] = None,
 ) -> Tuple[
     MutableMapping[int, MutableMapping[str, MutableMapping[Any, Dict[str, Any]]]],
     Dict[int, Dict[Tuple[str, ...], int]],
@@ -741,6 +847,7 @@ def _stream_shards_for_panels(
             panel_bin_days,
             launch,
             parent_lang_counts,
+            extra_percentile_lookups=extra_percentile_lookups,
         )
         found = True
         if i % 20 == 0 or i == n_shards:
@@ -926,12 +1033,25 @@ def main() -> None:
     if args.exclude_ban_topic:
         panel_read_cols = tuple(dict.fromkeys((*panel_read_cols, "body")))
     cal_path = out_dir / "semantic_axis_lexicon_percentile_thresholds.csv"
+    cal_global_path = out_dir / "semantic_axis_lexicon_percentile_thresholds_global.csv"
     shard_paths = _iter_shards(interim_dir, subs, args.max_shards)
+    cal_cfg = sem_cfg.get("percentile_calibration") or {}
+    preban_only = bool(cal_cfg.get("preban_only", True))
     cal_df = calibrate_lexicon_percentiles(
         shard_paths,
         panel_read_cols,
         sem_cfg,
         read_shard_fn=lambda p, c: _read_shard_projected(p, c),
+        preban_only=preban_only,
+        launch_day=launch,
+    )
+    cal_global_df = calibrate_lexicon_percentiles(
+        shard_paths,
+        panel_read_cols,
+        sem_cfg,
+        read_shard_fn=lambda p, c: _read_shard_projected(p, c),
+        preban_only=False,
+        launch_day=launch,
     )
     if not cal_df.empty:
         cal_df.to_csv(cal_path, index=False)
@@ -939,9 +1059,17 @@ def main() -> None:
             f"[prepare_semantic_axis_descriptives] wrote {cal_path.name} rows={len(cal_df)}",
             flush=True,
         )
+    if not cal_global_df.empty:
+        cal_global_df.to_csv(cal_global_path, index=False)
+        print(
+            f"[prepare_semantic_axis_descriptives] wrote {cal_global_path.name} rows={len(cal_global_df)}",
+            flush=True,
+        )
     percentile_lookup = percentile_lookup_from_csv(cal_path)
+    percentile_lookup_global = percentile_lookup_from_csv(cal_global_path)
 
     panel_suffix = "_exbantopic" if args.exclude_ban_topic else ""
+    extra_lookups = {"_global": percentile_lookup_global} if percentile_lookup_global else None
     accum, parent_lang_counts, found = _stream_shards_for_panels(
         interim_dir,
         subs,
@@ -954,6 +1082,7 @@ def main() -> None:
         panel_bin_days,
         launch,
         exclude_ban_topic=args.exclude_ban_topic,
+        extra_percentile_lookups=extra_lookups,
     )
     if not found:
         print("[prepare_semantic_axis_descriptives] no shard data in event window", flush=True)
