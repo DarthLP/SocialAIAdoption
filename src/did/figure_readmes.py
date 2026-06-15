@@ -82,6 +82,18 @@ OVERVIEW_FIGURES: tuple[tuple[str, str, str], ...] = (
         f"Strategy: {strategy_label('cross_country_all')}.",
     ),
     (
+        "early_ban_pole_rate.png",
+        "Full-ban vs early-ban windows for the additive pole-word rate "
+        "(left+right hits per 100 words; no center bucket, no ratio ceiling).",
+        "Same strategy set as other early-ban overview plots.",
+    ),
+    (
+        "post_phase_pole_rate.png",
+        "Post-phase β for the additive pole-word rate "
+        "(left+right hits per 100 words; no center bucket, no ratio ceiling).",
+        f"Strategy: {strategy_label('cross_country_all')}.",
+    ),
+    (
         "early_ban_esteban_ray.png",
         "Full-ban vs early-ban windows for lexical Esteban–Ray.",
         "Same strategy set as other early-ban overview plots.",
@@ -93,12 +105,26 @@ OVERVIEW_FIGURES: tuple[tuple[str, str, str], ...] = (
     ),
     (
         "early_ban_sem_axis_ideology_pole_share.png",
-        "Full-ban vs early-ban windows for semantic-axis ideology pole share.",
+        "Full-ban vs early-ban windows for semantic-axis ideology pole share "
+        "(absolute cutoffs; IT-scale — controls ~0 by construction).",
         "Same strategy set as other early-ban overview plots.",
     ),
     (
         "post_phase_sem_axis_ideology_pole_share.png",
-        "Post-phase β for semantic-axis ideology pole share.",
+        "Post-phase β for semantic-axis ideology pole share "
+        "(absolute cutoffs; IT-scale — controls ~0 by construction).",
+        f"Strategy: {strategy_label('cross_country_all')}.",
+    ),
+    (
+        "early_ban_sem_axis_ideology_pole_share_pct.png",
+        "Full-ban vs early-ban windows for the per-lexicon p10/p90 percentile "
+        "pole share (cross-arm comparable variant).",
+        "Same strategy set as other early-ban overview plots.",
+    ),
+    (
+        "post_phase_sem_axis_ideology_pole_share_pct.png",
+        "Post-phase β for the per-lexicon p10/p90 percentile pole share "
+        "(cross-arm comparable variant).",
         f"Strategy: {strategy_label('cross_country_all')}.",
     ),
     (

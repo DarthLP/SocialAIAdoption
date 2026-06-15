@@ -1323,9 +1323,11 @@ def generate_overview_figures(summary: pd.DataFrame, fig_dir: Path) -> None:
     overview_outcomes = (
         "net_ideology",
         "pole_share",
+        "pole_rate",
         "esteban_ray",
         "sem_axis_ideology",
         "sem_axis_ideology_pole_share",
+        "sem_axis_ideology_pole_share_pct",
         "sem_axis_ideology_esteban_ray",
         "ai_style_rate",
     )

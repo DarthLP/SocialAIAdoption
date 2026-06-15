@@ -1,0 +1,468 @@
+﻿category,slot_concept,type,IT,IT_grade,EN (US/UK),EN_grade,DE,DE_grade,notes
+1. Institutions & branches of government,government,generic,governo,2,government,2,regierung,2,
+1. Institutions & branches of government,governments (pl.),generic,governi,2,governments,2,regierungen,2,
+1. Institutions & branches of government,parliament,generic,parlamento,2,parliament,2,parlament,2,
+1. Institutions & branches of government,parliaments (pl.),generic,parlamenti,2,parliaments,2,parlamente,2,
+1. Institutions & branches of government,senate,generic,senato,2,senate,2,senat,2,DE upper house is Bundesrat; 'Senat' exists for city-states
+1. Institutions & branches of government,chamber of deputies / lower house,generic,camera dei deputati,3,house of representatives,3,bundestag,3,"functional analogs, not translations"
+1. Institutions & branches of government,senate of the republic / upper house,generic,senato della repubblica,3,senate,2,bundesrat,3,functional analogs
+1. Institutions & branches of government,PM office (seat of govt),generic,palazzo chigi,3,downing street,3,kanzleramt,3,metonyms for the head of government's office
+1. Institutions & branches of government,council of ministers / cabinet,generic,consiglio dei ministri,3,cabinet,3,kabinett,3,
+1. Institutions & branches of government,constitutional court,generic,corte costituzionale,3,constitutional court,3,verfassungsgericht,3,EN analog: supreme court
+1. Institutions & branches of government,court of auditors,generic,corte dei conti,3,court of auditors,3,rechnungshof,3,
+1. Institutions & branches of government,judiciary,generic,magistratura,2,judiciary,2,justiz,2,
+1. Institutions & branches of government,magistrates / judges,generic,magistrati,2,magistrates,2,richter,2,
+1. Institutions & branches of government,technocratic government,generic,governo tecnico,3,technocratic government,3,technokratische regierung,3,
+1. Institutions & branches of government,national-unity government,generic,governo di unità nazionale,3,national unity government,3,regierung der nationalen einheit,3,
+2. Government roles & offices,prime minister / PM,generic,presidente del consiglio,3,prime minister,3,bundeskanzler,3,head of government; DE analog Kanzler
+2. Government roles & offices,president of the republic / head of state,generic,presidente della repubblica,3,president,3,bundespräsident,3,
+2. Government roles & offices,speaker of the lower house,generic,presidente della camera,3,speaker,3,bundestagspräsident,3,
+2. Government roles & offices,speaker of the upper house,generic,presidente del senato,3,senate president,3,bundesratspräsident,3,
+2. Government roles & offices,premier (role/slang),generic,premier,2,premier,1,premierminister,3,also 'Premier League' (sport) -> FP risk
+2. Government roles & offices,deputy prime minister,generic,vicepremier,3,deputy prime minister,3,vizekanzler,3,
+2. Government roles & offices,minister,generic,ministro,2,minister,2,minister,2,
+2. Government roles & offices,ministers (pl.),generic,ministri,2,ministers,2,minister,2,
+2. Government roles & offices,minister (f.),generic,ministra,2,minister,2,ministerin,2,
+2. Government roles & offices,undersecretary,generic,sottosegretario,3,undersecretary,3,staatssekretär,3,
+2. Government roles & offices,deputy minister,generic,viceministro,3,deputy minister,3,stellvertretender minister,3,
+2. Government roles & offices,prefect,generic,prefetto,2,prefect,2,präfekt,2,
+2. Government roles & offices,mayor,generic,sindaco,2,mayor,2,bürgermeister,2,
+2. Government roles & offices,mayors (pl.),generic,sindaci,2,mayors,2,bürgermeister,2,
+2. Government roles & offices,governor (regional),generic,governatore,2,governor,2,ministerpräsident,2,DE analog: Land minister-president
+2. Government roles & offices,city council,generic,consiglio comunale,2,city council,2,stadtrat,2,
+2. Government roles & offices,regional council,generic,consiglio regionale,2,regional council,2,landtag,2,
+2. Government roles & offices,parliamentary group leader,generic,capogruppo,3,group leader,3,fraktionsvorsitzender,3,
+3. Parliamentary & legislative procedure,majority,generic,maggioranza,2,majority,2,mehrheit,2,also general 'majority' -> some FP
+3. Parliamentary & legislative procedure,opposition,generic,opposizione,2,opposition,2,opposition,2,also physics/debate sense
+3. Parliamentary & legislative procedure,amendment,generic,emendamento,3,amendment,3,änderungsantrag,3,
+3. Parliamentary & legislative procedure,amendments (pl.),generic,emendamenti,3,amendments,3,änderungsanträge,3,
+3. Parliamentary & legislative procedure,confidence vote,generic,voto di fiducia,3,confidence vote,3,vertrauensfrage,3,
+3. Parliamentary & legislative procedure,question of confidence,generic,questione di fiducia,3,question of confidence,3,vertrauensfrage,3,
+3. Parliamentary & legislative procedure,no-confidence,generic,sfiducia,3,no confidence,3,misstrauensvotum,3,
+3. Parliamentary & legislative procedure,motion of no confidence,generic,mozione di sfiducia,3,motion of no confidence,3,misstrauensvotum,3,
+3. Parliamentary & legislative procedure,shadow government,generic,governo ombra,3,shadow cabinet,3,schattenkabinett,3,
+3. Parliamentary & legislative procedure,decree,generic,decreto,2,decree,2,dekret,2,
+3. Parliamentary & legislative procedure,decree-law,generic,decreto legge,3,decree-law,3,gesetzesdekret,3,
+3. Parliamentary & legislative procedure,decree-law (one word variant),generic,decretolegge,3,decree-law,3,gesetzesdekret,3,
+3. Parliamentary & legislative procedure,bill / draft law,generic,disegno di legge,3,bill,1,gesetzentwurf,3,EN 'bill' also = invoice/banknote -> FP
+3. Parliamentary & legislative procedure,bill (abbr.),generic,ddl,3,bill,1,gesetzentwurf,3,
+3. Parliamentary & legislative procedure,legislative process,generic,iter legislativo,3,legislative process,3,gesetzgebungsverfahren,3,
+3. Parliamentary & legislative procedure,question time,generic,question time,3,question time,3,fragestunde,3,
+3. Parliamentary & legislative procedure,parliamentary committee,generic,commissione parlamentare,3,parliamentary committee,3,parlamentsausschuss,3,
+3. Parliamentary & legislative procedure,secret ballot,generic,voto segreto,2,secret ballot,2,geheime abstimmung,2,
+3. Parliamentary & legislative procedure,filibuster / obstructionism,generic,ostruzionismo,3,filibuster,3,obstruktion,3,
+3. Parliamentary & legislative procedure,budget bill (slang),generic,manovra,2,budget bill,3,haushaltsgesetz,3,IT 'manovra' also = maneuver -> FP
+4. Elections & electoral system,elections,generic,elezioni,2,elections,2,wahlen,2,
+4. Elections & electoral system,general election,generic,elezioni politiche,3,general election,3,bundestagswahl,3,DE analog: federal election
+4. Elections & electoral system,regional elections,generic,elezioni regionali,3,regional elections,3,landtagswahl,3,
+4. Elections & electoral system,european elections,generic,elezioni europee,3,european elections,3,europawahl,3,
+4. Elections & electoral system,local/administrative elections,generic,elezioni amministrative,3,local elections,3,kommunalwahl,3,
+4. Elections & electoral system,municipal elections,generic,elezioni comunali,3,municipal elections,3,kommunalwahl,3,
+4. Elections & electoral system,electoral (adj.),generic,elettorale,2,electoral,2,wahl-,2,
+4. Elections & electoral system,electoral law,generic,legge elettorale,3,electoral law,3,wahlgesetz,3,
+4. Elections & electoral system,proportional representation,generic,proporzionale,2,proportional representation,2,verhältniswahl,2,IT/EN word also math 'proportional'
+4. Elections & electoral system,majoritarian system,generic,maggioritario,2,majoritarian,2,mehrheitswahl,2,
+4. Elections & electoral system,runoff,generic,ballottaggio,3,runoff,3,stichwahl,3,
+4. Elections & electoral system,vote count,generic,scrutinio,2,vote count,3,auszählung,3,IT 'scrutinio' also = school term grading
+4. Elections & electoral system,ballot count,generic,spoglio,2,ballot count,3,stimmenauszählung,3,IT 'spoglio' also = stripping/inventory
+4. Elections & electoral system,polling station / seat,generic,seggio,2,polling station,2,wahllokal,2,
+4. Elections & electoral system,seats / polling stations,generic,seggi,2,seats,2,sitze,2,
+4. Elections & electoral system,single-member constituency,generic,collegio elettorale,3,constituency,3,wahlkreis,3,
+4. Elections & electoral system,electoral district,generic,circoscrizione,2,electoral district,2,wahlbezirk,2,
+4. Elections & electoral system,electoral threshold,generic,soglia di sbarramento,3,electoral threshold,3,sperrklausel,3,
+4. Elections & electoral system,majority bonus,generic,premio di maggioranza,3,majority bonus,3,mehrheitsbonus,3,
+4. Elections & electoral system,preference vote,generic,voto di preferenza,3,preference vote,3,vorzugsstimme,3,
+4. Elections & electoral system,split-ticket vote,generic,voto disgiunto,3,split-ticket vote,3,stimmensplitting,3,
+4. Elections & electoral system,closed party lists,generic,liste bloccate,3,closed lists,3,geschlossene listen,3,
+4. Elections & electoral system,ballot paper,generic,scheda elettorale,3,ballot,3,stimmzettel,3,
+4. Elections & electoral system,exit poll,generic,exit poll,3,exit poll,3,nachwahlbefragung,3,
+4. Elections & electoral system,election poll,generic,sondaggio elettorale,3,election poll,3,wahlumfrage,3,
+4. Elections & electoral system,polls / surveys,generic,sondaggi,2,polling,2,umfragen,2,IT/DE word also product/market surveys
+4. Elections & electoral system,turnout,generic,affluenza,2,turnout,2,wahlbeteiligung,2,IT 'affluenza' also = crowd/influx
+4. Elections & electoral system,abstention,generic,astensione,2,abstention,2,enthaltung,2,
+4. Elections & electoral system,abstentionism,generic,astensionismo,3,abstentionism,3,nichtwählertum,3,
+4. Elections & electoral system,tactical vote,generic,voto utile,3,tactical vote,3,taktische stimme,3,
+4. Elections & electoral system,vote-buying,generic,voto di scambio,3,vote buying,3,stimmenkauf,3,
+4. Elections & electoral system,electoral fraud,generic,brogli elettorali,3,electoral fraud,3,wahlbetrug,3,
+4. Elections & electoral system,election campaign,generic,campagna elettorale,3,campaign finance,3,wahlkampf,3,EN nearest list term differs in meaning
+4. Elections & electoral system,electoral manifesto,generic,programma elettorale,3,manifesto,3,wahlprogramm,3,
+4. Elections & electoral system,candidate,generic,candidato,2,candidate,2,kandidat,2,
+4. Elections & electoral system,candidates (pl.),generic,candidati,2,candidates,2,kandidaten,2,
+4. Elections & electoral system,to vote,generic,votare,2,vote,2,wählen,2,
+7. Constitutional reform & state structure,constitution,generic,costituzione,2,constitution,2,verfassung,2,DE also 'grundgesetz'
+7. Constitutional reform & state structure,constitutional (adj.),generic,costituzionale,2,constitutional,2,verfassungs-,2,
+7. Constitutional reform & state structure,constitutional reform,generic,riforma costituzionale,3,constitutional reform,3,verfassungsreform,3,
+7. Constitutional reform & state structure,presidentialism,generic,presidenzialismo,3,presidentialism,3,präsidialsystem,3,
+7. Constitutional reform & state structure,semi-presidentialism,generic,semipresidenzialismo,3,semi-presidentialism,3,semipräsidentialismus,3,
+7. Constitutional reform & state structure,parliamentarism,generic,parlamentarismo,3,parliamentarism,3,parlamentarismus,3,
+7. Constitutional reform & state structure,bicameralism,generic,bicameralismo,3,bicameralism,3,zweikammersystem,3,
+7. Constitutional reform & state structure,perfect (symmetric) bicameralism,generic,bicameralismo perfetto,3,perfect bicameralism,3,perfekter bikameralismus,3,IT constitutional feature
+7. Constitutional reform & state structure,direct election,generic,elezione diretta,2,direct election,2,direktwahl,2,
+7. Constitutional reform & state structure,regional autonomy,generic,autonomia regionale,2,regional autonomy,2,regionale autonomie,2,
+7. Constitutional reform & state structure,federalism,generic,federalismo,2,federalism,2,föderalismus,2,
+7. Constitutional reform & state structure,regionalism,generic,regionalismo,2,regionalism,2,regionalismus,2,
+7. Constitutional reform & state structure,independence movement,generic,indipendentismo,3,independence,3,unabhängigkeitsbewegung,3,EN 'independence' broader
+7. Constitutional reform & state structure,separatism,generic,separatismo,3,separatism,3,separatismus,3,
+7. Constitutional reform & state structure,fiscal secession (slang),generic,secessione fiscale,3,fiscal secession,3,fiskalische sezession,3,
+7. Constitutional reform & state structure,senate abolition,generic,abolizione del senato,3,senate abolition,3,senatsabschaffung,3,
+8. Fiscal & economic policy,budget law,generic,legge di bilancio,3,budget law,3,haushaltsgesetz,3,
+8. Fiscal & economic policy,finance act,generic,legge finanziaria,3,finance act,3,finanzgesetz,3,
+8. Fiscal & economic policy,public deficit,generic,deficit pubblico,2,public deficit,2,haushaltsdefizit,2,
+8. Fiscal & economic policy,public debt,generic,debito pubblico,2,public debt,2,staatsverschuldung,2,
+8. Fiscal & economic policy,European Central Bank,generic,bce,3,ecb,3,ezb,3,
+8. Fiscal & economic policy,eurozone,generic,eurozona,3,eurozone,3,eurozone,3,
+8. Fiscal & economic policy,GDP,generic,pil,3,gdp,3,bip,3,
+8. Fiscal & economic policy,public spending,generic,spesa pubblica,2,public spending,2,staatsausgaben,2,
+8. Fiscal & economic policy,spending cuts,generic,tagli alla spesa,2,spending cuts,2,ausgabenkürzungen,2,
+8. Fiscal & economic policy,spending review,generic,spending review,3,spending review,3,ausgabenüberprüfung,3,
+8. Fiscal & economic policy,austerity,generic,austerity,2,austerity,2,sparpolitik,2,
+8. Fiscal & economic policy,stability pact,generic,patto di stabilità,3,stability pact,3,stabilitätspakt,3,
+8. Fiscal & economic policy,budget constraints,generic,vincoli di bilancio,2,budget constraints,2,haushaltszwänge,2,
+8. Fiscal & economic policy,taxes,generic,tasse,2,taxes,2,steuern,2,
+8. Fiscal & economic policy,tax authority / treasury,generic,fisco,2,treasury,2,finanzamt,2,
+8. Fiscal & economic policy,tax burden,generic,pressione fiscale,2,tax burden,2,steuerlast,2,
+8. Fiscal & economic policy,flat tax,generic,flat tax,3,flat tax,3,einheitssteuer,3,
+8. Fiscal & economic policy,personal income tax (IT),generic,irpef,3,income tax,3,einkommensteuer,3,IT acronym (IRPEF)
+8. Fiscal & economic policy,VAT,generic,iva,2,vat,2,mehrwertsteuer,2,
+8. Fiscal & economic policy,corporate income tax (IT),generic,ires,3,corporate tax,3,körperschaftsteuer,3,IT acronym (IRES)
+8. Fiscal & economic policy,municipal property tax (IT),generic,imu,3,property tax,3,grundsteuer,3,IT acronym (IMU)
+8. Fiscal & economic policy,tax wedge,generic,cuneo fiscale,3,tax wedge,3,steuerkeil,3,
+8. Fiscal & economic policy,tax evasion,generic,evasione fiscale,2,tax evasion,2,steuerhinterziehung,2,
+8. Fiscal & economic policy,tax avoidance,generic,elusione fiscale,2,tax avoidance,2,steuervermeidung,2,
+8. Fiscal & economic policy,fight against tax evasion,generic,lotta all'evasione,3,crackdown on tax evasion,3,kampf gegen steuerhinterziehung,3,
+8. Fiscal & economic policy,tax amnesty,generic,condono fiscale,3,tax amnesty,3,steueramnestie,3,
+8. Fiscal & economic policy,wealth tax,generic,patrimoniale,3,wealth tax,3,vermögensteuer,3,
+8. Fiscal & economic policy,inheritance tax,generic,tassa di successione,2,inheritance tax,2,erbschaftsteuer,2,
+8. Fiscal & economic policy,land-registry reform,generic,riforma del catasto,3,land registry reform,3,katasterreform,3,
+8. Fiscal & economic policy,excise duties,generic,accise,2,excise duties,2,verbrauchsteuern,2,
+8. Fiscal & economic policy,public-broadcast licence fee,generic,canone rai,3,tv licence fee,3,rundfunkbeitrag,3,IT-specific (RAI fee)
+8. Fiscal & economic policy,golden power (state veto),generic,golden power,3,golden power,3,staatliches vetorecht,3,
+8. Fiscal & economic policy,state aid,generic,aiuti di stato,2,state aid,2,staatshilfen,2,
+8. Fiscal & economic policy,nationalisation,generic,nazionalizzazione,2,nationalisation,2,verstaatlichung,2,
+8. Fiscal & economic policy,privatisation,generic,privatizzazione,2,privatisation,2,privatisierung,2,
+8. Fiscal & economic policy,liberalisations,generic,liberalizzazioni,2,liberalisation,2,liberalisierungen,2,
+8. Fiscal & economic policy,economic policy,generic,politica economica,2,economic policy,2,wirtschaftspolitik,2,
+8. Fiscal & economic policy,industrial policy,generic,politica industriale,2,industrial policy,2,industriepolitik,2,
+8. Fiscal & economic policy,inflation,generic,inflazione,2,inflation,2,inflation,2,
+8. Fiscal & economic policy,cost-of-living crisis,generic,caro vita,2,cost of living,2,lebenshaltungskosten,2,
+9. Labor & welfare,labour market,generic,mercato del lavoro,1,labour market,1,arbeitsmarkt,1,broad economics term -> FP
+9. Labor & welfare,labour cost,generic,costo del lavoro,1,labour cost,1,arbeitskosten,1,broad economics term -> FP
+9. Labor & welfare,labour reform,generic,riforma del lavoro,2,labour reform,2,arbeitsmarktreform,2,
+9. Labor & welfare,minimum wage,generic,salario minimo,2,minimum wage,2,mindestlohn,2,
+9. Labor & welfare,precarious employment,generic,precariato,2,precarious work,2,prekariat,2,
+9. Labor & welfare,offshoring / relocation,generic,delocalizzazione,2,offshoring,2,standortverlagerung,2,
+9. Labor & welfare,strike,generic,sciopero,2,strike,2,streik,2,
+9. Labor & welfare,general strike,generic,sciopero generale,2,general strike,2,generalstreik,2,
+9. Labor & welfare,trade union,generic,sindacato,2,trade union,2,gewerkschaft,2,
+9. Labor & welfare,trade unions (pl.),generic,sindacati,2,trade unions,2,gewerkschaften,2,
+9. Labor & welfare,state subsidy,generic,sussidio statale,2,state subsidy,2,staatliche subvention,2,
+9. Labor & welfare,welfarism (pejorative),generic,assistenzialismo,3,welfarism,3,staatliche alimentierung,3,
+9. Labor & welfare,welfare,generic,welfare,2,welfare,2,sozialleistungen,2,
+9. Labor & welfare,welfare state,generic,stato sociale,2,welfare state,2,sozialstaat,2,
+9. Labor & welfare,unemployment,generic,disoccupazione,1,unemployment,1,arbeitslosigkeit,1,broad economics term -> FP
+10. Pensions,pensions,generic,pensioni,2,pensions,2,renten,2,
+10. Pensions,pension reform,generic,riforma delle pensioni,3,pension reform,3,rentenreform,3,
+10. Pensions,early retirement,generic,pensione anticipata,2,early retirement,2,frührente,2,
+11. Immigration & asylum,immigration,generic,immigrazione,2,immigration,2,einwanderung,2,
+11. Immigration & asylum,irregular immigrants,generic,immigrati irregolari,2,irregular immigrants,2,illegale einwanderer,2,
+11. Immigration & asylum,migrants,generic,migranti,2,migrants,2,migranten,2,
+11. Immigration & asylum,refugees,generic,profughi,2,refugees,2,flüchtlinge,2,
+11. Immigration & asylum,asylum seekers,generic,richiedenti asilo,2,asylum seekers,2,asylbewerber,2,
+11. Immigration & asylum,bogus asylum seekers (charged),generic,falsi richiedenti asilo,3,bogus asylum seekers,3,falsche asylbewerber,3,
+11. Immigration & asylum,illegal immigrants (pejorative),generic,clandestini,2,illegal immigrants,2,illegale,2,charged term
+11. Immigration & asylum,migrant landings,generic,sbarchi,2,migrant landings,2,anlandungen,2,IT 'sbarchi' also generic disembarkation
+11. Immigration & asylum,migration flows,generic,flussi migratori,2,migration flows,2,migrationsströme,2,
+11. Immigration & asylum,boat people-smugglers,generic,scafisti,3,people smugglers,3,schleuser,3,
+11. Immigration & asylum,human traffickers,generic,trafficanti di esseri umani,2,human traffickers,2,menschenhändler,2,
+11. Immigration & asylum,naval blockade,generic,blocco navale,3,naval blockade,3,seeblockade,3,
+11. Immigration & asylum,pushbacks,generic,respingimenti,3,pushbacks,3,zurückweisungen,3,
+11. Immigration & asylum,expulsions,generic,espulsioni,2,expulsions,2,abschiebungen,2,
+11. Immigration & asylum,repatriations,generic,rimpatri,2,repatriations,2,rückführungen,2,
+11. Immigration & asylum,assisted returns,generic,rimpatri assistiti,3,assisted returns,3,unterstützte rückkehr,3,
+11. Immigration & asylum,detention centres,generic,centri di permanenza,3,detention centres,3,abschiebehaftzentren,3,
+11. Immigration & asylum,migrant hotspots,generic,hotspot migranti,3,migrant hotspots,3,migranten-hotspots,3,
+11. Immigration & asylum,international protection,generic,protezione internazionale,2,international protection,2,internationaler schutz,2,
+11. Immigration & asylum,special protection (IT status),generic,protezione speciale,3,special protection,3,besonderer schutz,3,
+11. Immigration & asylum,humanitarian protection,generic,protezione umanitaria,3,humanitarian protection,3,humanitärer schutz,3,
+11. Immigration & asylum,humanitarian corridors,generic,corridoi umanitari,3,humanitarian corridors,3,humanitäre korridore,3,
+11. Immigration & asylum,Dublin agreement,generic,accordo di dublino,3,dublin agreement,3,dublin-abkommen,3,
+11. Immigration & asylum,Dublin regulation,generic,regolamento di dublino,3,dublin regulation,3,dublin-verordnung,3,
+11. Immigration & asylum,migration & asylum pact,generic,patto migrazione e asilo,3,migration and asylum pact,3,migrationspakt,3,
+11. Immigration & asylum,migrant quotas,generic,quote migranti,3,migrant quotas,3,migrantenquoten,3,
+11. Immigration & asylum,migrant relocation,generic,redistribuzione migranti,3,migrant relocation,3,umverteilung von migranten,3,
+11. Immigration & asylum,Frontex (EU border agency),generic,frontex,3,frontex,3,frontex,3,
+11. Immigration & asylum,Italy-Libya memorandum,generic,memorandum italia-libia,3,italy-libya memorandum,3,italien-libyen-memorandum,3,
+11. Immigration & asylum,Italy-Albania protocol,generic,protocollo italia-albania,3,italy-albania protocol,3,italien-albanien-protokoll,3,
+11. Immigration & asylum,integration,generic,integrazione,1,integration,1,integration,1,broad term (math/social) -> FP; removed from DE list earlier
+11. Immigration & asylum,birthright citizenship (ius soli),generic,ius soli,3,birthright citizenship,3,ius soli,3,
+11. Immigration & asylum,citizenship by descent (ius sanguinis),generic,ius sanguinis,3,ius sanguinis,3,ius sanguinis,3,
+11. Immigration & asylum,Italian citizenship,generic,cittadinanza italiana,2,citizenship,2,staatsbürgerschaft,2,
+11. Immigration & asylum,naturalisation,generic,naturalizzazione,2,naturalisation,2,einbürgerung,2,
+11. Immigration & asylum,residence permit,generic,permesso di soggiorno,2,residence permit,2,aufenthaltstitel,2,
+11. Immigration & asylum,ethnic replacement (conspiracy),generic,sostituzione etnica,3,ethnic replacement,3,bevölkerungsaustausch,3,
+11. Immigration & asylum,great replacement (conspiracy),generic,grande sostituzione,3,great replacement,3,großer austausch,3,
+11. Immigration & asylum,Kalergi plan (conspiracy),generic,piano kalergi,3,kalergi plan,3,kalergi-plan,3,
+11. Immigration & asylum,remigration (far-right),generic,remigrazione,3,remigration,3,remigration,3,
+11. Immigration & asylum,migrant invasion (charged),generic,invasione migratoria,3,migrant invasion,3,migranteninvasion,3,
+11. Immigration & asylum,migration emergency,generic,emergenza migratoria,2,migration emergency,2,migrationskrise,2,
+"12. Justice, security & crime-politics",justice reform,generic,riforma della giustizia,3,justice reform,3,justizreform,3,
+"12. Justice, security & crime-politics",wiretaps,generic,intercettazioni,2,wiretaps,2,abhörmaßnahmen,2,
+"12. Justice, security & crime-politics",statute of limitations,generic,prescrizione,2,statute of limitations,2,verjährung,2,IT 'prescrizione' also = medical prescription
+"12. Justice, security & crime-politics",prison overcrowding,generic,sovraffollamento carcerario,2,prison overcrowding,2,überfüllung der gefängnisse,2,
+"12. Justice, security & crime-politics",prison reform,generic,riforma delle carceri,3,prison reform,3,gefängnisreform,3,
+"12. Justice, security & crime-politics",self-defence (law),generic,legittima difesa,2,self-defence,2,notwehr,2,
+"12. Justice, security & crime-politics",chemical castration,generic,castrazione chimica,3,chemical castration,3,chemische kastration,3,
+"12. Justice, security & crime-politics",national security,generic,sicurezza nazionale,2,national security,2,nationale sicherheit,2,
+"12. Justice, security & crime-politics",public security,generic,sicurezza pubblica,2,public security,2,öffentliche sicherheit,2,
+"12. Justice, security & crime-politics",public order,generic,ordine pubblico,2,public order,2,öffentliche ordnung,2,
+"12. Justice, security & crime-politics",law and order,generic,legge e ordine,2,law and order,2,recht und ordnung,2,
+"12. Justice, security & crime-politics",abuse of office,generic,abuso d'ufficio,2,abuse of office,2,amtsmissbrauch,2,
+"12. Justice, security & crime-politics",corruption,generic,corruzione,2,corruption,2,korruption,2,
+"12. Justice, security & crime-politics",bribes,generic,tangenti,2,bribes,2,schmiergelder,2,
+"12. Justice, security & crime-politics",bribes (slang),generic,mazzette,2,kickbacks,2,bestechungsgelder,2,
+"12. Justice, security & crime-politics",embezzlement,generic,peculato,2,embezzlement,2,unterschlagung,2,
+13. Corruption & organized crime,mafia,generic,mafia,2,mafia,2,mafia,2,
+13. Corruption & organized crime,anti-mafia,generic,antimafia,3,anti-mafia,3,antimafia,3,
+13. Corruption & organized crime,'ndrangheta,generic,'ndrangheta,3,ndrangheta,3,ndrangheta,3,
+13. Corruption & organized crime,camorra,generic,camorra,3,camorra,3,camorra,3,
+13. Corruption & organized crime,cosa nostra (Sicilian mafia),generic,cosa nostra,3,cosa nostra,3,cosa nostra,3,
+13. Corruption & organized crime,racket,generic,racket,2,racket,1,schutzgelderpressung,2,EN 'racket' also = noise/sport
+13. Corruption & organized crime,extortion,generic,estorsione,2,extortion,2,erpressung,2,
+13. Corruption & organized crime,organised crime,generic,criminalità organizzata,2,organised crime,2,organisierte kriminalität,2,
+14. EU & European policy,European Union,generic,unione europea,2,european union,2,europäische union,2,
+14. EU & European policy,Brussels (EU metonym),generic,bruxelles,2,brussels,2,brüssel,2,also the city
+14. EU & European policy,Strasbourg (EU Parliament metonym),generic,strasburgo,2,strasbourg,2,straßburg,2,also the city
+14. EU & European policy,European Commission,generic,commissione europea,3,european commission,3,europäische kommission,3,
+14. EU & European policy,European Parliament,generic,parlamento europeo,3,european parliament,3,europäisches parlament,3,
+14. EU & European policy,European Council,generic,consiglio europeo,3,european council,3,europäischer rat,3,
+14. EU & European policy,Eurogroup,generic,eurogruppo,3,eurogroup,3,eurogruppe,3,
+14. EU & European policy,European Stability Mechanism,generic,mes,3,esm,3,esm,3,IT acronym (MES)
+14. EU & European policy,NextGenerationEU,generic,nextgenerationeu,3,nextgenerationeu,3,nextgenerationeu,3,
+14. EU & European policy,Recovery Fund,generic,recovery fund,3,recovery fund,3,wiederaufbaufonds,3,
+14. EU & European policy,EU funds,generic,fondi europei,2,eu funds,2,eu-mittel,2,
+14. EU & European policy,Common Agricultural Policy,generic,politica agricola comune,3,common agricultural policy,3,gemeinsame agrarpolitik,3,
+14. EU & European policy,CAP (acronym),generic,pac,3,cap,3,gap,3,
+14. EU & European policy,infringement procedure,generic,procedura di infrazione,3,infringement procedure,3,vertragsverletzungsverfahren,3,
+14. EU & European policy,EU constraints,generic,vincoli europei,2,eu constraints,2,eu-vorgaben,2,
+14. EU & European policy,ceding of sovereignty,generic,cessione di sovranità,3,ceding sovereignty,3,souveränitätsabgabe,3,
+14. EU & European policy,pro-Europeanism,generic,europeismo,3,pro-europeanism,3,europafreundlichkeit,3,
+14. EU & European policy,euroscepticism,generic,euroscetticismo,3,euroscepticism,3,euroskeptizismus,3,
+14. EU & European policy,Italexit (EU exit),generic,italexit,3,italexit,3,italexit,3,EN analog in lists: brexit
+14. EU & European policy,Stability and Growth Pact,generic,patto di stabilità e crescita,3,stability and growth pact,3,stabilitäts- und wachstumspakt,3,
+"15. Foreign policy, war & defense",foreign policy,generic,politica estera,2,foreign policy,2,außenpolitik,2,
+"15. Foreign policy, war & defense",NATO,generic,nato,3,nato,3,nato,3,
+"15. Foreign policy, war & defense",Atlanticism,generic,atlantismo,3,atlanticism,3,atlantizismus,3,
+"15. Foreign policy, war & defense",war in Ukraine,generic,guerra in ucraina,2,war,2,ukraine,2,EN/DE list have 'war'/'ukraine' separately
+"15. Foreign policy, war & defense",invasion of Ukraine,generic,invasione dell'ucraina,2,invasion of ukraine,2,invasion der ukraine,2,
+"15. Foreign policy, war & defense",Russo-Ukrainian conflict,generic,conflitto russo-ucraino,2,russo-ukrainian conflict,2,russisch-ukrainischer konflikt,2,
+"15. Foreign policy, war & defense",Zelensky,generic,zelensky,3,zelensky,3,selenskyj,3,
+"15. Foreign policy, war & defense",Putin,generic,putin,3,putin,3,putin,3,
+"15. Foreign policy, war & defense",arms shipments,generic,invio di armi,2,arms shipments,2,waffenlieferung,2,
+"15. Foreign policy, war & defense",arms to Ukraine,generic,armi all'ucraina,3,arms to ukraine,3,waffen für die ukraine,3,
+"15. Foreign policy, war & defense",sanctions on Russia,generic,sanzioni alla russia,2,sanctions,2,russland-sanktionen,2,EN list: 'sanctions'/'sanction'
+"15. Foreign policy, war & defense",embargo,generic,embargo,2,embargo,2,embargo,2,DE list: 'öl embargo'
+"15. Foreign policy, war & defense",rearmament,generic,riarmo,2,rearmament,2,wiederaufrüstung,2,
+"15. Foreign policy, war & defense",military spending,generic,spese militari,2,military spending,2,militärausgaben,2,
+"15. Foreign policy, war & defense",disarmament,generic,disarmo,2,disarmament,2,abrüstung,2,
+"15. Foreign policy, war & defense",pacifism,generic,pacifismo,2,pacifism,2,pazifismus,2,
+"15. Foreign policy, war & defense",interventionism,generic,interventismo,3,interventionism,3,interventionismus,3,
+"15. Foreign policy, war & defense",geopolitics,generic,geopolitica,2,geopolitics,2,geopolitik,2,
+"15. Foreign policy, war & defense",neutrality,generic,neutralità,1,neutrality,1,neutralität,1,broad term (chemistry/general) -> FP
+"15. Foreign policy, war & defense",Middle East,generic,medio oriente,1,middle east,1,naher osten,1,"geographic, broad -> FP"
+"15. Foreign policy, war & defense",terrorism,generic,terrorismo,2,terrorism,2,terrorismus,2,
+"15. Foreign policy, war & defense",Islamic terrorism,generic,terrorismo islamico,2,islamic terrorism,2,islamistischer terrorismus,2,
+"15. Foreign policy, war & defense",Islamic extremism,generic,estremismo islamico,2,islamic extremism,2,islamistischer extremismus,2,
+16. Energy & environment policy,ecological transition,generic,transizione ecologica,2,ecological transition,2,ökologischer wandel,2,
+16. Energy & environment policy,energy transition,generic,transizione energetica,2,energy transition,2,energiewende,2,
+16. Energy & environment policy,energy crisis,generic,crisi energetica,2,energy crisis,2,energiekrise,2,
+16. Energy & environment policy,energy sovereignty,generic,sovranità energetica,3,energy sovereignty,3,energiesouveränität,3,
+16. Energy & environment policy,high energy costs,generic,caro energia,2,high energy costs,2,hohe energiekosten,2,
+16. Energy & environment policy,soaring utility bills,generic,caro bollette,2,soaring bills,2,hohe stromrechnungen,2,
+16. Energy & environment policy,price cap,generic,price cap,2,price cap,2,preisdeckel,2,
+16. Energy & environment policy,gas price cap,generic,tetto al prezzo del gas,3,gas price cap,3,gaspreisdeckel,3,
+16. Energy & environment policy,gas pipeline,generic,gasdotto,2,gas pipeline,2,gaspipeline,2,
+16. Energy & environment policy,renewables,generic,rinnovabili,2,renewable,2,erneuerbare,2,
+16. Energy & environment policy,decarbonisation,generic,decarbonizzazione,2,decarbonisation,2,dekarbonisierung,2,
+16. Energy & environment policy,Green Deal,generic,green deal,3,green deal,3,green deal,3,EN list: 'green new deal'
+16. Energy & environment policy,Fit for 55 (EU),generic,fit for 55,3,fit for 55,3,fit for 55,3,
+16. Energy & environment policy,climate emergency,generic,emergenza climatica,2,climate emergency,2,klimanotstand,2,
+16. Energy & environment policy,climate crisis,generic,crisi climatica,2,climate crisis,2,klimakrise,2,
+16. Energy & environment policy,climate change,generic,cambiamento climatico,2,climate change,2,klimawandel,2,
+16. Energy & environment policy,climate justice,generic,giustizia climatica,3,climate justice,3,klimagerechtigkeit,3,
+16. Energy & environment policy,climate alarmism (pejorative),generic,allarmismo climatico,3,climate alarmism,3,klimaalarmismus,3,
+16. Energy & environment policy,climate denialism,generic,negazionismo climatico,3,climate denialism,3,klimaleugnung,3,
+16. Energy & environment policy,'green ideology' (pejorative),generic,ideologia green,3,green ideology,3,grüne ideologie,3,
+16. Energy & environment policy,'eco-vandals' (slur),generic,eco-vandali,3,eco-vandals,3,klima-chaoten,3,
+16. Energy & environment policy,climate activists,generic,attivisti climatici,2,climate activists,2,klimaaktivisten,2,
+16. Energy & environment policy,Fridays for Future,generic,fridays for future,3,fridays for future,3,fridays for future,3,
+16. Energy & environment policy,Last Generation (activist group),generic,ultima generazione,3,last generation,2,letzte generation,3,literal sense also exists -> some FP
+16. Energy & environment policy,'war on cars' (slogan),generic,guerra all'automobile,3,war on cars,3,krieg gegen das auto,3,
+16. Energy & environment policy,deindustrialisation,generic,deindustrializzazione,2,deindustrialisation,2,deindustrialisierung,2,
+16. Energy & environment policy,environmental emergency,generic,emergenza ambientale,2,environmental emergency,2,umweltnotstand,2,
+16. Energy & environment policy,environmental protection,generic,tutela dell'ambiente,1,environmental protection,1,umweltschutz,1,broad term -> FP
+"17. Civil rights, family & bioethics",civil rights,generic,diritti civili,2,civil rights,2,bürgerrechte,2,
+"17. Civil rights, family & bioethics",human rights,generic,diritti umani,2,human rights,2,menschenrechte,2,
+"17. Civil rights, family & bioethics",LGBT rights,generic,diritti lgbt,2,lgbt rights,2,lgbt-rechte,2,
+"17. Civil rights, family & bioethics",civil unions,generic,unioni civili,3,civil unions,3,eingetragene partnerschaft,3,
+"17. Civil rights, family & bioethics",marriage equality,generic,matrimonio egualitario,3,marriage equality,3,ehe für alle,3,
+"17. Civil rights, family & bioethics",gay adoption,generic,adozioni gay,3,gay adoption,3,adoption durch homosexuelle,3,
+"17. Civil rights, family & bioethics",stepchild adoption,generic,step-child adoption,3,stepchild adoption,3,stiefkindadoption,3,
+"17. Civil rights, family & bioethics",surrogacy,generic,gestazione per altri,3,surrogacy,3,leihmutterschaft,3,
+"17. Civil rights, family & bioethics",'rented womb' surrogacy (charged),generic,utero in affitto,3,rented womb,3,leihmutterschaft,3,
+"17. Civil rights, family & bioethics",gender identity,generic,identità di genere,2,gender identity,2,geschlechtsidentität,2,
+"17. Civil rights, family & bioethics",'gender ideology' (pejorative),generic,ideologia gender,3,gender ideology,3,genderideologie,3,
+"17. Civil rights, family & bioethics",'gender ideology' (variant),generic,ideologia di genere,3,gender ideology,3,genderideologie,3,
+"17. Civil rights, family & bioethics",inclusive language,generic,linguaggio inclusivo,2,inclusive language,2,gendergerechte sprache,2,
+"17. Civil rights, family & bioethics",sex education,generic,educazione sessuale,2,sex education,2,sexualkunde,2,
+"17. Civil rights, family & bioethics",conscientious objection,generic,obiezione di coscienza,2,conscientious objection,2,gewissensverweigerung,2,
+"17. Civil rights, family & bioethics",termination of pregnancy,generic,interruzione di gravidanza,2,termination of pregnancy,2,schwangerschaftsabbruch,2,
+"17. Civil rights, family & bioethics",abortion,generic,aborto,2,abortion,2,abtreibung,2,
+"17. Civil rights, family & bioethics",end-of-life,generic,fine vita,2,end of life,2,sterbehilfe,2,
+"17. Civil rights, family & bioethics",euthanasia,generic,eutanasia,2,euthanasia,2,euthanasie,2,
+"17. Civil rights, family & bioethics",assisted suicide,generic,suicidio assistito,2,assisted suicide,2,assistierter suizid,2,
+"17. Civil rights, family & bioethics",living will,generic,testamento biologico,2,living will,2,patientenverfügung,2,
+"17. Civil rights, family & bioethics",assisted reproduction,generic,procreazione assistita,2,assisted reproduction,2,künstliche befruchtung,2,
+"17. Civil rights, family & bioethics",assisted fertilisation,generic,fecondazione assistita,2,assisted fertilisation,2,künstliche befruchtung,2,
+"17. Civil rights, family & bioethics",'natural family' (conservative),generic,famiglia naturale,3,natural family,3,traditionelle familie,3,
+"17. Civil rights, family & bioethics",family policy,generic,politiche familiari,2,family policy,2,familienpolitik,2,
+"17. Civil rights, family & bioethics",falling birth rate,generic,denatalità,2,declining birth rate,2,geburtenrückgang,2,
+"17. Civil rights, family & bioethics",'demographic winter',generic,inverno demografico,3,demographic winter,3,demografischer winter,3,
+"17. Civil rights, family & bioethics",secularism,generic,laicità,2,secularism,2,laizität,2,
+"17. Civil rights, family & bioethics",Christian values,generic,valori cristiani,2,christian values,2,christliche werte,2,
+18. Health policy & pandemic politics,public healthcare,generic,sanità pubblica,2,healthcare,2,öffentliches gesundheitswesen,2,
+18. Health policy & pandemic politics,healthcare reform,generic,riforma della sanità,3,healthcare reform,3,gesundheitsreform,3,
+18. Health policy & pandemic politics,waiting lists,generic,liste d'attesa,1,waiting lists,1,wartelisten,1,broad term (any queue) -> FP
+18. Health policy & pandemic politics,vaccine mandate,generic,obbligo vaccinale,2,vaccine mandate,2,impfpflicht,2,
+18. Health policy & pandemic politics,'health dictatorship' (conspiracy),generic,dittatura sanitaria,3,health dictatorship,3,gesundheitsdiktatur,3,
+18. Health policy & pandemic politics,'experimental serum' (anti-vax),generic,siero sperimentale,3,experimental serum,3,experimentelles serum,3,
+18. Health policy & pandemic politics,lockdown,generic,lockdown,2,lockdown,2,lockdown,2,
+18. Health policy & pandemic politics,anti-vax,generic,no vax,3,anti-vax,3,impfgegner,3,
+18. Health policy & pandemic politics,pandemic management,generic,gestione della pandemia,2,pandemic management,2,pandemiemanagement,2,
+19. Ideologies & political labels,far right,generic,estrema destra,3,far right,3,extreme rechte,3,
+19. Ideologies & political labels,far left,generic,estrema sinistra,3,far left,3,extreme linke,3,
+19. Ideologies & political labels,radical right,generic,destra radicale,3,radical right,3,radikale rechte,3,
+19. Ideologies & political labels,populism,generic,populismo,2,populism,2,populismus,2,
+19. Ideologies & political labels,sovereigntism,generic,sovranismo,3,sovereigntism,3,souveränismus,3,
+19. Ideologies & political labels,nationalism,generic,nazionalismo,2,nationalism,2,nationalismus,2,
+19. Ideologies & political labels,patriotism,generic,patriottismo,2,patriotism,2,patriotismus,2,
+19. Ideologies & political labels,liberalism,generic,liberalismo,2,liberalism,2,liberalismus,2,
+19. Ideologies & political labels,economic liberalism (IT term),generic,liberismo,3,economic liberalism,3,wirtschaftsliberalismus,3,
+19. Ideologies & political labels,neoliberalism,generic,neoliberismo,2,neoliberalism,2,neoliberalismus,2,
+19. Ideologies & political labels,socialism,generic,socialismo,2,socialism,2,sozialismus,2,
+19. Ideologies & political labels,communism,generic,comunismo,2,communism,2,kommunismus,2,
+19. Ideologies & political labels,fascism,generic,fascismo,2,fascism,2,faschismus,2,
+19. Ideologies & political labels,anti-fascism,generic,antifascismo,3,anti-fascism,3,antifaschismus,3,
+19. Ideologies & political labels,post-fascism,generic,postfascismo,3,post-fascism,3,postfaschismus,3,
+19. Ideologies & political labels,neo-fascism,generic,neofascismo,3,neo-fascism,3,neofaschismus,3,
+19. Ideologies & political labels,progressivism,generic,progressismo,2,progressivism,2,progressivismus,2,
+19. Ideologies & political labels,conservatism,generic,conservatorismo,2,conservatism,2,konservatismus,2,
+19. Ideologies & political labels,environmentalism,generic,ambientalismo,2,environmentalism,2,umweltbewegung,2,
+19. Ideologies & political labels,feminism,generic,femminismo,2,feminism,2,feminismus,2,
+19. Ideologies & political labels,sovereigntists,generic,sovranisti,3,sovereigntists,3,souveränisten,3,
+19. Ideologies & political labels,identitarians (far-right),generic,identitari,3,identitarians,3,identitäre,3,
+20. Far-right / far-left & extremism,Roman salute (fascist),generic,saluto romano,3,roman salute,3,hitlergruß,3,DE analog: Hitlergruß
+20. Far-right / far-left & extremism,glorification of fascism,generic,apologia di fascismo,3,glorification of fascism,3,verherrlichung des faschismus,3,
+20. Far-right / far-left & extremism,fascism nostalgics,generic,nostalgici del fascismo,3,fascism nostalgics,3,faschismus-nostalgiker,3,
+20. Far-right / far-left & extremism,historical revisionism,generic,revisionismo storico,3,historical revisionism,3,geschichtsrevisionismus,3,
+20. Far-right / far-left & extremism,Resistance (WWII partisan),generic,resistenza,2,resistance,1,widerstand,2,also generic 'resistance' -> FP
+20. Far-right / far-left & extremism,partisans,generic,partigiani,2,partisans,2,partisanen,2,
+20. Far-right / far-left & extremism,antifa,generic,antifa,3,antifa,3,antifa,3,
+20. Far-right / far-left & extremism,fascist squadism,generic,squadrismo,3,squadism,3,squadrismus,3,
+20. Far-right / far-left & extremism,extremism,generic,estremismo,2,extremism,2,extremismus,2,
+20. Far-right / far-left & extremism,supremacism,generic,suprematismo,3,supremacism,3,suprematismus,3,
+20. Far-right / far-left & extremism,ethno-nationalism,generic,etnonazionalismo,3,ethno-nationalism,3,ethnonationalismus,3,
+20. Far-right / far-left & extremism,xenophobia,generic,xenofobia,2,xenophobia,2,fremdenfeindlichkeit,2,
+20. Far-right / far-left & extremism,racism,generic,razzismo,2,racism,2,rassismus,2,
+20. Far-right / far-left & extremism,structural racism,generic,razzismo strutturale,3,structural racism,3,struktureller rassismus,3,
+20. Far-right / far-left & extremism,Islamophobia,generic,islamofobia,2,islamophobia,2,islamfeindlichkeit,2,
+20. Far-right / far-left & extremism,Islamisation (charged),generic,islamizzazione,3,islamisation,3,islamisierung,3,
+20. Far-right / far-left & extremism,patriarchy,generic,patriarcato,2,patriarchy,2,patriarchat,2,
+20. Far-right / far-left & extremism,toxic masculinity,generic,mascolinità tossica,2,toxic masculinity,2,toxische männlichkeit,2,
+20. Far-right / far-left & extremism,homophobia,generic,omofobia,2,homophobia,2,homophobie,2,
+20. Far-right / far-left & extremism,transphobia,generic,transfobia,2,transphobia,2,transphobie,2,
+20. Far-right / far-left & extremism,femicide,generic,femminicidio,2,femicide,2,femizid,2,
+"21. Slogans, slang & polemics",'the caste' (political-class slur),generic,casta,3,the caste,3,kaste,3,IT 'casta' also generic caste
+"21. Slogans, slang & polemics",nomenklatura,generic,nomenklatura,3,nomenklatura,3,nomenklatura,3,
+"21. Slogans, slang & polemics",'strong powers' / deep state (IT),generic,poteri forti,3,deep state,3,tiefer staat,3,
+"21. Slogans, slang & polemics",elite(s),generic,élite,2,elite,2,elite,2,also non-political 'elite' -> FP
+"21. Slogans, slang & polemics",political class,generic,classe politica,2,political class,2,politische klasse,2,
+"21. Slogans, slang & polemics",partyocracy,generic,partitocrazia,3,partyocracy,3,parteienherrschaft,3,
+"21. Slogans, slang & polemics",anti-politics,generic,antipolitica,3,anti-politics,3,antipolitik,3,
+"21. Slogans, slang & polemics",'political theatre' (slur),generic,teatrino,2,political theatre,3,polit-theater,3,IT 'teatrino' also literal small theatre
+"21. Slogans, slang & polemics",political jargon (IT),generic,politichese,3,political jargon,3,politiker-sprech,3,
+"21. Slogans, slang & polemics",do-gooderism (pejorative IT),generic,buonismo,3,do-gooderism,3,gutmenschentum,3,
+"21. Slogans, slang & polemics",'honest citizens' (slogan),generic,cittadini onesti,2,honest citizens,2,ehrliche bürger,2,
+"21. Slogans, slang & polemics",'do-nothings' (slur),generic,nullafacenti,2,do-nothings,2,faulenzer,2,
+"21. Slogans, slang & polemics",media pillory,generic,gogna mediatica,2,media pillory,2,mediale hetzjagd,2,
+"21. Slogans, slang & polemics",conspiracy theorising,generic,complottismo,2,conspiracy theorising,2,verschwörungsdenken,2,
+"21. Slogans, slang & polemics",fake news,generic,fake news,2,fake news,2,fake news,2,
+"21. Slogans, slang & polemics",disinformation,generic,disinformazione,2,disinformation,2,desinformation,2,
+"21. Slogans, slang & polemics",propaganda,generic,propaganda,2,propaganda,2,propaganda,2,
+"21. Slogans, slang & polemics",'regime press' (slur),generic,stampa di regime,3,regime press,3,regierungspresse,3,
+"21. Slogans, slang & polemics",mainstream media,generic,media mainstream,2,mainstream media,2,mainstream-medien,2,
+"21. Slogans, slang & polemics",cancel culture,generic,cancel culture,3,cancel culture,3,cancel culture,3,
+"21. Slogans, slang & polemics",politically correct,generic,politicamente corretto,2,politically correct,2,politisch korrekt,2,
+22. Protest & participation,demonstration,generic,manifestazione,1,demonstration,2,demonstration,2,IT 'manifestazione' also = event/symptom -> FP
+22. Protest & participation,protest march,generic,corteo,1,protest march,3,demonstrationszug,3,IT 'corteo' also = wedding/funeral procession -> FP
+22. Protest & participation,standing protest / vigil,generic,presidio,2,sit-in protest,3,mahnwache,3,IT 'presidio' also = medical garrison/outpost
+22. Protest & participation,sit-in,generic,sit-in,2,sit-in,2,sitzstreik,2,
+22. Protest & participation,civil disobedience,generic,disobbedienza civile,3,civil disobedience,3,ziviler ungehorsam,3,
+22. Protest & participation,to take to the streets,generic,scendere in piazza,2,take to the streets,2,auf die straße gehen,2,
+22. Protest & participation,mobilisation,generic,mobilitazione,2,mobilisation,2,mobilisierung,2,also general/military -> some FP
+22. Protest & participation,protest / contestation,generic,contestazione,2,protest,2,protest,2,IT 'contestazione' also = dispute/objection
+22. Protest & participation,protests (pl.),generic,contestazioni,2,protests,2,proteste,2,
+23. Politics-as-topic & news / salience,politics / policy,generic,politica,2,politics,2,politik,2,
+23. Politics-as-topic & news / salience,political / politician,generic,politico,2,political,2,politisch,2,
+23. Politics-as-topic & news / salience,policies / political (f.pl.),generic,politiche,2,policies,2,politiken,2,
+23. Politics-as-topic & news / salience,politicians,generic,politici,2,politicians,2,politiker,2,
+23. Politics-as-topic & news / salience,journalist,generic,giornalista,1,journalist,1,journalist,1,not exclusively political -> FP
+23. Politics-as-topic & news / salience,journalists (pl.),generic,giornalisti,1,journalists,1,journalisten,1,not exclusively political -> FP
+23. Politics-as-topic & news / salience,political debate,generic,dibattito politico,2,political debate,2,politische debatte,2,
+23. Politics-as-topic & news / salience,TV debate,generic,dibattito televisivo,2,tv debate,2,fernsehdebatte,2,
+23. Politics-as-topic & news / salience,public-service broadcasting,generic,servizio pubblico,1,public broadcasting,2,öffentlich-rechtlicher rundfunk,2,IT 'servizio pubblico' also = public service generally
+23. Politics-as-topic & news / salience,investigative journalism,generic,inchiesta giornalistica,2,investigative journalism,2,investigativer journalismus,2,
+23. Politics-as-topic & news / salience,democracy,generic,democrazia,2,democracy,2,demokratie,2,
+23. Politics-as-topic & news / salience,authoritarian,generic,autoritarismo,2,authoritarianism,2,autoritarismus,2,EN/DE list terms
+23. Politics-as-topic & news / salience,lobby / lobbying,generic,lobby,2,lobbying,2,lobby,1,"EN list 'lobby','lobbying','lobbyist'"
+23. Politics-as-topic & news / salience,diplomacy,generic,diplomazia,2,diplomacy,2,diplomatie,2,EN list term
+23. Politics-as-topic & news / salience,tariff / trade war,generic,dazi,2,tariff,2,zölle,2,"EN list 'tariff','trade war'"
+16. Energy & environment policy,nuclear power,generic,nucleare,2,nuclear power,2,atomkraft,2,DE list: atomkraft
+16. Energy & environment policy,coal phase-out,generic,uscita dal carbone,3,coal phase-out,3,kohleausstieg,3,DE list: kohleausstieg
+16. Energy & environment policy,natural gas / fossil fuels,generic,combustibili fossili,2,fossil fuels,2,fossile brennstoffe,2,"EN 'fossil fuel', DE 'erdgas' in lists"
+16. Energy & environment policy,net zero / climate neutrality,generic,neutralità climatica,3,net zero,3,klimaneutralität,3,EN list: net zero
+19. Ideologies & political labels,left (direction/label),generic,sinistra,1,left wing,1,links,1,bare 'sinistra' dropped from IT v5 (high FP); EN/DE keep it -> asymmetry
+19. Ideologies & political labels,right (direction/label),generic,destra,1,right wing,1,rechts,1,bare 'destra' dropped from IT v5 (high FP); EN/DE keep it -> asymmetry
+19. Ideologies & political labels,centre / centrist,generic,centro,1,centrist,1,mitte,1,bare 'centro' dropped from IT v5 (high FP)
+19. Ideologies & political labels,globalism,generic,globalismo,3,globalism,3,globalismus,3,EN list term
+"21. Slogans, slang & polemics",culture war,generic,guerra culturale,3,culture war,3,kulturkampf,3,EN list term
+"21. Slogans, slang & polemics",misinformation,generic,misinformazione,2,misinformation,2,fehlinformation,2,EN list term
+"21. Slogans, slang & polemics",press freedom,generic,libertà di stampa,2,press freedom,2,pressefreiheit,2,EN list term
+"21. Slogans, slang & polemics",whistleblower,generic,informatore,2,whistleblower,2,whistleblower,2,EN list term
+"21. Slogans, slang & polemics",media bias,generic,faziosità mediatica,2,media bias,2,medienverzerrung,2,EN list term
+23. Politics-as-topic & news / salience,Congress (US legislature),generic,congresso,3,congress,3,kongress,3,EN list; US-specific
+23. Politics-as-topic & news / salience,primary election (US),generic,primarie,3,primary election,3,vorwahl,3,EN list; primaries
+1. Institutions & branches of government,lower-house seat (metonym),role-aligned,montecitorio,3,capitol / westminster,3,reichstag,3,EN: US Capitol + UK Westminster
+1. Institutions & branches of government,upper-house seat (metonym),role-aligned,palazzo madama,3,senate floor / house of lords,3,bundesrat,3,EN: US Senate + UK Lords
+1. Institutions & branches of government,head-of-state residence,role-aligned,quirinale,3,white house / buckingham palace,3,schloss bellevue,3,seat of the head of state
+1. Institutions & branches of government,head-of-government office,role-aligned,palazzo chigi,3,downing street / white house,3,kanzleramt,3,seat of the head of government
+1. Institutions & branches of government,judicial self-governing council,role-aligned,csm,3,judicial conference,3,richterwahlausschuss,3,rough functional analogs
+14. EU & European policy,European Commission president,role-aligned,von der leyen,3,von der leyen,3,von der leyen,3,shared EU figure (all arms)
+6. Leaders by office (2023),head of government,role-aligned,meloni,3,biden / sunak,3,scholz,3,US President + UK PM
+6. Leaders by office (2023),head of state,role-aligned,mattarella,3,king charles,3,steinmeier,3,US head of state = Biden (see head of govt)
+6. Leaders by office (2023),deputy / vice head of govt,role-aligned,salvini,3,harris / dowden,3,habeck,3,US VP + UK Deputy PM; DE Vice-Chancellor
+6. Leaders by office (2023),finance minister,role-aligned,giorgetti,3,yellen / hunt,3,lindner,3,US Treasury + UK Chancellor
+6. Leaders by office (2023),foreign minister,role-aligned,tajani,3,blinken / cleverly,3,baerbock,3,US Sec State + UK Foreign Sec
+6. Leaders by office (2023),interior / home minister,role-aligned,piantedosi,3,mayorkas / braverman,3,faeser,3,US DHS + UK Home Sec
+6. Leaders by office (2023),defence minister,role-aligned,crosetto,3,austin / wallace,3,pistorius,3,US + UK defence chiefs
+6. Leaders by office (2023),justice minister / AG,role-aligned,nordio,3,garland,3,buschmann,3,US Attorney General
+6. Leaders by office (2023),agriculture minister,role-aligned,lollobrigida,3,vilsack,3,özdemir,3,US Ag Secretary
+6. Leaders by office (2023),main opposition leader,role-aligned,schlein,3,trump / starmer,3,merz,3,US main rival + UK Opp leader
+6. Leaders by office (2023),anti-establishment / populist figure,role-aligned,beppe grillo,3,farage,3,weidel,3,UK Reform + DE AfD figure
+6. Leaders by office (2023),former leader / elder statesman,role-aligned,draghi,3,obama / johnson,3,merkel,3,former heads of government
+5. Parties by ideological family,major centre-left party,role-aligned,partito democratico / pd,3,democrats / labour,2,spd,3,EN words also everyday -> higher FP
+5. Parties by ideological family,major centre-right party,role-aligned,forza italia,3,republicans / conservatives,2,cdu / csu,3,EN 'conservative' everyday -> FP
+5. Parties by ideological family,radical / populist right party,role-aligned,fratelli d'italia / lega,3,maga / reform uk,3,afd,3,US Trump-wing + UK Reform
+5. Parties by ideological family,liberal / centrist party,role-aligned,italia viva / azione,3,liberal democrats,2,fdp,3,
+5. Parties by ideological family,green party,role-aligned,avs / europa verde,3,green party,3,grüne,3,
+5. Parties by ideological family,left / socialist party,role-aligned,sinistra italiana,3,the squad / momentum,3,linke,3,US/UK left factions
+5. Parties by ideological family,populist anti-system party,role-aligned,movimento 5 stelle / m5s,3,tea party,3,bsw,3,loose anti-establishment analogs

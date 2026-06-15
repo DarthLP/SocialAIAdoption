@@ -1,0 +1,173 @@
+lexicon,bucket,slot_concept,type,IT,IT_grade,EN (US/UK),EN_grade,DE,DE_grade,notes
+ideology,left,progressive (self-label),generic,progressista; progressisti,3,progressive; progressives,3,progressiv; progressive,3,"Self-label, low FP."
+ideology,left,socialist,generic,socialista; socialisti,3,socialist; socialists,3,sozialist; sozialisten; sozialistisch,3,
+ideology,left,social democrat,generic,socialdemocratico; socialdemocratici,2,social democrat; social democrats,2,sozialdemokrat; sozialdemokraten; sozialdemokratisch,2,
+ideology,left,green / ecologist,generic,ecologista; ecologisti; ambientalista,2,green party; ecologist; environmentalist,2,ökologisch; umweltschützer,2,Bare colour word (green/verdi/grün) excluded as high-FP; party/movement sense kept.
+ideology,left,the left (label),generic,sinistra; sinistre; di sinistra,2,left-wing; leftist; leftists,2,links; linke; linken; linksgerichtet,2,Directional FP risk; grade 2.
+ideology,left,feminist (label),generic,femminista; femministe,2,feminist; feminists,2,feministin; feministinnen; feministisch,2,Cross-cutting but left-coded in polarization discourse.
+ideology,left,antifascist,generic,antifascista; antifascisti,2,antifascist; antifa,2,antifaschist; antifaschistisch; antifa,2,
+ideology,center,centrist,generic,centrista; centristi,1,centrist; centrists,1,zentristisch; politische mitte,1,DE 'Mitte' high-FP; phrase preferred. grade 1.
+ideology,center,moderate,generic,moderato; moderati,2,moderate; moderates,2,gemäßigt; gemäßigte; moderat,2,
+ideology,center,technocrat,generic,tecnocrate; tecnocratico; tecnocratici,2,technocrat; technocrats; technocratic,2,technokrat; technokraten; technokratisch,2,
+ideology,right,conservative,generic,conservatore; conservatori,3,conservative; conservatives,3,konservativ; konservative; konservativen,3,
+ideology,right,sovereigntist / eurosceptic,generic,sovranista; sovranisti; euroscettico; euroscettici,2,sovereigntist; eurosceptic; eurosceptics,2,euroskeptiker; euroskeptisch,2,DE has no common 'Souveraenist'; eurosceptic family used.
+ideology,right,the right (label),generic,destra; destre; di destra,2,right-wing; rightist,2,rechts; rechte; rechten; rechtsgerichtet,2,Directional FP risk; grade 2.
+ideology,right,patriot / patriotic,generic,patriota; patrioti; patriottico,2,patriot; patriots; patriotic,2,patriot; patrioten; patriotisch,2,
+ideology,right,traditionalist / pro-family,generic,tradizionalista; pro vita,2,traditionalist; pro-family; pro-life,2,traditionalist; lebensschützer; wertkonservativ,2,
+ideology,right,identitarian / native-first,generic,identitario; identitari,2,identitarian; nativist,2,identitär; identitäre,2,Far-right identitarian movement label.
+ideology,right,radical / populist-right party,role-aligned,fratelli d'italia; fdi; lega,3,reform uk; ukip; maga,3,afd,3,Direction-matched nationalist / right-populist family. 'lega' also = league (sport).
+ideology,right,mainstream conservative party,role-aligned,forza italia,3,republicans; gop; conservatives; tories,3,cdu; csu,3,Centre-right / conservative family.
+ideology,right,right-bloc leaders,role-aligned,meloni; salvini; berlusconi,3,trump; farage; sunak; boris johnson,3,weidel; merz; söder,3,'meloni' also = melons (plural of melone); bare 'johnson' avoided (FP).
+ideology,left,mainstream centre-left party,role-aligned,partito democratico; pd,3,democrats; labour,3,spd; sozialdemokraten,3,Centre-left family. 'labour' also = work (UK spelling).
+ideology,left,green / radical-left party,role-aligned,alleanza verdi e sinistra; avs; movimento 5 stelle; m5s,2,green party; greens,2,grüne; die linke; linke,2,"Green / left-of-centre family. M5S placement debatable (populist, currently left-leaning)."
+ideology,left,left-bloc leaders,role-aligned,schlein; conte; fratoianni,3,biden; harris; starmer; corbyn,3,scholz; habeck; baerbock,3,'conte' also = count (noun); 'harris' FP-prone.
+ideology,center,liberal / centrist party,role-aligned,italia viva; terzo polo,2,liberal democrats; lib dems,2,fdp,2,Liberal / centrist family.
+ideology,center,centrist-bloc leaders,role-aligned,renzi; calenda,2,ed davey,2,lindner,2,Centrist leaders; genuinely sparse in the US.
+ideology,left,pro-migrant / welcome framing,generic,accoglienza; accoglienza diffusa,2,refugees welcome; sanctuary city,2,willkommenskultur,2,Pro-migrant left framing (IT accoglienza ~ DE Willkommenskultur ~ EN refugees welcome).
+ideology,left,sea rescue / humanitarian NGOs,generic,salvataggio in mare; soccorso in mare; ong umanitarie,2,sea rescue; search and rescue; rescue ngos,2,seenotrettung,2,Left/humanitarian framing of NGO migrant rescue.
+ideology,left,liberalised citizenship,generic,ius soli; ius scholae,2,birthright citizenship; path to citizenship,2,doppelte staatsbürgerschaft; einbürgerung erleichtern,2,Left-championed easier citizenship (IT ius soli ~ DE dual-citizenship reform ~ US birthright/dreamers).
+ideology,left,welfare expansion / basic income,generic,reddito di cittadinanza,2,universal basic income; welfare expansion,2,bürgergeld; grundeinkommen,2,Left income-support (IT M5S/left RdC ~ DE SPD Bürgergeld ~ EN UBI). Bürgergeld is a neutral name; the expansion stance is left.
+ideology,left,wealth tax,generic,patrimoniale,2,wealth tax; tax the rich,2,vermögensteuer; reichensteuer,2,
+ideology,left,progressive taxation,generic,progressività fiscale; lotta all'evasione,2,progressive taxation; make the rich pay,2,steuerprogression; reiche besteuern,2,
+ideology,left,worker protections / unions,generic,tutele del lavoro; diritti dei lavoratori,2,workers rights; worker protections; union rights,2,arbeitnehmerrechte; kündigungsschutz,2,
+ideology,left,precarity / exploitation,generic,precariato; sfruttamento,2,precarity; exploitation; gig economy,2,prekariat; ausbeutung,2,
+ideology,left,civil rights,generic,diritti civili,2,civil rights,2,bürgerrechte,2,
+ideology,left,lgbt anti-discrimination framing,generic,omofobia; transfobia; omotransfobia,2,homophobia; transphobia,2,homophobie; transphobie,2,Left framing naming anti-LGBT discrimination.
+ideology,left,structural racism,generic,razzismo strutturale; razzismo sistemico,2,structural racism; systemic racism,2,struktureller rassismus,2,
+ideology,left,patriarchy / toxic masculinity,generic,patriarcato; mascolinità tossica,2,patriarchy; toxic masculinity,2,patriarchat; toxische männlichkeit,2,
+ideology,left,inclusive language,generic,linguaggio inclusivo,1,inclusive language; preferred pronouns,1,gendern; gendergerechte sprache,1,Left language-politics; grade 1 (lower frequency / FP).
+ideology,left,climate crisis / climate justice,generic,crisi climatica; giustizia climatica; emergenza climatica,2,climate crisis; climate justice; climate emergency,2,klimakrise; klimagerechtigkeit; klimanotstand,2,Urgency framing is left-coded; the neutral topic word lives in issue:culture.
+ideology,left,green transition / renewables,generic,transizione ecologica; rinnovabili,2,green transition; renewables; clean energy,2,energiewende; erneuerbare energien,2,
+ideology,left,climate movements,role-aligned,ultima generazione; fridays for future,2,just stop oil; extinction rebellion; fridays for future,2,letzte generation; fridays for future,2,Direction-matched climate-protest movements.
+ideology,left,pacifism / disarmament,generic,pacifismo; disarmo,2,pacifism; anti-war; disarmament,2,pazifismus; abrüstung,2,
+ideology,left,pro-EU framing,generic,europeismo; europeista,1,pro-eu; europhile; remainer,1,proeuropäisch; pro-europäer,1,Pro-EU self-framing; grade 1 (some neutral use).
+ideology,right,invasion framing,generic,invasione; invasione migratoria; emergenza migratoria,2,invasion; migrant invasion; border crisis,2,überfremdung; asylflut; migrantenflut,2,Right anti-migration war/flood metaphor.
+ideology,right,great replacement,generic,sostituzione etnica; grande sostituzione; piano kalergi,2,great replacement,2,großer austausch; umvolkung,2,Far-right replacement conspiracy (all three are the same far-right frame).
+ideology,right,remigration,generic,remigrazione,2,remigration,2,remigration,2,Far-right forced-return frame (AfD 2023-24).
+ideology,right,islamization,generic,islamizzazione,2,islamization; islamisation,2,islamisierung,2,
+ideology,right,illegal / bogus-asylum framing,generic,clandestini; immigrati irregolari; falsi richiedenti asilo,2,illegals; illegal aliens; bogus asylum seekers,2,illegale; scheinasylanten; asyltouristen,2,Right delegitimising framing of migrants/asylum.
+ideology,right,nation-first,generic,prima gli italiani; italiani prima,2,america first; britain first,2,deutsche zuerst,2,Nativist 'our nation first' (IT ~ US America First ~ DE Deutsche zuerst).
+ideology,right,law and order,generic,legge e ordine; certezza della pena,2,law and order; tough on crime,2,recht und ordnung; null toleranz,2,
+ideology,right,self-defence / gun rights,generic,legittima difesa,1,stand your ground; second amendment; right to bear arms,1,notwehr; waffenrecht,1,Right security/gun framing; grade 1 (DE Waffenrecht more neutral).
+ideology,right,flat tax,generic,flat tax,2,flat tax,2,flat tax; einheitssteuer,2,
+ideology,right,welfare-dependency pejorative,generic,assistenzialismo; sussidio statale; mancia di stato,2,welfare dependency; handouts; welfare queens,2,soziale hängematte; sozialschmarotzer,2,Right pejorative for welfare (IT ~ DE Sozialschmarotzer ~ US welfare queens).
+ideology,right,gender-ideology pejorative,generic,ideologia gender; ideologia di genere,2,gender ideology; trans agenda,2,genderideologie; genderwahn,2,Right pejorative framing of gender/trans rights.
+ideology,right,traditional / natural family,generic,famiglia naturale; famiglia tradizionale,2,traditional family; family values,2,traditionelle familie; familienwerte,2,
+ideology,right,climate alarmism (pejorative),generic,allarmismo climatico; catastrofismo climatico,2,climate alarmism; climate hysteria,2,klimaalarmismus; klimahysterie,2,Right pejorative for climate concern.
+ideology,right,green-ideology / eco-zealots (pejorative),generic,ideologia green; eco-vandali,2,green agenda; eco-zealots; eco-vandals,2,grüne ideologie; klima-kleber; öko-diktatur,2,Right pejorative for greens/climate protesters.
+ideology,right,anti-EU sovereignty framing,generic,cessione di sovranità; sovranità nazionale,2,take back control; loss of sovereignty,2,souveränitätsverlust,2,Right eurosceptic sovereignty frame (EN 'take back control' = Brexit).
+ideology,right,war on cars,generic,guerra all'automobile,1,war on cars; war on motorists,1,anti-auto-politik; verbotskultur,1,Right grievance frame; grade 1 (niche).
+ideology,right,punitive-taxation pejorative,generic,tassazione punitiva; persecuzione fiscale; pizzo di stato,1,punitive taxes; tax burden; taxman,1,steuerlast; steuerwahnsinn,1,
+ideology,right,medical tyranny (anti-mandate),generic,dittatura sanitaria; siero sperimentale,1,medical tyranny; plandemic,1,corona-diktatur; impfdiktatur,1,Pandemic-era anti-mandate right framing; grade 1.
+issue,eu,European Union,generic,unione europea; ue,3,european union; eu,3,europäische union; eu,3,Bare eu/ue FP-prone but standard.
+issue,eu,Brussels (metonym),generic,bruxelles,2,brussels,2,brüssel,2,
+issue,eu,eurozone / euro area,generic,eurozona; area euro,2,eurozone; euro area,2,eurozone; euroraum,2,
+issue,eu,European Parliament,generic,parlamento europeo; europarlamento,2,european parliament,2,europaparlament; europäisches parlament,2,
+issue,eu,European Commission,generic,commissione europea,2,european commission,2,europäische kommission; eu-kommission,2,
+issue,eu,euroscepticism,generic,euroscetticismo; euroscettico,2,euroscepticism; eurosceptic,2,euroskepsis; euroskeptisch,2,
+issue,eu,EU exit (country-exit),role-aligned,italexit,2,brexit,2,dexit,2,Role-aligned: each country's EU-exit coinage.
+issue,eu,European integration,generic,integrazione europea,2,european integration,2,europäische integration,2,
+issue,migration,immigration,generic,immigrazione,3,immigration,3,einwanderung; zuwanderung; immigration,3,
+issue,migration,immigrant(s),generic,immigrato; immigrati,2,immigrant; immigrants,2,einwanderer; zuwanderer,2,
+issue,migration,migrant(s),generic,migrante; migranti,2,migrant; migrants,2,migrant; migranten,2,
+issue,migration,refugee(s),generic,profugo; profughi; rifugiato; rifugiati,2,refugee; refugees,2,flüchtling; flüchtlinge; geflüchtete,2,
+issue,migration,asylum (seeker),generic,asilo; richiedenti asilo,2,asylum; asylum seeker; asylum seekers,2,asyl; asylbewerber; asylsuchende,2,
+issue,migration,border (control),generic,frontiera; confine; controllo dei confini,1,border; border control,1,grenze; grenzkontrolle,1,Generic 'border' FP-prone; grade 1.
+issue,migration,deportation / repatriation,generic,espulsione; espulsioni; rimpatrio; rimpatri,2,deportation; deportations,2,abschiebung; abschiebungen,2,
+issue,migration,integration (of migrants),generic,integrazione,1,integration,1,integration,1,Generic; high-FP; grade 1.
+issue,migration,illegal immigration (framing),generic,immigrazione clandestina; clandestini,2,illegal immigration; illegals,2,illegale einwanderung; illegale migration,2,"Right-coded framing; kept here as topic salience, not as ideology pole."
+issue,migration,multiculturalism,generic,multiculturalismo,2,multiculturalism,2,multikulturalismus; multikulti,2,
+issue,economy,economy (generic),generic,economia,1,economy,1,wirtschaft,1,Generic; grade 1.
+issue,economy,inflation / cost of living,generic,inflazione; caro vita,2,inflation; cost of living,2,inflation; teuerung; lebenshaltungskosten,2,
+issue,economy,taxes / taxation,generic,tasse; imposte; fisco,2,tax; taxes; taxation,2,steuer; steuern; besteuerung,2,
+issue,economy,public debt / deficit,generic,debito pubblico; deficit,2,public debt; deficit,2,staatsschulden; defizit,2,
+issue,economy,welfare state,generic,stato sociale; welfare; assistenza sociale,2,welfare; welfare state,2,sozialstaat; sozialhilfe,2,
+issue,economy,minimum wage,generic,salario minimo,2,minimum wage,2,mindestlohn,2,
+issue,economy,unemployment,generic,disoccupazione,2,unemployment,2,arbeitslosigkeit,2,
+issue,economy,pensions,generic,pensioni; previdenza,2,pensions; pension,2,rente; renten; altersvorsorge,2,
+issue,economy,austerity,generic,austerità,2,austerity,2,austerität; sparpolitik,2,
+issue,economy,privatization,generic,privatizzazione,1,privatization; privatisation,1,privatisierung,1,
+issue,economy,energy crisis / energy prices,generic,crisi energetica; caro energia,2,energy crisis; energy bills,2,energiekrise; energiepreise,2,Code supports only eu/migration/economy/culture issue buckets; energy/climate folded into economy.
+issue,culture,abortion,generic,aborto; interruzione di gravidanza,3,abortion,3,abtreibung; schwangerschaftsabbruch,3,
+issue,culture,LGBT rights,generic,lgbt; diritti lgbt; omosessuali,2,lgbt; lgbtq; gay rights,2,lgbt; lsbtq; homosexuelle,2,
+issue,culture,gender / gender identity,generic,identità di genere; ideologia gender,2,gender identity; gender ideology,2,geschlechtsidentität; genderideologie,2,
+issue,culture,transgender,generic,transgender; trans,2,transgender; trans,2,transgender; trans,2,
+issue,culture,feminism,generic,femminismo,2,feminism,2,feminismus,2,
+issue,culture,racism,generic,razzismo,2,racism,2,rassismus,2,
+issue,culture,same-sex marriage,generic,matrimonio egualitario; unioni civili,2,same-sex marriage; gay marriage,2,gleichgeschlechtliche ehe; ehe für alle,2,
+issue,culture,secularism / religious values,generic,laicità; valori cristiani,1,secularism; christian values,1,laizismus; christliche werte,1,
+issue,culture,woke / political correctness,generic,politicamente corretto; cultura woke,2,woke; political correctness; cancel culture,2,woke; politische korrektheit; cancel culture,2,
+issue,culture,climate (as values issue),generic,cambiamento climatico; emergenza climatica,2,climate change; climate emergency,2,klimawandel; klimakrise,2,Climate placed in culture bucket per available schema; cross-loads with economy/energy.
+other_side,other_side,the elite(s),generic,élite; casta,2,elite; elites,2,elite; eliten,2,
+other_side,other_side,the establishment / system,generic,sistema; palazzo; establishment,1,establishment; the system,1,establishment; das system,1,
+other_side,other_side,mainstream / regime media,generic,media mainstream; stampa di regime,2,mainstream media; legacy media; msm,2,mainstream-medien; systemmedien; lügenpresse,2,'lügenpresse' is a strongly right-coded epithet.
+other_side,other_side,fascist (as epithet),generic,fascista; fascisti,2,fascist; fascists; nazi,2,faschist; faschisten; nazi,2,
+other_side,other_side,communist / commie (epithet),generic,comunista; comunisti,2,communist; commie; commies,2,kommunist; kommunisten,2,
+other_side,other_side,do-gooder / virtue-signaller,generic,buonista; buonisti; radical chic,2,snowflake; snowflakes; virtue signalling,2,gutmensch; gutmenschen,2,
+other_side,other_side,globalist(s),generic,globalista; globalisti,2,globalist; globalists,2,globalist; globalisten,2,
+other_side,other_side,populist(s) (epithet),generic,populista; populisti,2,populist; populists,2,populist; populisten; populistisch,2,
+other_side,other_side,extremist(s),generic,estremista; estremisti,2,extremist; extremists,2,extremist; extremisten; extremistisch,2,
+other_side,other_side,traitor / sellout,generic,traditore; traditori; venduti,1,traitor; traitors; sellout,1,verräter; vaterlandsverräter,1,
+other_side,other_side,limousine liberal (right->left),generic,radical chic; sinistra radical chic,2,limousine liberal; champagne socialist; latte liberal,2,salonlinke; salon-sozialist,2,Right epithet for affluent / hypocritical left.
+other_side,other_side,reactionary (left->right),generic,reazionario; reazionari,2,reactionary; reactionaries,2,reaktionär; reaktionäre,2,Left epithet for the right.
+affect,negative,sad,generic,triste; tristi; tristezza,2,sad; sadness,2,traurig; traurigkeit,2,
+affect,negative,fear / afraid,generic,paura; paure; spaventato; spaventati,2,fear; afraid; scared,2,angst; ängstlich; furcht,2,
+affect,negative,disgust,generic,disgusto; disgustoso,2,disgust; disgusting,2,ekel; ekelhaft; widerlich,2,
+affect,negative,horror / horrible,generic,orrore; orribile; orribili,2,horror; horrible,2,grauen; grauenhaft; abscheulich,2,
+affect,negative,terrible / awful,generic,terribile; terribili; tremendo,2,terrible; awful,2,schrecklich; furchtbar,2,
+affect,negative,tragedy / tragic,generic,tragedia; tragico,2,tragedy; tragic,2,tragödie; tragisch,2,
+affect,negative,disaster / catastrophe,generic,disastro; catastrofe; catastrofico,2,disaster; catastrophe; catastrophic,2,katastrophe; desaster; katastrophal,2,
+affect,negative,shame / shameful,generic,vergogna; vergognoso,2,shame; shameful; disgrace,2,schande; beschämend; schändlich,2,
+affect,negative,despair / hopeless,generic,disperazione; disperato; senza speranza,1,despair; hopeless,1,verzweiflung; hoffnungslos,1,
+affect,negative,depressing / grim,generic,deprimente; squallido,1,depressing; grim; bleak,1,deprimierend; trostlos,1,
+affect,anger,angry,generic,arrabbiato; arrabbiata; arrabbiati; arrabbiate,2,angry,2,wütend; verärgert,2,
+affect,anger,rage / fury,generic,rabbia; furia; furioso; furiosa; furiosi,2,rage; fury; furious,2,wut; zorn; zornig,2,
+affect,anger,outraged / indignant,generic,indignato; indignati; sdegno; sdegnato,2,outraged; outrage; indignant,2,empört; empörung; entrüstet,2,
+affect,anger,pissed off (vulgar),generic,incazzato; incazzata; incazzati,1,pissed; pissed off,1,angepisst; stinksauer,1,
+affect,anger,hatred,generic,odio; odiare,2,hatred; hate,2,hass; hassen; verhasst,2,
+affect,anger,fed up / sick of,generic,stufo; stufi; arcistufo,1,fed up; sick of,1,genervt; satt; die nase voll,1,
+aggression,aggression,idiot,generic,idiota; idioti,2,idiot; idiots,2,idiot; idioten,2,
+aggression,aggression,moron / imbecile,generic,cretino; cretini; imbecille; imbecilli; deficiente,2,moron; morons; imbecile; cretin,2,schwachkopf; schwachköpfe; vollidiot,2,
+aggression,aggression,stupid / dumb,generic,stupido; stupidi; scemo; scemi,2,stupid; dumb,2,dumm; blöd; bescheuert,2,
+aggression,aggression,loser / pathetic,generic,sfigato; sfigati; patetico,1,loser; losers; pathetic,1,versager; erbärmlich; jämmerlich,1,
+aggression,aggression,shut up,generic,stai zitto; zitto; chiudi il becco,2,shut up; shut it,2,halt die fresse; halt den mund; halt's maul,2,
+aggression,aggression,profanity (shit),generic,merda; merdoso,1,shit; crap; bullshit,1,scheiße; mist,1,
+aggression,aggression,asshole / bastard,generic,stronzo; stronzi; bastardo; bastardi,2,asshole; assholes; bastard; bastards,2,arschloch; arschlöcher; mistkerl,2,
+aggression,aggression,f-off / f-you,generic,vaffanculo; fanculo; vai a quel paese,2,fuck off; fuck you,2,fick dich; verpiss dich; leck mich,2,
+aggression,aggression,kill yourself / go die,generic,ammazzati; muori; suicidati,2,kill yourself; go die; kys,2,bring dich um; stirb,2,Severe incivility; retained for hostility detection.
+aggression,aggression,coward,generic,codardo; vigliacco; vigliacchi,1,coward; cowards,1,feigling; feige,1,
+aggression,aggression,liar,generic,bugiardo; bugiardi; mentitore,1,liar; liars,1,lügner; lügnerin,1,
+aggression,aggression,scum / vermin (dehumanizing),generic,feccia; verme; vermi,1,scum; vermin,1,abschaum; ungeziefer,1,"Dehumanizing register; grade 1, FP-prone."
+ai_style,ai_discourse,it is important to note,generic,è importante notare; è importante sottolineare,2,it is important to note; it's important to note,2,es ist wichtig zu beachten; wichtig zu beachten,2,
+ai_style,ai_discourse,it is worth noting,generic,vale la pena notare; vale la pena ricordare,2,it is worth noting; worth noting; it's worth mentioning,2,es ist erwaehnenswert; erwaehnenswert,2,
+ai_style,ai_discourse,in conclusion,generic,in conclusione,2,in conclusion,2,abschließend; zum schluss; fazit,2,
+ai_style,ai_discourse,in summary / to summarize,generic,in sintesi; per riassumere; riassumendo,2,in summary; to summarize; to sum up,2,zusammenfassend; kurz gesagt,2,
+ai_style,ai_discourse,in short,generic,in breve; in poche parole,1,in short,1,kurzum; kurz gesagt,1,
+ai_style,ai_discourse,moreover / furthermore,generic,inoltre; per di più,1,moreover; furthermore,1,darüber hinaus; außerdem; ferner,1,Common connectives; grade 1 (FP).
+ai_style,ai_discourse,additionally,generic,in aggiunta,1,additionally,1,zusätzlich,1,
+ai_style,ai_discourse,on the other hand,generic,d'altra parte; d'altronde,1,on the other hand,1,andererseits; auf der anderen seite,1,
+ai_style,ai_discourse,overall / in general,generic,nel complesso; in generale,1,overall; in general,1,insgesamt; im großen und ganzen,1,
+ai_style,ai_discourse,however,generic,tuttavia,1,however,1,jedoch; allerdings,1,
+ai_style,ai_discourse,significant,generic,significativo; significativa,1,significant,1,signifikant; bedeutend,1,
+ai_style,ai_discourse,crucial / fundamental,generic,cruciale; fondamentale,1,crucial; pivotal,1,entscheidend; wesentlich,1,
+ai_style,ai_discourse,delve / explore,generic,approfondire; esplorare; addentrarsi,2,delve; delve into; explore,2,vertiefen; eingehen auf; näher betrachten,2,'delve' is a well-known LLM tell.
+ai_style,ai_discourse,landscape (metaphor),generic,panorama; scenario,1,landscape,1,landschaft,1,EN-specific metaphor; weak in DE/IT (grade 1).
+ai_style,ai_discourse,underscore / highlight,generic,mettere in evidenza; sottolineare; evidenziare,1,underscore; highlight,1,hervorheben; unterstreichen; betonen,1,
+ai_style,ai_discourse,in other words,generic,in altre parole,1,in other words,1,mit anderen worten,1,
+ai_style,ai_discourse,context,generic,contesto; nel contesto,1,context; in the context,1,kontext; im kontext; im zusammenhang,1,
+ideology,right,econ_tax,generic,flat-tax,2,tax-cuts,2,steuersenkungen,2,Merged from ideology_parallel.csv (econ_tax)
+ideology,right,immig_return,generic,rimpatri,2,deportations,2,abschiebung,2,Merged from ideology_parallel.csv (immig_return)
+ideology,right,sovereignty,generic,sovranità,2,sovereignty,2,souveränität,2,Merged from ideology_parallel.csv (sovereignty)
+ideology,right,tradition,generic,tradizione,2,tradition,2,tradition,2,Merged from ideology_parallel.csv (tradition)
+ideology,right,anti_gender,generic,gender,2,gender-ideology,2,genderideologie,2,Merged from ideology_parallel.csv (anti_gender)
+ideology,right,identity,generic,identità,2,heritage,2,leitkultur,2,Merged from ideology_parallel.csv (identity)
+ideology,right,homeland,generic,patria,2,homeland,2,heimatland,2,Merged from ideology_parallel.csv (homeland)
+ideology,left,econ_redistribution,generic,redistribuzione,2,redistribution,2,umverteilung,2,Merged from ideology_parallel.csv (econ_redistribution)
+ideology,left,econ_welfare,generic,welfare,2,welfare,2,sozialstaat,2,Merged from ideology_parallel.csv (econ_welfare)
+ideology,left,econ_labor,generic,salario minimo,2,minimum-wage,2,mindestlohn,2,Merged from ideology_parallel.csv (econ_labor)
+ideology,left,immig_migrants,generic,migranti,2,migrants,2,geflüchtete,2,Merged from ideology_parallel.csv (immig_migrants)
+ideology,left,human_rights,generic,diritti umani,2,human rights,2,menschenrechte,2,Merged from ideology_parallel.csv (human_rights)
+ideology,left,gender_equality,generic,parità di genere,2,gender-equality,2,geschlechtergerechtigkeit,2,Merged from ideology_parallel.csv (gender_equality)
+ideology,left,equality,generic,uguaglianza,2,equality,2,gleichheit,2,Merged from ideology_parallel.csv (equality)
+ideology,left,inclusion,generic,inclusione,2,diversity,2,vielfalt,2,Merged from ideology_parallel.csv (inclusion)
+ideology,left,solidarity,generic,solidarietà,2,solidarity,2,solidarität,2,Merged from ideology_parallel.csv (solidarity)

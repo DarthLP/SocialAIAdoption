@@ -968,10 +968,15 @@ def run_strategy_phase_joint(
     cluster_col: str = "entity_id",
     panel_kind: str = "subreddit_day",
     weights: str | None = None,
+    prefiltered: bool = False,
 ) -> List[Dict[str, Any]]:
     """Function summary: joint multi-phase TWFE for one strategy/outcome (four spec rows).
 
     Mirrors run_strategy_twfe signature and sample-filter branches; returns four result dicts.
+    prefiltered=True skips filter_strategy_sample and fits panel as-is — required for
+    placebo-in-space rotations, where the filter would recompute treat from IT/topic_family
+    and silently erase the placebo treatment assignment (controls-only sample -> treat all 0
+    -> no_treat_variation -> NaN placebo betas).
     """
     del cluster_col
     if strategy.strategy_id == "within_italy_ddd" or strategy.strategy_id.startswith("within_italy"):
@@ -981,7 +986,10 @@ def run_strategy_phase_joint(
         single = estimate_ddd(italy, y_col, entity_col, time_col)
         n_pl_obs, n_pl_cl = post_lift_treated_mass(italy, entity_col)
         return _phase_joint_rows_from_fit(single, n_pl_obs, n_pl_cl)
-    sample = filter_strategy_sample(panel, strategy, window_days=window_days)
+    if prefiltered:
+        sample = panel
+    else:
+        sample = filter_strategy_sample(panel, strategy, window_days=window_days)
     if sample.empty:
         return _phase_joint_rows_from_fit(_empty_result(0, 0, "empty_sample"), 0, 0)
     author_col = "author" if "author" in sample.columns else entity_col

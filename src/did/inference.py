@@ -556,6 +556,10 @@ def placebo_in_space_phase_joint_all(
             continue
         if pl["treat"].astype(int).tolist() == baseline_treat:
             continue
+        # prefiltered=True: pl is the window-filtered controls sample with the
+        # placebo treat already assigned; re-filtering would recompute treat
+        # from IT/topic_family and erase the rotation (-> NaN placebo betas).
+        # One joint refit per rotation; all four phase betas come from this fit.
         pl_rows = run_strategy_phase_joint(
             pl,
             strategy,
@@ -563,6 +567,7 @@ def placebo_in_space_phase_joint_all(
             entity_col=entity_col,
             time_col=time_col,
             panel_kind=panel_kind,
+            prefiltered=True,
         )
         pl_map = _phase_rows_to_map(pl_rows)
         for spec in PHASE_JOINT_SPECS:

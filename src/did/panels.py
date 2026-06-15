@@ -38,13 +38,30 @@ def _panel_file_suffix(variant: Optional[str] = None) -> str:
     return ""
 
 
+def _add_derived_lexical_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Function summary: derive ceiling-free additive pole rate from left/right per-100w rates.
+
+    pole_rate_100w_mean = left_rate_100w_mean + right_rate_100w_mean. Unlike pole_share
+    ((L+R)/(L+C+R)), it does not depend on the 5-slot center bucket, whose IT terms
+    (renzi/calenda/terzo polo) fire far more often than their EN/DE counterparts
+    (ed davey/lib dems), pinning control pole_share near the 1.0 ceiling (~0.95 mean,
+    92% of control subreddit-days >= 0.9 pre-ban).
+    """
+    if (
+        "pole_rate_100w_mean" not in df.columns
+        and {"left_rate_100w_mean", "right_rate_100w_mean"}.issubset(df.columns)
+    ):
+        df["pole_rate_100w_mean"] = df["left_rate_100w_mean"] + df["right_rate_100w_mean"]
+    return df
+
+
 def load_subreddit_panel(config: Dict[str, Any], *, variant: Optional[str] = None) -> pd.DataFrame:
     """Function summary: load did_subreddit_panel_1d.csv with calendar fields."""
     suffix = _panel_file_suffix(variant)
     path = resolve_panel_path(config, "subreddit", f"did_subreddit_panel_1d{suffix}.csv")
     if not path.is_file():
         raise FileNotFoundError(f"Missing {path}; run prepare_did_subreddit_panel.py")
-    return pd.read_csv(path)
+    return _add_derived_lexical_columns(pd.read_csv(path))
 
 
 def load_subreddit_quantity_panel(
@@ -70,7 +87,7 @@ def load_subreddit_slice_panel(config: Dict[str, Any], *, variant: Optional[str]
     )
     if not path.is_file():
         raise FileNotFoundError(f"Missing {path}; run prepare_did_subreddit_panel.py")
-    return pd.read_csv(path)
+    return _add_derived_lexical_columns(pd.read_csv(path))
 
 
 def load_subreddit_event_study_panel(config: Dict[str, Any], bin_days: int) -> pd.DataFrame:

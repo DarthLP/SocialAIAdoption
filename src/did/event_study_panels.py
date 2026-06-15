@@ -83,7 +83,11 @@ def prepare_subreddit_event_study_panel(
     """
     if daily.empty:
         return daily.copy()
-    _, _, launch, end_excl = event_dates_from_config(config)
+    # event_dates_from_config returns (start, end_exclusive, launch, lift).
+    # A previous unpacking grabbed lift as end_excl, silently truncating the
+    # subreddit/slice panels at the lift date (2023-04-28) and dropping the
+    # post-lift bin (rel_period +10 / rel_day 28-30) that the pooled panels keep.
+    _, end_excl, launch, _ = event_dates_from_config(config)
     bd = int(bin_days)
     work = daily.copy()
     if "n_comments" not in work.columns:

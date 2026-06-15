@@ -26,6 +26,11 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
+# Outcome column under analysis; set once in main() from --outcome. Module-level so
+# the helper chain (_rel_bin_cell_counts/_repair_sparse_bins/_bin_weights/_estimate_specs)
+# stays unchanged for the verified pole_share path.
+OUTCOME_COL = "pole_share"
+
 PRE_START = "2023-03-01"
 PRE_END = "2023-03-30"
 BIN_DAYS = 3
@@ -99,6 +104,16 @@ def parse_args() -> argparse.Namespace:
         help="Minimum scored comments per subreddit-day (sensitivity at 1 or 5).",
     )
     parser.add_argument("--no-figures", action="store_true", help="Skip standalone ES figure.")
+    parser.add_argument(
+        "--outcome",
+        type=str,
+        default="pole_share",
+        choices=("pole_share", "pole_rate"),
+        help=(
+            "pole_share = (L+R)/(L+C+R) ratio (legacy headline); pole_rate = "
+            "left+right hits per 100 words (ceiling-free, no center bucket)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -184,7 +199,7 @@ def _rel_bin_cell_counts(es_sample: pd.DataFrame) -> pd.DataFrame:
     Returns:
     - DataFrame with rel_period, n_it, n_control.
     """
-    work = es_sample.dropna(subset=["pole_share"]).copy()
+    work = es_sample.dropna(subset=[OUTCOME_COL]).copy()
     work["rel_period"] = pd.to_numeric(work["rel_period"], errors="coerce").astype("Int64")
     work["IT"] = pd.to_numeric(work["IT"], errors="coerce").fillna(0).astype(int)
     rows: List[Dict[str, Any]] = []
@@ -264,7 +279,7 @@ def _repair_sparse_bins(
         print(f"[pole_share_fixed_authors] {sample_label}: {note}", flush=True)
         return repaired, note
     day_counts = (
-        repaired.dropna(subset=["pole_share"])
+        repaired.dropna(subset=[OUTCOME_COL])
         .groupby("subreddit", observed=True)
         .size()
     )
@@ -278,7 +293,7 @@ def _repair_sparse_bins(
 def _bin_weights(es_sample: pd.DataFrame) -> pd.Series:
     """Function summary: n_comments sum per rel_period for ES aggregation weights."""
     return (
-        es_sample.dropna(subset=["pole_share"])
+        es_sample.dropna(subset=[OUTCOME_COL])
         .groupby("rel_period", observed=True)["n_comments"]
         .sum()
     )
@@ -375,54 +390,61 @@ def _validate_es_gates(
     se = pd.to_numeric(es_df["se"], errors="coerce")
     rel = pd.to_numeric(es_df["rel_period"], errors="coerce")
 
-    # Gate (c): magnitude bounds
-    if (gamma.abs() >= 0.5).any():
-        bad = es_df.loc[gamma.abs() >= 0.5, "rel_period"].tolist()
+    # Gate (c): magnitude bounds. pole_share is a bounded ratio (cap 0.5); pole_rate is
+    # a per-100w rate on a larger scale (cap 2.0 still catches degenerate ~1e8 fits).
+    mag_cap = 0.5 if OUTCOME_COL == "pole_share" else 2.0
+    if (gamma.abs() >= mag_cap).any():
+        bad = es_df.loc[gamma.abs() >= mag_cap, "rel_period"].tolist()
         raise SystemExit(
-            f"[pole_share_fixed_authors] gate (c) fail ({sample_label}): |gamma|>=0.5 at {bad}"
+            f"[pole_share_fixed_authors] gate (c) fail ({sample_label}): |gamma|>={mag_cap} at {bad}"
         )
-    if (se >= 0.5).any():
-        bad = es_df.loc[se >= 0.5, "rel_period"].tolist()
+    if (se >= mag_cap).any():
+        bad = es_df.loc[se >= mag_cap, "rel_period"].tolist()
         raise SystemExit(
-            f"[pole_share_fixed_authors] gate (c) fail ({sample_label}): SE>=0.5 at {bad}"
-        )
-
-    early = es_df[rel.isin([0, 1, 2])]
-    if len(early) < 3:
-        raise SystemExit(
-            f"[pole_share_fixed_authors] gate (c) fail ({sample_label}): missing early bins 0–2"
-        )
-    early_mean = float(early["gamma"].mean())
-    if abs(early_mean) >= 0.03:
-        raise SystemExit(
-            f"[pole_share_fixed_authors] gate (c) fail ({sample_label}): "
-            f"early bins 0–2 mean gamma={early_mean:.4f} (need |mean|<0.03)"
+            f"[pole_share_fixed_authors] gate (c) fail ({sample_label}): SE>={mag_cap} at {bad}"
         )
 
-    late = es_df[rel.isin([8, 9, 10])]
-    if late.empty:
-        raise SystemExit(
-            f"[pole_share_fixed_authors] gate (c) fail ({sample_label}): no late bins 8–10"
-        )
-    late_max = float(late["gamma"].max())
-    late_mean = float(late["gamma"].mean())
-    if late_max <= 0.04:
-        raise SystemExit(
-            f"[pole_share_fixed_authors] gate (c) fail ({sample_label}): "
-            f"late peak max gamma={late_max:.4f} <= 0.04"
-        )
-    if late_mean < 0.02:
-        raise SystemExit(
-            f"[pole_share_fixed_authors] gate (c) fail ({sample_label}): "
-            f"late bins 8–10 mean gamma={late_mean:.4f} < 0.02"
-        )
+    # Shape sub-gates encode the verified pole_share pattern (flat onset, late rise);
+    # pole_rate has a different documented shape (early activity, pre-trend) — skip.
+    if OUTCOME_COL == "pole_share":
+        early = es_df[rel.isin([0, 1, 2])]
+        if len(early) < 3:
+            raise SystemExit(
+                f"[pole_share_fixed_authors] gate (c) fail ({sample_label}): missing early bins 0–2"
+            )
+        early_mean = float(early["gamma"].mean())
+        if abs(early_mean) >= 0.03:
+            raise SystemExit(
+                f"[pole_share_fixed_authors] gate (c) fail ({sample_label}): "
+                f"early bins 0–2 mean gamma={early_mean:.4f} (need |mean|<0.03)"
+            )
 
-    # Gate (b): static consistency via implied post-minus-pre ATT
+        late = es_df[rel.isin([8, 9, 10])]
+        if late.empty:
+            raise SystemExit(
+                f"[pole_share_fixed_authors] gate (c) fail ({sample_label}): no late bins 8–10"
+            )
+        late_max = float(late["gamma"].max())
+        late_mean = float(late["gamma"].mean())
+        if late_max <= 0.04:
+            raise SystemExit(
+                f"[pole_share_fixed_authors] gate (c) fail ({sample_label}): "
+                f"late peak max gamma={late_max:.4f} <= 0.04"
+            )
+        if late_mean < 0.02:
+            raise SystemExit(
+                f"[pole_share_fixed_authors] gate (c) fail ({sample_label}): "
+                f"late bins 8–10 mean gamma={late_mean:.4f} < 0.02"
+            )
+
+    # Gate (b): static consistency via implied post-minus-pre ATT. STATIC_TOL is in
+    # outcome units — pole_rate runs on a ~5x larger scale than the bounded ratio.
+    static_tol = STATIC_TOL if OUTCOME_COL == "pole_share" else 5 * STATIC_TOL
     weights = _bin_weights(es_sample)
     post_wmean = _weighted_gamma_mean(es_df, weights, rel_min=0)
     pre_wmean = _weighted_gamma_mean(es_df, weights, rel_max=-2)
     implied_att = post_wmean - pre_wmean
-    if not np.isfinite(implied_att) or abs(implied_att - static_beta) > STATIC_TOL:
+    if not np.isfinite(implied_att) or abs(implied_att - static_beta) > static_tol:
         raise SystemExit(
             f"[pole_share_fixed_authors] gate (b) fail ({sample_label}): "
             f"implied ATT={implied_att:.4f} (post={post_wmean:.4f}, pre={pre_wmean:.4f}) "
@@ -458,7 +480,10 @@ def _estimate_specs(
     binned = prepare_subreddit_event_study_panel(
         panel, config, BIN_DAYS, entity_cols=("subreddit",)
     )
-    binned = binned.merge(meta, on="subreddit", how="left")
+    if "topic_family" not in binned.columns:
+        # prepare_subreddit_event_study_panel restores entity-constant metadata since
+        # the 2026-06 binning fix; merging unconditionally would produce _x/_y suffixes.
+        binned = binned.merge(meta, on="subreddit", how="left")
     binned = _add_treatment_flags(binned)
 
     summary_rows: List[Dict[str, Any]] = []
@@ -469,7 +494,7 @@ def _estimate_specs(
         static_res = run_strategy_twfe(
             panel,
             spec_strat,
-            "pole_share",
+            OUTCOME_COL,
             window_days=None,
             entity_col="entity_id",
             time_col="time_id",
@@ -478,7 +503,7 @@ def _estimate_specs(
         static_sample = filter_strategy_sample(panel, spec_strat, window_days=None)
         pret_p, _ = estimate_pretrend_f(
             static_sample,
-            "pole_share",
+            OUTCOME_COL,
             entity_col="entity_id",
             time_col="time_id",
             rel_col="rel_day",
@@ -502,7 +527,7 @@ def _estimate_specs(
 
     es_strat = StrategySpec("cross_country_all", post_mode="full_ban")
     es_sample = filter_strategy_sample(binned, es_strat, window_days=window_days)
-    es_sample = es_sample.dropna(subset=["pole_share"]).copy()
+    es_sample = es_sample.dropna(subset=[OUTCOME_COL]).copy()
 
     counts = _rel_bin_cell_counts(es_sample)
     sparse = _print_cell_counts(counts, sample_label)
@@ -514,7 +539,7 @@ def _estimate_specs(
 
     _, es_df = estimate_panel_it_event_study(
         es_sample,
-        "pole_share",
+        OUTCOME_COL,
         entity_col="subreddit",
         time_col="time_id",
         rel_col="rel_period",
@@ -525,7 +550,7 @@ def _estimate_specs(
     )
     manual_df = manual_panel_it_event_study(
         es_sample,
-        "pole_share",
+        OUTCOME_COL,
         entity_col="subreddit",
         time_col="time_id",
         rel_col="rel_period",
@@ -551,12 +576,21 @@ def _estimate_specs(
 
 def _write_readme(out_dir: Path, n_fixed: int, n_all: int, min_scored: int) -> None:
     """Function summary: short README describing construction and interpretation."""
-    text = f"""# pole_share fixed-author robustness
+    if OUTCOME_COL == "pole_rate":
+        outcome_line = (
+            "- Subreddit-day pole_rate = 100 * (left+right hits) / n_words pooled over "
+            "comments (ceiling-free; no center bucket)."
+        )
+    else:
+        outcome_line = (
+            "- Subreddit-day pole_share = (left+right)/(left+center+right) pooled over comments."
+        )
+    text = f"""# {OUTCOME_COL} fixed-author robustness
 
 ## Construction
 - Pre-ban author roster: authors with >=1 ideology-lexicon hit ({PRE_START}..{PRE_END}).
 - Excludes [deleted] and known bots ({len(DEFAULT_BOT_AUTHORS)} default bot accounts).
-- Subreddit-day pole_share = (left+right)/(left+center+right) pooled over comments.
+{outcome_line}
 - Minimum {min_scored} scored comments per subreddit-day.
 - Fixed-author roster size: {n_fixed:,}; all-author comment rows: {n_all:,}.
 
@@ -573,8 +607,10 @@ def _write_readme(out_dir: Path, n_fixed: int, n_all: int, min_scored: int) -> N
 
 
 def main() -> None:
-    """Function summary: run fixed-author pole_share robustness and write outputs."""
+    """Function summary: run fixed-author pole_share/pole_rate robustness and write outputs."""
+    global OUTCOME_COL
     args = parse_args()
+    OUTCOME_COL = args.outcome
     config = load_config(PROJECT_ROOT / args.config)
     require_dominant_v1_ideology_scoring(config)
     pol_cfg = load_polarization_config(config)
@@ -604,6 +640,13 @@ def main() -> None:
     panel_all = _build_subreddit_day_panel(df, pol_cfg, launch, end_excl, args.min_scored)
     panel_fixed = _build_subreddit_day_panel(df_fixed, pol_cfg, launch, end_excl, args.min_scored)
 
+    if args.outcome == "pole_rate":
+        for pnl in (panel_all, panel_fixed):
+            if not pnl.empty:
+                pnl["pole_rate"] = pd.to_numeric(
+                    pnl["left_rate_100w_mean"], errors="coerce"
+                ) + pd.to_numeric(pnl["right_rate_100w_mean"], errors="coerce")
+
     window_days = EVENT_WINDOW_DAYS_BY_BIN.get(BIN_DAYS, 30)
     rows_all, es_all = _estimate_specs(panel_all, config, "all_authors", window_days)
     rows_fixed, es_fixed = _estimate_specs(panel_fixed, config, "fixed_authors", window_days)
@@ -611,7 +654,7 @@ def main() -> None:
     summary = pd.DataFrame(rows_all + rows_fixed)
     event_study = pd.concat([es_all, es_fixed], ignore_index=True)
 
-    out_dir = tables_subdir(config, "did") / "pole_share_fixed_authors"
+    out_dir = tables_subdir(config, "did") / f"{args.outcome}_fixed_authors"
     out_dir.mkdir(parents=True, exist_ok=True)
     summary.to_csv(out_dir / "summary.csv", index=False)
     event_study.to_csv(out_dir / "event_study.csv", index=False)
@@ -620,21 +663,21 @@ def main() -> None:
     base_row = summary[(summary["sample"] == "all_authors") & (summary["spec"] == "full_ban")]
     if not base_row.empty:
         beta = float(base_row["beta"].iloc[0])
+        target_note = " (target ~+0.062)" if args.outcome == "pole_share" else ""
         print(
-            f"[pole_share_fixed_authors] all-authors full_ban beta={beta:.4f} "
-            f"(target ~+0.062)",
+            f"[pole_share_fixed_authors] all-authors full_ban beta={beta:.4f}{target_note}",
             flush=True,
         )
 
     if not args.no_figures and not es_fixed.empty:
-        fig_dir = figures_subdir(config, "did") / "pole_share_fixed_authors"
+        fig_dir = figures_subdir(config, "did") / f"{args.outcome}_fixed_authors"
         fig_dir.mkdir(parents=True, exist_ok=True)
         plot_event_study(
             es_fixed,
-            "pole_share",
-            fig_dir / "pole_share_fixed_authors_es.png",
+            args.outcome,
+            fig_dir / f"{args.outcome}_fixed_authors_es.png",
             rel_col="rel_period",
-            title="pole_share event study (pre-ban author set)",
+            title=f"{args.outcome} event study (pre-ban author set)",
         )
 
     print(f"[pole_share_fixed_authors] wrote {out_dir}", flush=True)

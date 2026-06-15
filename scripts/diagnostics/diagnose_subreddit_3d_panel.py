@@ -10,7 +10,11 @@ Functionality:
 - Reference bin: rel_period -1 n_comments mass.
 - Live estimate_event_study on sem_axis_ideology_extreme_left/right + pole_share
   with |gamma| gates (0.12 for bounded tail shares).
-- Exits 1 when any gate fails; use before regenerating language/subreddit/3d CSVs.
+- Same guards on the subreddit×universe_slice 3d panel (language_universe/in_out_slice):
+  metadata carried through binning, both arms present, zero mono-treat time bins
+  for each in/out strategy.
+- Exits 1 when any gate fails; use before regenerating language/subreddit/3d or
+  language_universe/in_out_slice/3d CSVs.
 
 How to apply/run:
   .venv/bin/python scripts/diagnostics/diagnose_subreddit_3d_panel.py --config config/italy_polarization_setup.yaml
@@ -52,10 +56,14 @@ from src.did.outcomes import (  # noqa: E402
     SEM_AXIS_IDEOLOGY_EXTREME_LEFT_COL,
     SEM_AXIS_IDEOLOGY_EXTREME_RIGHT_COL,
 )
-from src.did.panels import load_subreddit_event_study_panel  # noqa: E402
+from src.did.panels import (  # noqa: E402
+    load_subreddit_event_study_panel,
+    load_subreddit_slice_event_study_panel,
+)
 from src.did.specs import (  # noqa: E402
     EVENT_WINDOW_DAYS_BY_BIN,
     StrategySpec,
+    event_study_language_universe_slice_strategies,
     filter_strategy_sample,
 )
 
@@ -182,13 +190,50 @@ def run(config: Dict[str, Any]) -> int:
         gmax = float(es_df["gamma"].abs().max())
         _gate(f"ES {y_col} |gamma| <= {gate}", gmax <= gate, f"max|gamma|={gmax:.4f}", failures)
 
+    print("== 7. Slice panel (language_universe/in_out_slice, 3d) ==")
+    try:
+        sl3 = load_subreddit_slice_event_study_panel(config, 3)
+    except FileNotFoundError as exc:
+        print(f"  [info] slice panel unavailable, skipping: {exc}")
+        sl3 = pd.DataFrame()
+    if not sl3.empty:
+        _gate(
+            "slice 3d has topic_family",
+            "topic_family" in sl3.columns,
+            f"present={'topic_family' in sl3.columns}",
+            failures,
+        )
+        for strat in event_study_language_universe_slice_strategies():
+            sl_sample = filter_strategy_sample(sl3, strat, window_days=window)
+            sl_it = (
+                sl_sample["IT"].astype(float).round().astype(int).value_counts().to_dict()
+            )
+            s0, s1 = int(sl_it.get(0, 0)), int(sl_it.get(1, 0))
+            _gate(
+                f"{strat.strategy_id} both arms",
+                s0 > 0 and s1 > 0,
+                f"rows IT=0: {s0}, IT=1: {s1}",
+                failures,
+            )
+            sl_mono = sl_sample.groupby("time_id")["treat"].nunique()
+            n_sl_mono = int((sl_mono <= 1).sum())
+            _gate(
+                f"{strat.strategy_id} mono-treat time_ids",
+                n_sl_mono == 0,
+                f"{n_sl_mono}/{len(sl_mono)} time bins mono-treat",
+                failures,
+            )
+
     print("== Verdict ==")
     if failures:
         print(f"FAILED {len(failures)} gate(s):")
         for f in failures:
             print(f"  - {f}")
     else:
-        print("ALL GATES PASSED — safe to regenerate language/subreddit/3d CSVs.")
+        print(
+            "ALL GATES PASSED — safe to regenerate language/subreddit/3d and "
+            "language_universe/in_out_slice/3d CSVs."
+        )
     return len(failures)
 
 

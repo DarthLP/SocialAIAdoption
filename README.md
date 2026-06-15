@@ -103,6 +103,42 @@ restriction truncated post-ban coefficients past day 6 — `first_strategy_by_id
 # or the full bundle (drop --tail-shift-only)
 ```
 
+**Second builder bug (fixed 2026-06-11):** the same `prepare_subreddit_event_study_panel`
+unpacked `event_dates_from_config` wrongly (`_, _, launch, end_excl = ...` grabs the **lift**
+date as `end_excl`), truncating subreddit/slice panels at 2023-04-28 and dropping the post-lift
+bin (rel_period +10 / rel_day 28–30) that the pooled aggregated panels keep. Fixed to unpack
+`(start, end_excl, launch, lift)` correctly; subreddit/slice 3d event studies now show the
+post-lift point. 1d outputs were unaffected (±14d ES window ends before the lift).
+
+The same mechanism corrupted `language_universe/in_out_slice/3d/` (slice panel goes through the
+same shared builder; its 1d CSVs were always sane). After the fix, regenerate that bundle too:
+
+```bash
+.venv/bin/python scripts/analysis/did_aggregated_event_study.py \
+  --config config/italy_polarization_setup.yaml \
+  --panel-level language_universe --bundle in_out_slice --bin-days 3
+```
+
+Legacy pre-bundle CSV trees (`estimates/*/event_study/{language,language_universe,topic_family}/{1,3}d/`
+without a bundle segment) are frozen vintage from May 2026 — nothing regenerates them. Two contain
+degenerate-looking values (`language/1d/.../sem_axis_{emotion,ideology}_var`, ~1e5–6e5); the live
+bundle-layout equivalents are sane (~0.001). Do **not** delete the legacy trees wholesale:
+`plot_pole_share_eventstudy.py` panel B intentionally reads
+`lexical/event_study/language_universe/3d/cross_country_all/pole_share.csv` from there.
+
+## KNOWN MEASUREMENT CAVEAT (2026-06) — lexical `pole_share` control-arm ceiling
+
+`pole_share = (L+R)/(L+C+R)` depends on the ideology lexicon's 5-slot center bucket.
+Two IT center slots (`renzi; calenda`, `italia viva; terzo polo`) fire far more often than
+their EN/DE counterparts (`ed davey`, `lib dems`), so control subreddits sit near the 1.0
+ceiling (pre-ban mean 0.955; 92% of control subreddit-days ≥ 0.9; IT mean 0.742). Controls
+have almost no upward headroom, which biases the pole_share DiD toward positive effects.
+Ceiling-free alternative: registered outcome `pole_rate` (= `left_rate_100w_mean +
+right_rate_100w_mean`, derived at panel load in `src/did/panels.py`; no center bucket, no
+ratio). Do NOT "fix" this by padding control-language center word lists — choosing which
+politicians count as center per country directly sets the outcome level (researcher degrees
+of freedom) and asymmetric lexicon edits break the parallel design.
+
 Thesis figure from the corrected CSVs: `plot_semantic_leftright_eventstudy.py` →
 `did/event_study/language/subreddit/3d/semantic_leftright_eventstudy.png` (shape-gated; falls back
 to `hub_pooled` only when the gate fails). Note: `fd_mean_sem_axis_emotion_all.png` in the thesis

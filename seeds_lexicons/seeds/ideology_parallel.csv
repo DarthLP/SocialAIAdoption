@@ -1,0 +1,31 @@
+pole,concept,IT,EN,DE
+right,econ_market,liberismo,free-market,marktwirtschaft
+right,econ_tax,flat-tax,tax-cuts,steuersenkungen
+right,immig_illegal,clandestini,illegals,illegale
+right,immig_threat,invasione,invasion,überfremdung
+right,immig_return,rimpatri,deportations,abschiebung
+right,sovereignty,sovranità,sovereignty,souveränität
+right,eu_sceptic,euroscettico,eurosceptic,euroskeptisch
+right,tradition,tradizione,tradition,tradition
+right,family,famiglia tradizionale,family-values,familienwerte
+right,anti_gender,gender,gender-ideology,genderideologie
+right,identity,identità,heritage,leitkultur
+right,homeland,patria,homeland,heimatland
+right,self_label,sovranista,nationalist,patriotisch
+right,value_label,conservatore,conservative,konservativ
+right,patriotism,patriota,patriots,patrioten
+left,econ_redistribution,redistribuzione,redistribution,umverteilung
+left,econ_welfare,welfare,welfare,sozialstaat
+left,econ_labor,salario minimo,minimum-wage,mindestlohn
+left,immig_migrants,migranti,migrants,geflüchtete
+left,immig_welcome,accoglienza,refugees,willkommenskultur
+left,human_rights,diritti umani,human rights,menschenrechte
+left,civil_rights,diritti civili,civil-rights,bürgerrechte
+left,gender_equality,parità di genere,gender-equality,geschlechtergerechtigkeit
+left,equality,uguaglianza,equality,gleichheit
+left,inclusion,inclusione,diversity,vielfalt
+left,solidarity,solidarietà,solidarity,solidarität
+left,environment,ambientalista,environmentalist,klimaschutz
+left,eu_pro,europeista,pro-european,proeuropäisch
+left,self_label,progressista,progressive,progressiv
+left,value_label,socialista,socialist,sozialistisch

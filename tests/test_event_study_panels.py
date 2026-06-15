@@ -47,7 +47,7 @@ def _daily_panel() -> pd.DataFrame:
         ("de_a", "de", "de", 0, 1, 1, 0),
         ("eu_a", "eu", "en", 0, 1, 0, 1),
     ]
-    dates = pd.date_range("2023-03-19", "2023-04-29", freq="D").strftime("%Y-%m-%d")
+    dates = pd.date_range("2023-03-19", "2023-04-30", freq="D").strftime("%Y-%m-%d")
     rng = np.random.default_rng(7)
     rows: List[Dict] = []
     for sub, fam, lex, it, is_ctrl, c_de, c_eu in subs:
@@ -79,6 +79,20 @@ def test_3d_binning_retains_entity_metadata(config: Dict) -> None:
     assert fam["de_a"] == "de"
 
 
+def test_3d_binning_keeps_post_lift_bin(config: Dict) -> None:
+    """Function summary: panel extends to end_utc_exclusive, not the lift date.
+
+    Regression test for the end_excl/lift unpacking bug: the builder truncated
+    at the lift (2023-04-28), dropping the post-lift bin (rel_period 10 /
+    rel_day 28-30) that the pooled aggregated panels keep.
+    """
+    p3 = prepare_subreddit_event_study_panel(_daily_panel(), config, 3)
+    assert int(p3["rel_period"].max()) == 10
+    assert "2023-04-30" in set(p3["period_start"].astype(str))
+    p1 = prepare_subreddit_event_study_panel(_daily_panel(), config, 1)
+    assert int(p1["rel_day"].max()) == 30
+
+
 def test_3d_cross_country_all_keeps_both_arms(config: Dict) -> None:
     """Function summary: post-filter 3d sample has IT=0 controls and treat variation per time bin."""
     panel = prepare_subreddit_event_study_panel(_daily_panel(), config, 3)
@@ -103,6 +117,32 @@ def test_filter_fallback_without_lexicon_metadata(config: Dict) -> None:
     ctrl = vs_de[vs_de["treat"] == 0]
     assert not ctrl.empty
     assert set(ctrl["subreddit"]) == {"de_a"}
+
+
+def test_3d_slice_binning_retains_metadata_and_both_arms(config: Dict) -> None:
+    """Function summary: subreddit×universe_slice 3d panel keeps topic_family; in/out filters keep controls."""
+    daily = _daily_panel()
+    slices = []
+    for slc in ("in_political_tree", "out_political_tree"):
+        part = daily.copy()
+        part["universe_slice"] = slc
+        slices.append(part)
+    slice_daily = pd.concat(slices, ignore_index=True)
+    panel = prepare_subreddit_event_study_panel(
+        slice_daily, config, 3, entity_cols=("subreddit", "universe_slice")
+    )
+    assert "topic_family" in panel.columns
+    assert "universe_slice" in panel.columns
+    for slc in ("in_political_tree", "out_political_tree"):
+        strat = StrategySpec(
+            f"cross_country_political_universe_{'in' if slc.startswith('in') else 'out'}",
+            universe_slice=slc,
+        )
+        sample = filter_strategy_sample(panel, strat, window_days=30)
+        assert set(sample["universe_slice"]) == {slc}
+        assert set(sample["IT"].astype(float).round().astype(int)) == {0, 1}
+        mono = sample.groupby("time_id")["treat"].nunique()
+        assert int((mono <= 1).sum()) == 0
 
 
 def test_restore_entity_meta_noop_when_present() -> None:
@@ -175,3 +215,26 @@ def test_event_study_strategies_use_full_window_variant() -> None:
 def test_thesis_coef_marker_constant() -> None:
     """Function summary: neutral coefficient marker color is the agreed dark gray."""
     assert THESIS_COEF_MARKER == "#333333"
+
+
+def test_pole_rate_derived_column_and_registry() -> None:
+    """Function summary: pole_rate = left+right per-100w rates, registered as lexical outcome."""
+    from src.did.outcomes import OUTCOME_REGISTRY
+    from src.did.panels import _add_derived_lexical_columns
+
+    df = pd.DataFrame(
+        {
+            "left_rate_100w_mean": [0.1, 0.0, 0.3],
+            "right_rate_100w_mean": [0.2, 0.0, 0.1],
+        }
+    )
+    out = _add_derived_lexical_columns(df)
+    assert out["pole_rate_100w_mean"].tolist() == [
+        pytest.approx(0.3),
+        pytest.approx(0.0),
+        pytest.approx(0.4),
+    ]
+    spec = next(o for o in OUTCOME_REGISTRY if o.outcome_id == "pole_rate")
+    assert spec.column == "pole_rate_100w_mean"
+    assert spec.family == "lexical"
+    assert spec.ddd_allowed is False

@@ -65,7 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--task",
         type=str,
-        choices=("all", "pole_share", "emotion_pruned"),
+        choices=("all", "pole_share", "pole_rate", "emotion_pruned"),
         default="all",
         help="Which overlay figure to build.",
     )
@@ -254,19 +254,22 @@ def _find_pruned_es_csv(did_root: Path) -> Path:
     raise FileNotFoundError("sem_axis_emotion_pruned event-study CSV not found under did/")
 
 
-def plot_pole_share_overlay(config: Dict[str, Any]) -> str:
-    """Function summary: build pole_share fixed-author overlay and return interpretation line.
+def plot_pole_share_overlay(config: Dict[str, Any], outcome: str = "pole_share") -> str:
+    """Function summary: build pole_share/pole_rate fixed-author overlay and return interpretation line.
 
     Parameters:
     - config: study YAML.
+    - outcome: pole_share (legacy ratio) or pole_rate (L+R per 100w; ceiling-free).
 
     Returns:
     - One-line confirms/kills interpretation string.
     """
     did_root = tables_subdir(config, "did")
-    fixed_dir = did_root / "pole_share_fixed_authors"
+    fixed_dir = did_root / f"{outcome}_fixed_authors"
     if not fixed_dir.is_dir():
-        raise FileNotFoundError(f"Missing {fixed_dir}")
+        raise FileNotFoundError(
+            f"Missing {fixed_dir}; run pole_share_fixed_authors.py --outcome {outcome} first"
+        )
 
     es_all = _load_es_csv(fixed_dir / "event_study.csv")
     es_all = es_all[es_all["sample"].astype(str) == "all_authors"].copy()
@@ -276,28 +279,47 @@ def plot_pole_share_overlay(config: Dict[str, Any]) -> str:
     summary = pd.read_csv(fixed_dir / "summary.csv")
     all_static = _summary_row(summary, sample="all_authors", spec="full_ban")
     fixed_static = _summary_row(summary, sample="fixed_authors", spec="full_ban")
+    beta_a = float(all_static.get("beta", np.nan))
     beta_f = float(fixed_static.get("beta", np.nan))
-    out = figures_subdir(config, "did") / "pole_share_fixed_authors" / "pole_share_es_overlay.png"
+    outcome_label = "Pole share" if outcome == "pole_share" else "Pole-word rate (per 100 words)"
+    title = f"{outcome_label} — all authors vs pre-ban author roster (composition check)"
+    out = figures_subdir(config, "did") / f"{outcome}_fixed_authors" / f"{outcome}_es_overlay.png"
     _plot_overlay(
         [
-            ("all authors", es_all, -DODGE_OFFSET, THESIS_ITALY),
-            ("pre-ban author set", es_fixed, DODGE_OFFSET, THESIS_CONTROL),
+            ("All authors (incl. post-ban arrivals)", es_all, -DODGE_OFFSET, THESIS_ITALY),
+            (
+                "Pre-ban author roster only (≥1 ideology-lexicon hit, Mar 1–30)",
+                es_fixed,
+                DODGE_OFFSET,
+                THESIS_CONTROL,
+            ),
         ],
-        title="All authors vs pre-ban author set",
+        title=title,
         out_path=out,
         x_scale_days=True,
     )
     print(
-        f"[plot_robustness_es_overlays] pole_share overlay labels: "
+        f"[plot_robustness_es_overlays] {outcome} overlay labels: "
         f"x={xlabel_event_study(BIN_DAYS)!r} y={ylabel_italy_bin_coefficient()!r} "
-        f"title='All authors vs pre-ban author set' xlim_days≈(-30,30)",
+        f"title={title!r} xlim_days≈(-30,30)",
         flush=True,
     )
 
-    if np.isfinite(beta_f) and beta_f >= 0.04:
-        verdict = f"pole_share overlay: CONFIRMS baseline (fixed-author full-ban β={beta_f:+.3f})"
+    if outcome == "pole_share":
+        confirms = np.isfinite(beta_f) and beta_f >= 0.04
     else:
-        verdict = f"pole_share overlay: KILLS baseline (fixed-author full-ban β={beta_f:+.3f})"
+        # Scale-free rule: roster β keeps the sign and >= 60% of the all-authors β.
+        confirms = (
+            np.isfinite(beta_f)
+            and np.isfinite(beta_a)
+            and beta_a != 0
+            and np.sign(beta_f) == np.sign(beta_a)
+            and abs(beta_f) >= 0.6 * abs(beta_a)
+        )
+    if confirms:
+        verdict = f"{outcome} overlay: CONFIRMS baseline (fixed-author full-ban β={beta_f:+.3f})"
+    else:
+        verdict = f"{outcome} overlay: KILLS baseline (fixed-author full-ban β={beta_f:+.3f})"
     print(verdict, flush=True)
     print(f"[plot_robustness_es_overlays] wrote {out}", flush=True)
     return verdict
@@ -385,7 +407,12 @@ def main() -> None:
     args = parse_args()
     config = load_config(PROJECT_ROOT / args.config)
     if args.task in ("all", "pole_share"):
-        plot_pole_share_overlay(config)
+        plot_pole_share_overlay(config, outcome="pole_share")
+    if args.task == "pole_rate" or (
+        args.task == "all"
+        and (tables_subdir(config, "did") / "pole_rate_fixed_authors").is_dir()
+    ):
+        plot_pole_share_overlay(config, outcome="pole_rate")
     if args.task in ("all", "emotion_pruned"):
         plot_emotion_pruned_overlay(config)
 
